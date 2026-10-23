@@ -5,15 +5,15 @@ import java.util.List;
 
 /**
  * One trial of one scenario, {@code trialNo} counting from 1 among its scenario's trials: its
- * status, every check with its evidence, what it cost, where its conversation is, and what the
- * kind's page shows, in {@code detail}. {@code judges} stays empty until judges exist.
+ * status, every check with its evidence, the advisory judge answers, what it cost without them,
+ * where its conversation is, and what the kind's page shows, in {@code detail}.
  */
 record Trial(
     String scenarioId,
     int trialNo,
     TrialStatus status,
     List<Check> checks,
-    List<String> judges,
+    List<JudgeResult> judges,
     BigDecimal costUsd,
     int modelCalls,
     String conversationId,
@@ -41,6 +41,18 @@ record Trial(
     return switch (detail) {
       case TurnDetail _ -> "turn";
       case StoryDetail _ -> "story";
+    };
+  }
+
+  /** The turns after the opener that sent a reply: the turns a judge can mark. */
+  List<Integer> repliedTurns() {
+    return switch (detail) {
+      case TurnDetail turn -> turn.reply() == null ? List.of() : List.of(turn.turnNo());
+      case StoryDetail story ->
+          story.transcript().stream()
+              .filter(turn -> turn.turnNo() > 0 && !turn.replies().isEmpty())
+              .map(StoryTurn::turnNo)
+              .toList();
     };
   }
 
@@ -73,6 +85,26 @@ record Trial(
   /** The names of the failed checks, for the report table and the JUnit abort message. */
   List<String> failedNames() {
     return checks.stream().filter(check -> !check.pass()).map(Check::name).toList();
+  }
+
+  /** What its judges cost, a line apart from {@link #costUsd()}. */
+  BigDecimal judgeCostUsd() {
+    return judges.stream().map(JudgeResult::costUsd).reduce(BigDecimal.ZERO, BigDecimal::add);
+  }
+
+  /** This trial with {@code answers} as its judges; nothing else changes, its status least. */
+  Trial withJudges(List<JudgeResult> answers) {
+    return new Trial(
+        scenarioId,
+        trialNo,
+        status,
+        checks,
+        List.copyOf(answers),
+        costUsd,
+        modelCalls,
+        conversationId,
+        detail,
+        durationMs);
   }
 
   /** A trial that did not run, for the reason {@code status} names. */

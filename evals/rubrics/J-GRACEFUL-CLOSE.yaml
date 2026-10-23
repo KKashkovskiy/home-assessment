@@ -1,0 +1,15 @@
+id: J-GRACEFUL-CLOSE
+question: "Is Anna's closing reply after the conversation ended polite and final, without re-opening the conversation?"
+scope: transcript
+severity: hard
+applies_to: [objection, off-topic, post-terminal]
+notes: >
+  The conversation ends with a booking, a decline, a handoff, the turn cap, an opt-out, abuse, a safety reply or
+  the off-topic limit. A closing reply that asks a question, invites more chat, re-pitches or re-offers times is a
+  FAIL, and so is a cold or abrupt one. Code counts the replies after the end; judge the close itself. No reply
+  after the end: NOT_APPLICABLE.
+examples:
+  pass:
+    - "[turn 5] Anna: Booked - you're in for Mon 3 Aug at 12:00 PM AWST. Your advisor will call you then.\n[turn 6] Lead: thanks!\n[turn 6] Anna: You're welcome - speak soon."
+  fail:
+    - "[turn 6] Lead: thanks!\n[turn 6] Anna: Thanks, you too! Anything else I can help with?"

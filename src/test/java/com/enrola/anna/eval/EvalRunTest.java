@@ -15,8 +15,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A run's branches with fake runners at $0.04 a trial and $0.05 a typical call: what each mode
- * runs, the cap before and during the run, k trials, the gates' exit code, and a trial that
- * crashes. The app database does not exist here, so no row is written and the report says so.
+ * runs, the cap before and during the run, k trials, the gates' exit code, a trial that crashes,
+ * and the judges asked after the trials at $0.01 a typical judge call. The app database does not
+ * exist here, so no row is written and the report says so.
  */
 class EvalRunTest {
 
@@ -26,12 +27,22 @@ class EvalRunTest {
       ScenarioFixtures.turn("turn-second", "hi", Scenario.Expect.NONE);
   static final Scenario.Turn THIRD =
       ScenarioFixtures.turn("turn-third", "hi", Scenario.Expect.NONE);
+  static final Scenario.Turn OTHER_CORE =
+      ScenarioFixtures.turn("turn-other", "hi", Scenario.Expect.NONE, "core");
   static final Scenario.Story STORY = ScenarioFixtures.story("story-lauren-books");
 
   @TempDir Path dir;
 
   final List<String> ran = new ArrayList<>();
   EvalBudget budget;
+
+  /** No rubric and so no question unless a test sets them, with what its judge answers. */
+  List<Rubric> rubrics = List.of();
+
+  EvalRun.Judge judge =
+      (scenario, trial, question) -> {
+        throw new AssertionError("no judge in this run");
+      };
 
   /** Two turns at two calls and a story at fourteen: eighteen calls at $0.05. */
   @Test
@@ -59,7 +70,12 @@ class EvalRunTest {
         .hasSize(4);
     assertThat(gates.exitCode()).isZero();
     assertThat(Files.readString(dir.resolve("report.md")))
-        .contains("| Verdict | SKIPPED |", "hard: SKIPPED", "No key", "No eval_run row");
+        .contains(
+            "| Verdict | SKIPPED |",
+            "| Judges | none (no key) |",
+            "hard: SKIPPED",
+            "No key",
+            "No eval_run row");
   }
 
   /** Two turns are estimated at $0.20, over a $0.10 cap: nothing runs, and the report says why. */
@@ -149,6 +165,101 @@ class EvalRunTest {
         .contains("| Trials | 1 run, 0 skipped, 1 crashed |", "| Verdict | FAIL |");
   }
 
+  /**
+   * Judges are asked once every trial ran, and every one failing changes nothing a gate reads: the
+   * trials still pass and the exit code stays 0.
+   */
+  @Test
+  void judgesAnswerAfterTheTrialsAndNeverGate() throws IOException {
+    judgedBy(
+        (scenario, trial, question) -> {
+          ran.add("judge " + question.rubric().id() + " " + trial.label());
+          return ScenarioFixtures.answer(question, trial, JudgeResult.Verdict.FAIL, "0.01");
+        });
+    EvalRun run = run(new RunMode.Keyed("eval"), "10", 1, this::pass, FIRST, OTHER_CORE);
+
+    run.begin().forEach(scenario -> run.trial(scenario, 1));
+    GateResult gates = run.finish();
+
+    assertThat(ran)
+        .containsExactly(
+            "turn-first#1", "turn-other#1", "judge J-ALL turn-first#1", "judge J-ALL turn-other#1");
+    assertThat(run.trials()).extracting(Trial::status).containsOnly(TrialStatus.PASS);
+    assertThat(run.trials())
+        .flatExtracting(Trial::judges)
+        .extracting(JudgeResult::verdict)
+        .containsOnly(JudgeResult.Verdict.FAIL);
+    assertThat(gates.exitCode()).isZero();
+    assertThat(Files.readString(dir.resolve(ReportWriter.EXIT_CODE))).isEqualTo("0\n");
+    assertThat(budget.spent()).isEqualByComparingTo("0.10");
+  }
+
+  /** A judge that throws costs the run nothing: its answer is UNKNOWN and the report is written. */
+  @Test
+  void aCrashingJudgeIsUnknownAndTheRunStillReports() throws IOException {
+    judgedBy(
+        (scenario, trial, question) -> {
+          throw new IllegalStateException("no bean");
+        });
+    EvalRun run = run(new RunMode.Keyed("eval"), "10", 1, this::pass, FIRST);
+
+    run.trial(run.begin().getFirst(), 1);
+    GateResult gates = run.finish();
+
+    assertThat(run.trials().getFirst().judges())
+        .singleElement()
+        .satisfies(
+            answer -> {
+              assertThat(answer.verdict()).isEqualTo(JudgeResult.Verdict.UNKNOWN);
+              assertThat(answer.note()).isEqualTo("judge crashed: IllegalStateException");
+            });
+    assertThat(gates.exitCode()).isZero();
+    assertThat(Files.readString(dir.resolve(ReportWriter.EXIT_CODE))).isEqualTo("0\n");
+    assertThat(dir.resolve("report.md")).exists();
+  }
+
+  /**
+   * At $0.04 for the trial and $0.11 for the first answer of a $0.15 cap, a second $0.01 judge call
+   * no longer fits, so it is not asked.
+   */
+  @Test
+  void judgesStopAtTheCap() {
+    rubrics =
+        List.of(
+            ScenarioFixtures.rubric("J-ONE", Rubric.Scope.TRANSCRIPT, "core"),
+            ScenarioFixtures.rubric("J-TWO", Rubric.Scope.TRANSCRIPT, "core"));
+    judgedBy(
+        (scenario, trial, question) ->
+            ScenarioFixtures.answer(question, trial, JudgeResult.Verdict.PASS, "0.11"));
+    EvalRun run = run(new RunMode.Keyed("eval"), "0.15", 1, this::pass, FIRST);
+
+    run.trial(run.begin().getFirst(), 1);
+    run.finish();
+
+    assertThat(run.trials().getFirst().judges())
+        .extracting(JudgeResult::verdict)
+        .containsExactly(JudgeResult.Verdict.PASS, JudgeResult.Verdict.SKIPPED_BUDGET);
+  }
+
+  /** The plan prices two turns at $0.20 against the cap, and their two judge questions apart. */
+  @Test
+  void dryRunEstimatesTheJudgesApart() throws IOException {
+    judgedBy(
+        (scenario, trial, question) -> {
+          throw new AssertionError("a dry run asks no judge");
+        });
+    EvalRun run = run(new RunMode.DryRun(), "10", 1, this::pass, FIRST, OTHER_CORE);
+
+    run.begin();
+    run.finish();
+
+    assertThat(Files.readString(dir.resolve("report.md")))
+        .contains(
+            "Estimate: $0.2000 of $10.00 cap",
+            "Judges: advisory, model m (effort low): at most 2 questions, $0.0200, asked only"
+                + " while the cap has room.");
+  }
+
   private EvalRun run(
       RunMode mode,
       String cap,
@@ -157,11 +268,31 @@ class EvalRunTest {
       Scenario... selected) {
     var header =
         new RunHeader(
-            "test", "v1", "m", "low", mode, "all", trials, 0.2, new BigDecimal(cap), Instant.EPOCH);
+            "test",
+            "v1",
+            "m",
+            "low",
+            JudgeMode.of(true, mode, new EvalModels.Model("m", EvalBudgetTest.FIVE_CENTS)),
+            mode,
+            "all",
+            trials,
+            0.2,
+            new BigDecimal(cap),
+            Instant.EPOCH);
     String missing = "jdbc:h2:file:" + dir.resolve("no-app/anna");
     budget = new EvalBudget(new BigDecimal(cap), EvalBudgetTest.FIVE_CENTS, "m");
     return new EvalRun(
-        turns, this::pass, budget, new RunPlan(header, List.of(selected), dir, missing));
+        new EvalRun.Steps(turns, this::pass, judge),
+        budget,
+        new RunPlan(header, List.of(selected), rubrics, dir, missing));
+  }
+
+  /** Judges on model m, one transcript rubric on core unless a test set others. */
+  private void judgedBy(EvalRun.Judge answers) {
+    if (rubrics.isEmpty()) {
+      rubrics = List.of(ScenarioFixtures.rubric("J-ALL", Rubric.Scope.TRANSCRIPT, "core"));
+    }
+    judge = answers;
   }
 
   private Trial pass(Scenario scenario, int trialNo) {

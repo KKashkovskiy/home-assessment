@@ -3,12 +3,16 @@ package com.enrola.anna.eval;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-/** What a run's report says about it before any trial, and what its row records. */
+/**
+ * What a run's report says about it before any trial, and what its row records; {@code judges} says
+ * who answers its advisory judge questions, or why no one does.
+ */
 record RunHeader(
     String runId,
     String promptVersion,
     String model,
     String effort,
+    JudgeMode judges,
     RunMode mode,
     String selection,
     int trials,

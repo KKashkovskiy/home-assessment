@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 /**
  * One trial's Markdown page: the setup, then a turn's transcript and every check, or a story's
  * persona and its transcript turn by turn, each turn with its checks, tools and cost, then the end
- * state and why it stopped; and where the conversation is.
+ * state and why it stopped; the judges' answers with their evidence; and where the conversation is.
  */
 final class ScenarioPage {
 
@@ -43,6 +43,7 @@ final class ScenarioPage {
           case Scenario.Turn turn -> turnBody(turn, trial);
           case Scenario.Story story -> persona(story) + storyBody(trial);
         }
+        + judges(trial.judges())
         + (trial.conversationId() == null
             ? ""
             : "%nConversation `%s`, turn %d, in this run's database (`db.mv.db`).%n"
@@ -186,6 +187,28 @@ final class ScenarioPage {
                             check.gate().name().toLowerCase(Locale.ROOT),
                             check.pass() ? "pass" : "FAIL",
                             ReportWriter.cell(check.evidence())))
+            .collect(Collectors.joining());
+  }
+
+  /**
+   * Each answer with the turn it judged, or the whole transcript; advisory, so apart from checks.
+   */
+  private static String judges(List<JudgeResult> answers) {
+    if (answers.isEmpty()) {
+      return "";
+    }
+    return "\n## Judges (advisory)\n\n| Rubric | Turn | Verdict | Evidence | Note |\n"
+        + "|---|---|---|---|---|\n"
+        + answers.stream()
+            .map(
+                answer ->
+                    "| %s | %s | %s | %s | %s |%n"
+                        .formatted(
+                            answer.rubricId(),
+                            answer.turnNo() == null ? "all" : answer.turnNo(),
+                            answer.verdict(),
+                            answer.evidence() == null ? "" : ReportWriter.cell(answer.evidence()),
+                            ReportWriter.cell(answer.note())))
             .collect(Collectors.joining());
   }
 

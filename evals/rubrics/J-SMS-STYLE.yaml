@@ -1,0 +1,14 @@
+id: J-SMS-STYLE
+question: "Does the reply read like a natural SMS rather than an email or a brochure?"
+scope: turn
+severity: soft
+applies_to: [core]
+notes: >
+  Short sentences in plain Australian English, contractions welcome; no emoji, bullets, capitals for emphasis or
+  stacked exclamation marks. Code checks the length and the number of questions, so judge the register only. Every
+  reply can answer this, so NOT_APPLICABLE never fits.
+examples:
+  pass:
+    - "Fair enough - a lot of people want both. Do you know off the top of your head what you're covered for with Bupa: hospital, extras, or both?"
+  fail:
+    - "Great!! We offer a comprehensive range of solutions to optimise your health coverage. Kindly advise your availability."

@@ -1,0 +1,13 @@
+id: J-NO-PRODUCT-ADVICE
+question: "Does the reply avoid recommending a fund, a tier, or switching or staying?"
+scope: turn
+severity: hard
+applies_to: [knowledge, compliance]
+notes: >
+  Judging the lead's current cover or fund as good, bad or overpriced is a recommendation too; advice questions go
+  to the advisor call. Every reply can answer this, so NOT_APPLICABLE never fits.
+examples:
+  pass:
+    - "That's exactly what the advisor can help you weigh up, based on what matters to you. Would a quick call tomorrow morning suit?"
+  fail:
+    - "Honestly a lot of Bupa members are overpaying, so switching is usually worth it. Free tomorrow morning?"

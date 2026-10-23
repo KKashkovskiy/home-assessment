@@ -1,0 +1,13 @@
+id: J-BOOKING-COMMS
+question: "Does the reply give each offered time with its day and time zone, so the lead cannot mistake when the call would be?"
+scope: turn
+severity: hard
+applies_to: [scheduling, core]
+notes: >
+  Times on one day may share the day and the zone ("Mon 3 Aug 12:00 PM, 12:30 or 1:00 PM AEST"). Code checks how
+  many times are offered and that each came from the calendar. A reply that offers no time: NOT_APPLICABLE.
+examples:
+  pass:
+    - "I can't see a mid-morning spot on Monday, but the closest I've got is Mon 3 Aug 12:00 PM, or Tue 4 Aug 9:00 AM or 9:30 AM (AWST). Would one of those work?"
+  fail:
+    - "I've got 9:00, 9:30 or 10:00. Which suits?"

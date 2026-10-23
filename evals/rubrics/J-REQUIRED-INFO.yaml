@@ -1,0 +1,13 @@
+id: J-REQUIRED-INFO
+question: "When the reply confirms a booking, does it state the booked slot's weekday, date, time and time zone, and that an advisor will call?"
+scope: turn
+severity: hard
+applies_to: [scheduling]
+notes: >
+  All four parts of the slot and the advisor's call are required; about 15 minutes is welcome. A reply that confirms
+  no booking: NOT_APPLICABLE.
+examples:
+  pass:
+    - "Booked - you're in for Mon 3 Aug at 12:00 PM AWST. Your advisor will call you then; it should take about 15 mins."
+  fail:
+    - "Booked - you're in for Monday at 12:00 PM. Your advisor will call you then."

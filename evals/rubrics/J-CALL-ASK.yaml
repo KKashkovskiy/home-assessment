@@ -1,0 +1,13 @@
+id: J-CALL-ASK
+question: "When the reply asks the lead for a call, does it tie the call to a benefit that fits what the lead has said?"
+scope: turn
+severity: soft
+applies_to: [core]
+notes: >
+  For example, checking value without losing the cover the lead said they need. A call ask with no reason, or a
+  reason the lead never gave, is a FAIL. A reply that does not ask for a call: NOT_APPLICABLE.
+examples:
+  pass:
+    - "Got it, that's a solid setup. An advisor can check if there's better value without losing the cover you've got. Are you free tomorrow morning for a quick 15 min call?"
+  fail:
+    - "Are you free today for a call?"

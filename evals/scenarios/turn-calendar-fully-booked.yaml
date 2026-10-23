@@ -17,4 +17,4 @@ expect:
   ends_with_question: true
   reply_not_matches: ["\\d{1,2}:\\d{2}", "(?i)tomorrow at", "[Bb]ooked"]
 judge:
-  - "Does the reply say plainly that no times are open right now, without naming a day or time the tool did not return?"
+  - "Does the reply say plainly that no times are open right now, without naming any day or time?"

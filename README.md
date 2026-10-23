@@ -284,9 +284,10 @@ guards; a story scenario plays a whole conversation against a simulated lead, an
 pass^k and a Wilson interval. Each run gets its own database under `evals/runs/<id>/` (ignored by git) and writes
 `report.md`, a page per trial and `trials.jsonl` there, then one `eval_run` row into the app database, which the
 compare pane reads, whether or not the app is running. Three gates (hard checks, `core` scenarios, few enough INVALID
-trials) set the exit code. A keyed run spends its own key and cap, never the app's key unless
-`EVAL_ALLOW_SHARED_KEY=true`. **A prompt or model change needs a green core run (`evals/run.sh --tag core`, exit code
-0) before it is committed.** Kinds, fields, flags, gates and presets are in [`evals/README.md`](evals/README.md).
+trials) set the exit code. On a keyed run LLM judges then answer one yes-or-no question per rubric in `evals/rubrics/`
+with a quote that must appear verbatim in the transcript; they are reported beside the gates, never gating. A keyed
+run spends its own key and cap, never the app's key unless `EVAL_ALLOW_SHARED_KEY=true`. **A prompt or model change
+needs a green core run (`evals/run.sh --tag core`, exit code 0) before it is committed.** Kinds, fields, flags, gates and presets are in [`evals/README.md`](evals/README.md).
 
 ## What Anna does
 

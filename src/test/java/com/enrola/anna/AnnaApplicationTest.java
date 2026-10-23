@@ -52,7 +52,13 @@ class AnnaApplicationTest {
                     + " order by \"installed_rank\"",
                 String.class))
         .containsExactly(
-            "1 SQL TRUE", "2 SQL TRUE", "2.1 SQL TRUE", "2.2 SQL TRUE", "3 SQL TRUE", "4 SQL TRUE");
+            "1 SQL TRUE",
+            "2 SQL TRUE",
+            "2.1 SQL TRUE",
+            "2.2 SQL TRUE",
+            "3 SQL TRUE",
+            "4 SQL TRUE",
+            "5 SQL TRUE");
     assertThat(jdbcTemplate.queryForObject("select count(*) from prompt_version", Integer.class))
         .isEqualTo(1);
   }

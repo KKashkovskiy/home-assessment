@@ -9,7 +9,8 @@ import java.util.function.Function;
  * One run's options, read once from the {@code eval.*} system properties that {@code evals/run.sh}
  * and the Evals page set: {@code runId}, the selection ({@code scenarios}, {@code filter}, {@code
  * tag}, {@code kind}, {@code priority}), {@code budgetUsd}, {@code trials} per scenario, the
- * validity gate's {@code validityThreshold}, {@code offline}, {@code dryRun}, and {@code appDb},
+ * validity gate's {@code validityThreshold}, {@code offline}, {@code dryRun}, {@code judges}
+ * ({@code advisory}, the default, or {@code none}; only a keyed run asks them), and {@code appDb},
  * the JDBC URL of the database that gets the run's row. A bad value is refused here, before
  * anything runs.
  */
@@ -20,6 +21,7 @@ record EvalOptions(
     BigDecimal budgetUsd,
     int trials,
     double validityThreshold,
+    boolean judges,
     Path dir,
     String appDbUrl) {
 
@@ -37,6 +39,7 @@ record EvalOptions(
   private static final String BUDGET = "eval.budgetUsd must be a positive number of dollars";
   private static final String TRIALS = "eval.trials must be a whole number from 1";
   private static final String THRESHOLD = "eval.validityThreshold must be a number from 0 to 1";
+  private static final String JUDGES = "eval.judges must be advisory or none";
 
   /** {@code null} budget means the settings' eval cap. */
   EvalOptions {
@@ -71,6 +74,7 @@ record EvalOptions(
         Optional.ofNullable(property("eval.validityThreshold"))
             .map(value -> parsed(value, Double::valueOf, THRESHOLD))
             .orElse(VALIDITY_THRESHOLD),
+        judges(Optional.ofNullable(property("eval.judges")).orElse("advisory")),
         RUNS.resolve(runId),
         System.getProperty("eval.appDb", APP_DB));
   }
@@ -84,6 +88,15 @@ record EvalOptions(
       return new RunMode.Offline();
     }
     return EvalKey.source().<RunMode>map(RunMode.Keyed::new).orElseGet(RunMode.NoKey::new);
+  }
+
+  /** Whether {@code value} asks for the advisory judges. */
+  static boolean judges(String value) {
+    return switch (value) {
+      case "advisory" -> true;
+      case "none" -> false;
+      default -> throw new IllegalArgumentException(JUDGES);
+    };
   }
 
   /** {@code value} read as a number, or the option's own message when it is not one. */

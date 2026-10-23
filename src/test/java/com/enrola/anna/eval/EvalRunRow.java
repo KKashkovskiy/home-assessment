@@ -15,9 +15,10 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 /**
  * Records a finished run as one {@code eval_run} row in the app database, not the run's own, since
  * the Analytics compare pane reads it there: trial counts, the statistics, the gates and the report
- * path, never transcripts. A statistic with nothing judged is null. It connects as the app does,
- * with no user and, through H2's auto-server, while the app runs; it never creates or migrates that
- * database, so one the app has not opened since {@code V4} gets no row, and the report says why.
+ * path, never transcripts, and the judges' model and cost apart from the run's. A statistic with
+ * nothing judged is null. It connects as the app does, with no user and, through H2's auto-server,
+ * while the app runs; it never creates or migrates that database, so one the app has not opened
+ * since {@code V5} gets no row, and the report says why.
  */
 final class EvalRunRow {
 
@@ -49,10 +50,11 @@ final class EvalRunRow {
             "INSERT INTO eval_run (id, started_at, finished_at, prompt_version, model, offline,"
                 + " selected, passed, failed, invalid, skipped, verdict, cost_usd, report_path,"
                 + " trials, pass_k, wilson_low, wilson_high, gate_hard, gate_global,"
-                + " gate_validity)"
+                + " gate_validity, judge_model, judge_cost_usd)"
                 + " VALUES (:id, :started, :finished, :version, :model, :offline, :selected,"
                 + " :passed, :failed, :invalid, :skipped, :verdict, :cost, :report, :trials,"
-                + " :passK, :wilsonLow, :wilsonHigh, :hard, :global, :validity)")
+                + " :passK, :wilsonLow, :wilsonHigh, :hard, :global, :validity, :judgeModel,"
+                + " :judgeCost)")
         .param("id", header.runId())
         .param("started", utc(header.startedAt()))
         .param("finished", utc(Instant.now()))
@@ -74,6 +76,8 @@ final class EvalRunRow {
         .param("hard", summary.gates().hard())
         .param("global", summary.gates().global())
         .param("validity", summary.gates().validity())
+        .param("judgeModel", header.judges().judgeModel())
+        .param("judgeCost", summary.judgeCost())
         .update();
   }
 

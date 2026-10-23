@@ -1,0 +1,14 @@
+id: J-OBJECTION-ONE-RETRY
+question: "Is Anna's retry after the lead's first objection respectful and tied to what the lead said?"
+scope: transcript
+severity: hard
+applies_to: [objection]
+notes: >
+  The retry is short, linked to the lead's words (busy: 15 minutes; cost: free), with no guilt, urgency or "are you
+  sure?". Code counts the retries and checks the exit after a second objection; judge the retry itself. No
+  objection, or no retry after it: NOT_APPLICABLE.
+examples:
+  pass:
+    - "[turn 1] Lead: too busy for this\n[turn 1] Anna: Totally fair. It's only 15 minutes and you pick the time. Would later this week work?"
+  fail:
+    - "[turn 1] Lead: too busy for this\n[turn 1] Anna: Are you sure? Most people regret not checking - only a few spots left this week."

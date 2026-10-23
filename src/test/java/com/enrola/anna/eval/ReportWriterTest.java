@@ -5,6 +5,7 @@ import static com.enrola.anna.eval.Simulator.Moment.AFTER_END;
 import static com.enrola.anna.eval.Simulator.Moment.TALKING;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.enrola.anna.eval.JudgeResult.Verdict;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -91,12 +93,27 @@ class ReportWriterTest {
           "v1",
           "gpt-5.1",
           "medium",
+          new JudgeMode.None("--judges none"),
           new RunMode.Keyed("eval (EVAL_OPENAI_API_KEY)"),
           "tag core",
           2,
           0.2,
           new BigDecimal("10"),
           Instant.parse("2026-10-22T10:41:03Z"));
+
+  static final RunHeader JUDGED =
+      new RunHeader(
+          HEADER.runId(),
+          HEADER.promptVersion(),
+          HEADER.model(),
+          HEADER.effort(),
+          new JudgeMode.Asked("gpt-5.1"),
+          HEADER.mode(),
+          HEADER.selection(),
+          HEADER.trials(),
+          HEADER.validityThreshold(),
+          HEADER.cap(),
+          HEADER.startedAt());
 
   static final List<Scenario> SELECTED = List.of(HAPPY, SPANISH, STORY);
 
@@ -166,11 +183,109 @@ class ReportWriterTest {
         .endsWith("\nfirst note\n\nsecond note\n");
   }
 
+  /**
+   * The same run judged on gpt-5.1: a PASS and a FAIL on the first happy trial, a quote the judge
+   * could not back on the Spanish one, a question the cap skipped, and the story's own question;
+   * the INVALID trial gets none.
+   */
+  @Test
+  void goldenReportWithJudges() throws IOException {
+    write(JUDGED, judged(), List.of());
+
+    assertThat(dir.resolve("report.md"))
+        .hasSameTextualContentAs(Path.of("src/test/resources/eval/golden-report-judges.md"));
+    assertThat(dir.resolve(ReportWriter.EXIT_CODE)).hasContent("3");
+  }
+
+  /** Each judge answer rides on its trial's line, with the judges' cost apart from the trial's. */
+  @Test
+  void jsonLinesCarryTheJudges() throws IOException {
+    write(JUDGED, judged(), List.of());
+
+    assertThat(Files.readAllLines(dir.resolve("trials.jsonl")).getFirst())
+        .contains(
+            "\"judges\":[{\"rubric_id\":\"J-BOOKING-COMMS\",\"scenario_id\":"
+                + "\"turn-happy-pick-a-time\",\"trial_no\":1,\"turn_no\":4,\"verdict\":\"PASS\","
+                + "\"evidence\":\"Monday I've got 9:00 AM.\",\"note\":\"one time with its day\","
+                + "\"cost_usd\":0.0030,\"latency_ms\":900}",
+            "\"cost_usd\":0.040,\"judge_cost_usd\":0.0090");
+  }
+
+  @Test
+  void trialPageListsItsJudges() throws IOException {
+    write(JUDGED, judged(), List.of());
+
+    assertThat(Files.readString(dir.resolve("story-john-objects-twice.md")))
+        .contains(
+            "## Judges (advisory)",
+            "| Q-story-john-objects-twice-0 | all | PASS | Ok, understood. I'll leave it there. |"
+                + " one retry, then a graceful exit |");
+  }
+
   /** The run's files under the temporary directory; no row is recorded here. */
   private void write(List<String> notes) {
-    var plan = new RunPlan(HEADER, SELECTED, dir, null);
-    GateResult gates = Gates.evaluate(TRIALS, SELECTED, HEADER.validityThreshold());
-    ReportWriter.write(plan, new RunSummary(TRIALS, 6, gates), notes);
+    write(HEADER, TRIALS, notes);
+  }
+
+  private void write(RunHeader header, List<Trial> trials, List<String> notes) {
+    var plan = new RunPlan(header, SELECTED, List.of(), dir, null);
+    GateResult gates = Gates.evaluate(trials, SELECTED, header.validityThreshold());
+    ReportWriter.write(plan, new RunSummary(trials, 6, gates), notes);
+  }
+
+  /** {@link #TRIALS} with their judges' answers, in the same order. */
+  private static List<Trial> judged() {
+    List<List<JudgeResult>> answers =
+        List.of(
+            List.of(
+                answer(HAPPY, 1, "J-BOOKING-COMMS", 4, Verdict.PASS, "Monday I've got 9:00 AM."),
+                answer(HAPPY, 1, "J-SMS-STYLE", 4, Verdict.FAIL, "Does that work?"),
+                answer(HAPPY, 1, "J-REQUIRED-INFO", 4, Verdict.NOT_APPLICABLE, null)),
+            List.of(answer(HAPPY, 2, "J-SMS-STYLE", 4, Verdict.SKIPPED_BUDGET, null)),
+            List.of(answer(SPANISH, 1, "J-SMS-STYLE", 2, Verdict.UNKNOWN, null)),
+            List.of(),
+            List.of(
+                answer(
+                    STORY,
+                    1,
+                    "Q-story-john-objects-twice-0",
+                    null,
+                    Verdict.PASS,
+                    "Ok, understood. I'll leave it there.")),
+            List.of());
+    return IntStream.range(0, TRIALS.size())
+        .mapToObj(index -> TRIALS.get(index).withJudges(answers.get(index)))
+        .toList();
+  }
+
+  /** An answer at $0.003 with the note its verdict would carry; a skipped one costs nothing. */
+  private static JudgeResult answer(
+      Scenario scenario,
+      int trialNo,
+      String rubricId,
+      Integer turnNo,
+      Verdict verdict,
+      String evidence) {
+    return new JudgeResult(
+        rubricId,
+        scenario.id(),
+        trialNo,
+        turnNo,
+        verdict,
+        evidence,
+        switch (verdict) {
+          case PASS ->
+              rubricId.startsWith("Q-")
+                  ? "one retry, then a graceful exit"
+                  : "one time with its day";
+          case FAIL -> "a vague prompt with no context";
+          case NOT_APPLICABLE -> "no booking is confirmed";
+          case UNKNOWN ->
+              "evidence not found verbatim in transcript; judge said FAIL with \"Hola!\"";
+          case SKIPPED_BUDGET -> "not asked: the run's cap had no room";
+        },
+        verdict == Verdict.SKIPPED_BUDGET ? BigDecimal.ZERO : new BigDecimal("0.0030"),
+        verdict == Verdict.SKIPPED_BUDGET ? 0 : 900);
   }
 
   /** A trial at $0.04 and one model call, PASS when every check passed. */

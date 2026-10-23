@@ -3,12 +3,15 @@ package com.enrola.anna.eval;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.LeadIntent;
+import com.enrola.anna.agent.PriceTable;
 import com.enrola.anna.config.Settings.CalendarPreset;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.conversation.TurnStatus;
 import com.enrola.anna.eval.Scenario.Expect;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 
 /** Scenarios for tests: the files on disk, or built in memory on the seed set's Sunday clock. */
 final class ScenarioFixtures {
@@ -77,6 +80,38 @@ final class ScenarioFixtures {
           case Scenario.Story _ -> Trial.StoryDetail.NONE;
         },
         0);
+  }
+
+  /** {@code name} at the default settings' prices, which know gpt-5.1 only. */
+  static EvalModels.Model model(String name) {
+    return new EvalModels.Model(name, new PriceTable(SettingsFixture.DEFAULTS.priceTable()));
+  }
+
+  /** A rubric on {@code tags} asking whether {@code id} holds, with one example each way. */
+  static Rubric rubric(String id, Rubric.Scope scope, String... tags) {
+    return new Rubric(
+        id,
+        "Does " + id + " hold?",
+        scope,
+        Rubric.Severity.SOFT,
+        Set.of(tags),
+        null,
+        new Rubric.Examples(List.of("yes"), List.of("no")));
+  }
+
+  /** The judge's answer to {@code question} about {@code trial}, quoting "hi", at {@code cost}. */
+  static JudgeResult answer(
+      Judging.Question question, Trial trial, JudgeResult.Verdict verdict, String cost) {
+    return new JudgeResult(
+        question.rubric().id(),
+        trial.scenarioId(),
+        trial.trialNo(),
+        question.turnNo(),
+        verdict,
+        verdict == JudgeResult.Verdict.PASS || verdict == JudgeResult.Verdict.FAIL ? "hi" : null,
+        "scripted",
+        new BigDecimal(cost),
+        5);
   }
 
   static ExpectBuilder expect() {

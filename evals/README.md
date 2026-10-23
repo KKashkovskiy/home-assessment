@@ -9,7 +9,7 @@ persona to a simulated lead, a model on the eval key with rules of its own (`pro
 `stop_when` condition holds. After a terminal state (ended, goal met or handed off) it sends two more lead lines,
 because "no goodbye loop" is only provable by talking on. Every turn gets the hard checks and the story's
 `every_reply` rules; the end state, the transcript and the counters are checked last. Stories cost more and repeat
-less, so they stay few. `judge` entries are loaded and not asked.
+less, so they stay few.
 
 ```
 evals/run.sh --offline --trials 2               # every scenario twice on the stand-ins, $0, proves the harness
@@ -19,6 +19,7 @@ evals/run.sh --tag core --trials 3 --budget 8   # three trials each: pass^k and 
 evals/run.sh --kind story --budget 4            # the eight stories once
 evals/run.sh --scenario turn-stop-keyword,turn-self-harm
 evals/run.sh --filter 'turn-abuse-*' --priority p0
+evals/run.sh --tag core --judges none           # the gates only, no judge calls
 ```
 
 **A prompt or model change needs a green core run (`--tag core`, exit code 0) before it is committed.**
@@ -75,6 +76,33 @@ construction. A story without `offline_lines` is `SKIPPED_KIND` offline. `Scenar
 guards, checks, story loop and report agree with the product; it proves nothing about the prompt, and a scenario that
 only asserts what a reply must not say passes trivially offline. The report header says which run it was.
 
+## Judges
+
+Code checks gate; judges comment. A rubric under `rubrics/` is one yes-or-no question about one criterion that code
+does not already check (`J-*.yaml`: `id`, the `question`, `scope` `turn` or `transcript`, `severity`, the scenario
+tags it `applies_to`, `notes` that sharpen it and say when it does not arise, and `examples` that should pass and
+fail), and a scenario's own `judge` entries are questions too: about the turn under test in a turn scenario, about
+the whole conversation in a story. Adding one is a file, not Java. After every trial has run and the gates are
+computed, a keyed run asks each question that applies to a trial that reached PASS or FAIL: a turn rubric once per
+turn that replied, with that turn marked `[UNDER JUDGEMENT]`, a transcript rubric once. The judge reads its rules in
+`prompts/judge.md`, the question and its notes, then between data markers the scenario's lead (given name, state,
+provider, premium; never phone or email), clock and calendar and the SMS transcript, never the decision JSON, and
+answers strictly to `schema/judge-result.schema.json` at low reasoning effort on a client of its own over the eval
+key, on Anna's model unless `EVAL_JUDGE_MODEL` (or `-Deval.judge.model`) names another the price table prices; an
+unpriced one means no judge, and the header says so. It answers PASS, FAIL, NOT_APPLICABLE (what the question asks
+about does not happen there) or UNKNOWN. A PASS or FAIL needs a quote of at least eight characters found whole in
+the text of one SMS, with no label or marker; otherwise, and on a failed call, malformed output or a judge that
+throws, the answer is UNKNOWN with a note. UNKNOWN and NOT_APPLICABLE are fair answers, counted on their own.
+
+The answers never reach the gates or the exit code. The run prints `[judge] i/m <trial> <rubric> <verdict>` per
+question. The report gets a Judges line in its header (model, questions asked, their cost), a Judges column in the
+scenario table, a section with each rubric's answers by verdict and every FAIL with its quote, and each trial's page
+lists its answers; `trials.jsonl` lines carry `judges` and `judge_cost_usd`, and the `eval_run` row `judge_model`
+and `judge_cost_usd`, both apart from the trials' cost. Judges are not in the estimate the cap refuses: each is asked
+only while one more typical call (`EvalBudget.TYPICAL_JUDGE_CALL`) fits, otherwise its answer is `SKIPPED_BUDGET`; a
+dry run prints their most questions and cost apart. Offline, without a key, or with `--judges none` no judge is
+asked. Calibration against designer labels comes later; until then a judge is a reader's note.
+
 ## Fields
 
 | Field | Kind | Meaning |
@@ -91,7 +119,7 @@ only asserts what a reply must not say passes trivially offline. The report head
 | `persona` | story | Hidden instructions for the simulated lead: who they are, how they write, scripted lines for known moments, what they never do. Anna never sees it. A persona that never writes STOP, or never swears at the agent, makes such a line a persona break. |
 | `stop_when` | story | Any one ends the talking: `goal_met`, `ended`, `unsubscribed`, `needs_human`, `N lead messages have been sent` (or `N turns`), `the agent stops replying`, `the agent says it will leave it there or says goodbye`. A list without a cap gets 10 lead messages. After a terminal state two probe lines follow whatever stopped it. |
 | `expect` | both | Turn: the decision and state after this turn. Story: the end state. Fields below. |
-| `judge` | both | Optional. One yes/no question per entry; advisory. |
+| `judge` | both | Optional. One yes/no question per entry, asked of the judge beside the rubrics; advisory. |
 | `config` | both | Overrides for one trial: `moderation` (`harassment`, `threat`, `self_harm`, 0 to 1) is what the offline moderation answers, a keyed run screens for real; `max_turns` (turn only) replaces the settings' limit. Story only: `offline_lines`, what the offline lead sends in order (a story that outruns them fails as a scenario fault); `forbidden`, regexes the simulated lead's line must never match. |
 
 ### `expect` fields

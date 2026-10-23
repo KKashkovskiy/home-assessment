@@ -46,6 +46,7 @@ class OfflineSuiteTest extends EvalFixture {
                 null,
                 TRIALS,
                 EvalOptions.VALIDITY_THRESHOLD,
+                true,
                 RUN,
                 APP_DB));
     selected = run.begin();
@@ -103,6 +104,7 @@ class OfflineSuiteTest extends EvalFixture {
             "## Scenarios",
             "## Cost",
             "| Offline stand-in | yes",
+            "| Judges | none (offline) |",
             "| Verdict | PASS |");
     assertThat(RUN.resolve(ReportWriter.EXIT_CODE)).hasContent("0");
     assertThat(Files.readAllLines(RUN.resolve("trials.jsonl"))).hasSize(selected.size() * TRIALS);
@@ -119,7 +121,8 @@ class OfflineSuiteTest extends EvalFixture {
     Map<String, Object> row =
         jdbc.queryForMap(
             "select selected, passed, skipped, offline, verdict, trials, pass_k, wilson_high,"
-                + " gate_hard, gate_global, gate_validity from eval_run where id = 'offline'");
+                + " gate_hard, gate_global, gate_validity, judge_model, judge_cost_usd"
+                + " from eval_run where id = 'offline'");
 
     assertThat(row)
         .containsEntry("SELECTED", selected.size() * TRIALS)
@@ -130,7 +133,9 @@ class OfflineSuiteTest extends EvalFixture {
         .containsEntry("TRIALS", TRIALS)
         .containsEntry("GATE_HARD", true)
         .containsEntry("GATE_GLOBAL", true)
-        .containsEntry("GATE_VALIDITY", true);
+        .containsEntry("GATE_VALIDITY", true)
+        .containsEntry("JUDGE_MODEL", null);
+    assertThat((BigDecimal) row.get("JUDGE_COST_USD")).isZero();
     assertThat((BigDecimal) row.get("PASS_K")).isEqualByComparingTo("1");
     assertThat((BigDecimal) row.get("WILSON_HIGH")).isEqualByComparingTo("1");
   }

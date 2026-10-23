@@ -1,0 +1,15 @@
+id: J-SCRIPT-RETURN
+question: "After answering the lead's question, does the reply return to the current script stage?"
+scope: turn
+severity: soft
+applies_to: [core, knowledge]
+notes: >
+  A reply that answers and stops, or answers and asks about something off the script, is a FAIL. When the lead
+  skips ahead (offers a time), the reply goes to that stage rather than back to an earlier one. A lead message with
+  no question and no skip ahead: NOT_APPLICABLE.
+examples:
+  pass:
+    - "Comparato's paid a referral fee by the fund, so the call's free and the price is the same. Are you after hospital, extras, or both?"
+  fail:
+    - "Comparato's paid a referral fee by the fund, so the call's free and the price is the same."
+    - "Good question. Did you know Bupa has 25 products?"

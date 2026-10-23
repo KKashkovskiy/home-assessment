@@ -19,10 +19,10 @@ import org.springframework.test.context.DynamicPropertySource;
  * The eval entry point: {@code evals/run.sh} runs it with {@code -Dtest=EvalSuiteTest} and the
  * {@code -Deval.*} properties {@link EvalOptions} reads; the normal build leaves it out. The run
  * gets a fresh database and data directory under {@code evals/runs/<id>/}, starting from the
- * owner's settings, one dynamic test per trial ({@code <id> #k}) and a last one for the gates. Only
- * the gates fail the build: a trial that did not pass is aborted with its reason, since a FAIL
- * outside the core set and the hard checks is reported, not gating. A crashed trial fails its test,
- * and a refused run the factory.
+ * owner's settings, one dynamic test per trial ({@code <id> #k}) and a last one for the gates, in
+ * which a keyed run's judges are then asked. Only the gates fail the build, never a judge: a trial
+ * that did not pass is aborted with its reason, since a FAIL outside the core set and the hard
+ * checks is reported, not gating. A crashed trial fails its test, and a refused run the factory.
  */
 @SpringBootTest
 @Import(EvalConfig.class)

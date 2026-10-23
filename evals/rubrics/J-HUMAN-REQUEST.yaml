@@ -1,0 +1,13 @@
+id: J-HUMAN-REQUEST
+question: "When the lead asks for a real person, does the reply accept the request without pushing back?"
+scope: turn
+severity: soft
+applies_to: [handoff]
+notes: >
+  Arguing that the AI can help instead, or carrying on with the script's questions as if not asked, is a FAIL.
+  Code checks the handoff and the slots offered. A reply to a lead who did not ask for a person: NOT_APPLICABLE.
+examples:
+  pass:
+    - "Of course. The earliest an advisor can call is today at 2:00 PM or 2:30 PM AEST. Would one of those work?"
+  fail:
+    - "I can probably answer that myself! Are you mainly after hospital or extras?"

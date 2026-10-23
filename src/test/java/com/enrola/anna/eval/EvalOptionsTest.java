@@ -1,5 +1,6 @@
 package com.enrola.anna.eval;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
@@ -34,6 +35,15 @@ class EvalOptionsTest {
         .hasMessage("eval.validityThreshold must be a number from 0 to 1");
   }
 
+  @Test
+  void judgesAreAdvisoryOrNone() {
+    assertThat(EvalOptions.judges("advisory")).isTrue();
+    assertThat(EvalOptions.judges("none")).isFalse();
+    assertThatThrownBy(() -> EvalOptions.judges("gating"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("eval.judges must be advisory or none");
+  }
+
   private static EvalOptions options(BigDecimal budgetUsd, int trials, double threshold) {
     return new EvalOptions(
         "r",
@@ -42,6 +52,7 @@ class EvalOptionsTest {
         budgetUsd,
         trials,
         threshold,
+        true,
         Path.of("evals/runs/r"),
         "jdbc:x");
   }

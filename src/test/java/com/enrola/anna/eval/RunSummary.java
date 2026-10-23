@@ -1,14 +1,18 @@
 package com.enrola.anna.eval;
 
 import java.math.BigDecimal;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
  * A run's trials against the {@code expected} count, every selected scenario times the trials per
  * scenario, with the gates they passed: counts by status, cost, the statistics and the verdict the
- * report and the row show. An expected trial with no record crashed, so the run fails.
+ * report and the row show, and the judges' answers beside them. An expected trial with no record
+ * crashed, so the run fails.
  */
 record RunSummary(List<Trial> trials, int expected, GateResult gates) {
 
@@ -47,6 +51,41 @@ record RunSummary(List<Trial> trials, int expected, GateResult gates) {
 
   BigDecimal cost() {
     return trials.stream().map(Trial::costUsd).reduce(BigDecimal.ZERO, BigDecimal::add);
+  }
+
+  /** What the judges cost, a line apart from {@link #cost()}. */
+  BigDecimal judgeCost() {
+    return trials.stream().map(Trial::judgeCostUsd).reduce(BigDecimal.ZERO, BigDecimal::add);
+  }
+
+  /** Every judge answer, trial by trial. */
+  List<JudgeResult> judgeResults() {
+    return trials.stream().flatMap(trial -> trial.judges().stream()).toList();
+  }
+
+  /** The judge questions really asked: every answer but those the cap skipped. */
+  long judgesAsked() {
+    return judgeResults().stream()
+        .filter(answer -> answer.verdict() != JudgeResult.Verdict.SKIPPED_BUDGET)
+        .count();
+  }
+
+  /** Each rubric's answers by verdict, rubrics in id order. */
+  Map<String, Map<JudgeResult.Verdict, Long>> judgeCounts() {
+    Map<String, Map<JudgeResult.Verdict, Long>> counts = new TreeMap<>();
+    judgeResults().stream()
+        .collect(Collectors.groupingBy(JudgeResult::rubricId))
+        .forEach((rubric, answers) -> counts.put(rubric, verdictCounts(answers)));
+    return counts;
+  }
+
+  /** Every verdict in declaration order with its count among {@code answers}, zeros included. */
+  static Map<JudgeResult.Verdict, Long> verdictCounts(List<JudgeResult> answers) {
+    Map<JudgeResult.Verdict, Long> counts = new EnumMap<>(JudgeResult.Verdict.class);
+    for (JudgeResult.Verdict verdict : JudgeResult.Verdict.values()) {
+      counts.put(verdict, answers.stream().filter(answer -> answer.verdict() == verdict).count());
+    }
+    return counts;
   }
 
   /** Each scenario's trials in run order, scenarios in the order they first ran. */

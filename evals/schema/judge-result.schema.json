@@ -1,0 +1,14 @@
+{
+  "name": "judge_result",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["verdict", "evidence", "reason"],
+    "properties": {
+      "verdict": {"type": "string", "enum": ["PASS", "FAIL", "NOT_APPLICABLE", "UNKNOWN"]},
+      "evidence": {"type": "string", "description": "Verbatim quote from one message in the transcript; empty for NOT_APPLICABLE and UNKNOWN"},
+      "reason": {"type": "string", "description": "One sentence, under 200 characters"}
+    }
+  }
+}

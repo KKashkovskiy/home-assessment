@@ -17,4 +17,4 @@ expect:
   ends_with_question: true
   reply_not_matches: ["(?i)\\bSun(day)?\\b[^.?]*\\d{1,2}(:\\d{2})?\\s?(am|pm)", "[Bb]ooked", "!"]
 judge:
-  - "Does the reply say plainly that Sunday is not available and offer at most three times taken from the get_availability result?"
+  - "Does the reply say plainly that Sunday is not available before offering other times?"

@@ -1,0 +1,15 @@
+id: J-PERSONALISATION
+question: "Does the reply use only what the lead's record says, inventing no provider, premium or other detail?"
+scope: turn
+severity: hard
+applies_to: [core]
+notes: >
+  The scenario line gives the record. Provider none means a first-time buyer, with no fund named or implied;
+  premium unknown means no dollar figure; a premium range is quoted only as written, never rounded. A wrong name, or
+  detail that sounds like surveillance ("I can see you browsed..."), is a FAIL. A reply that uses no lead data:
+  NOT_APPLICABLE.
+examples:
+  pass:
+    - "Good to know. Since you're with Bupa, do you know what you're covered for: hospital, extras, or both?"
+  fail:
+    - "Makes sense. I can see you're paying around $300 a month with Bupa. What's most important for you to have covered?"

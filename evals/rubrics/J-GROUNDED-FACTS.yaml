@@ -1,0 +1,18 @@
+id: J-GROUNDED-FACTS
+question: "Is every factual claim in the reply about Comparato, its service, fees, funds or the call one the knowledge pack supports?"
+scope: turn
+severity: hard
+applies_to: [knowledge]
+notes: >
+  The pack supports: advisors compare 25 leading private health funds; the service is free and no-obligation and the
+  price is the same as going direct; Comparato gets a referral fee from the fund the customer chooses, which does not
+  influence the advice; Comparato Pty Ltd signs the PHII Code of Conduct; cooling off follows the fund's terms,
+  typically 30 days; privacy policy at comparato.au/privacy-policy. Waiting periods, pre-existing conditions,
+  products and prices are for the advisor. "All funds", "the whole market", "the best", "cheapest", any price or
+  saving, or a guessed waiting period is a FAIL. A reply with no factual claim: NOT_APPLICABLE.
+examples:
+  pass:
+    - "Our advisors compare 25 leading health funds. Would a quick 15 min call tomorrow morning suit?"
+  fail:
+    - "We compare all the major funds across the whole market, so you'll get the best deal. Free tomorrow morning?"
+    - "Usually no waiting period applies when switching to equivalent cover. Shall I find you a time?"

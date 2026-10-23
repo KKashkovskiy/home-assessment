@@ -4,14 +4,9 @@ import com.enrola.anna.agent.InputItem;
 import com.enrola.anna.agent.ModelClient;
 import com.enrola.anna.agent.ModelRequest;
 import com.enrola.anna.agent.ModelResponse;
-import com.enrola.anna.agent.PriceTable;
 import com.enrola.anna.conversation.Direction;
 import com.enrola.anna.conversation.Message;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -36,16 +31,8 @@ final class LeadSimulator implements Simulator {
   record Rules(String always, String afterEnd) {
 
     static Rules fromFiles() {
-      return new Rules(read("simulator.md"), read("simulator-closing.md"));
-    }
-
-    private static String read(String name) {
-      Path file = Path.of("evals/prompts", name);
-      try {
-        return Files.readString(file).strip();
-      } catch (IOException e) {
-        throw new UncheckedIOException("cannot read " + file, e);
-      }
+      return new Rules(
+          EvalModels.prompt("simulator.md"), EvalModels.prompt("simulator-closing.md"));
     }
   }
 
@@ -69,21 +56,19 @@ final class LeadSimulator implements Simulator {
   private static final int MAX_OUTPUT_TOKENS = 1000;
 
   private final ModelClient actor;
-  private final String model;
-  private final PriceTable prices;
+  private final EvalModels.Model model;
   private final Rules rules;
 
-  LeadSimulator(ModelClient actor, String model, PriceTable prices, Rules rules) {
-    if (!prices.prices().containsKey(model)) {
+  LeadSimulator(ModelClient actor, EvalModels.Model model, Rules rules) {
+    if (!model.priced()) {
       throw new IllegalArgumentException(
           "the simulated lead's model "
-              + model
+              + model.name()
               + " has no price in the settings' price table, so its spend would not count;"
               + " price it on the Configuration page or set eval.simulator.model to a priced one");
     }
     this.actor = actor;
     this.model = model;
-    this.prices = prices;
     this.rules = rules;
   }
 
@@ -96,7 +81,7 @@ final class LeadSimulator implements Simulator {
   @Override
   public Next next(Persona persona, List<Message> transcript, Moment moment) {
     ModelResponse response = actor.call(request(persona, transcript, moment));
-    BigDecimal cost = prices.cost(model, response.usage());
+    BigDecimal cost = model.cost(response.usage());
     return switch (response) {
       case ModelResponse.Decided decided ->
           checked(decided.output().path("text").asString("").strip(), persona, cost);
@@ -127,7 +112,7 @@ final class LeadSimulator implements Simulator {
         """
             .formatted(persona.text(), render(transcript));
     return new ModelRequest(
-        model,
+        model.name(),
         switch (moment) {
           case TALKING -> rules.always();
           case AFTER_END -> rules.always() + "\n\n" + rules.afterEnd();

@@ -33,10 +33,7 @@ class LeadSimulatorTest {
   final ScriptedModelClient actor = new ScriptedModelClient();
   final LeadSimulator simulator =
       new LeadSimulator(
-          actor,
-          "gpt-5.1",
-          new PriceTable(SettingsFixture.DEFAULTS.priceTable()),
-          new LeadSimulator.Rules("RULES", "CLOSING"));
+          actor, ScenarioFixtures.model("gpt-5.1"), new LeadSimulator.Rules("RULES", "CLOSING"));
 
   @Test
   void returnsLine() {
@@ -108,8 +105,7 @@ class LeadSimulatorTest {
             () ->
                 new LeadSimulator(
                     actor,
-                    "gpt-5-mini",
-                    new PriceTable(SettingsFixture.DEFAULTS.priceTable()),
+                    ScenarioFixtures.model("gpt-5-mini"),
                     new LeadSimulator.Rules("RULES", "CLOSING")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageStartingWith("the simulated lead's model gpt-5-mini has no price");

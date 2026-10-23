@@ -19,8 +19,8 @@ import java.util.List;
 
 /**
  * Reads back what a conversation's latest turn left in the database, and what its replies are
- * judged against: the lead, the prompt's canary, the offered and booked labels as the product's own
- * view reports them, and the length limit.
+ * checked against: the lead, the prompt's canary, the offered and booked labels as the product's
+ * own view reports them, and the length limit; and, for the judges, a trial's whole conversation.
  */
 final class TurnRowsReader {
 
@@ -71,6 +71,16 @@ final class TurnRowsReader {
         events,
         outbound,
         replyContext(conversation));
+  }
+
+  /** What a judge reads about a finished trial: its conversation's lead and every SMS in order. */
+  TrialTranscript transcript(Scenario scenario, Trial trial) {
+    Conversation conversation = rows.require(trial.conversationId());
+    return new TrialTranscript(
+        scenario,
+        trial.trialNo(),
+        leads.findById(conversation.leadId).orElseThrow(),
+        messages.transcript(conversation.id));
   }
 
   /** The suite-wide checks ask nothing of questions, so goal and closing only fill the record. */

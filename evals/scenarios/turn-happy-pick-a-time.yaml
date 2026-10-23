@@ -21,4 +21,4 @@ expect:
   reply_matches: ["\\d{1,2}:\\d{2} (AM|PM)"]
   reply_not_matches: ["!", "\\btoday\\b", "[Bb]ooked"]
 judge:
-  - "Does the reply offer at most three concrete times, every one of them present in the get_availability result?"
+  - "Does the reply offer concrete Monday mid-morning times, or say plainly that none is free and offer the nearest?"

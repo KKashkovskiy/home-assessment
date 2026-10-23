@@ -111,6 +111,20 @@ final class StopWhen {
     return List.copyOf(conditions);
   }
 
+  /** The lead messages a story with {@code entries} may send before its cap stops it. */
+  static int cap(List<String> entries) {
+    return parseAll(entries).stream()
+        .<Cap>mapMulti(
+            (condition, caps) -> {
+              if (condition instanceof Cap cap) {
+                caps.accept(cap);
+              }
+            })
+        .mapToInt(Cap::leadMessages)
+        .min()
+        .orElseThrow();
+  }
+
   static Condition parse(String entry) {
     String normal = entry.strip().toLowerCase(Locale.ROOT);
     Matcher cap = CAP.matcher(normal);

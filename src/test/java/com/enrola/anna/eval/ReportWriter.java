@@ -16,11 +16,11 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Writes a run's files under {@code evals/runs/<id>/}: {@code report.md} (header with the
- * statistics, the three gates, coverage by tag, one row per scenario with its trials, cost, notes),
- * one {@link ScenarioPage} per trial, {@code trials.jsonl}, and {@code exit-code}, the gates' code
- * that {@code run.sh} exits with. Markdown because a reviewer reads it on GitHub; JSONL so later
- * columns do not change the shape of a line. The numbers come from {@link RunSummary} and {@link
- * Gates}; nothing is computed here.
+ * statistics, the three gates, coverage by tag, one row per scenario with its trials, the advisory
+ * {@link JudgeSection}, cost, notes), one {@link ScenarioPage} per trial, {@code trials.jsonl}, and
+ * {@code exit-code}, the gates' code that {@code run.sh} exits with. Markdown because a reviewer
+ * reads it on GitHub; JSONL so later columns do not change the shape of a line. The numbers come
+ * from {@link RunSummary} and {@link Gates}; nothing is computed here.
  */
 final class ReportWriter {
 
@@ -30,7 +30,9 @@ final class ReportWriter {
   /** The file whose one line is the gates' exit code. */
   static final String EXIT_CODE = "exit-code";
 
-  /** One {@code trials.jsonl} line; each check carries its gate and its turn. */
+  /**
+   * One {@code trials.jsonl} line; each check carries its gate and its turn, each judge its own.
+   */
   private record Line(
       String run,
       String scenario,
@@ -38,8 +40,9 @@ final class ReportWriter {
       String kind,
       TrialStatus status,
       List<Check> checks,
-      List<String> judges,
+      List<JudgeResult> judges,
       BigDecimal costUsd,
+      BigDecimal judgeCostUsd,
       int modelCalls,
       String conversationId,
       int turnNo,
@@ -74,8 +77,11 @@ final class ReportWriter {
     }
   }
 
-  /** A dry run's report: the selection and the estimate; no trial ran. */
-  static void plan(RunPlan plan, BigDecimal estimate) {
+  /**
+   * A dry run's report: the selection, the trials' estimate against the cap, and the judges' at
+   * most {@code judgeCalls} questions costing {@code judgeEstimate} apart; no trial ran.
+   */
+  static void plan(RunPlan plan, BigDecimal estimate, long judgeCalls, BigDecimal judgeEstimate) {
     RunHeader header = plan.header();
     writeFile(
         plan.dir().resolve("report.md"),
@@ -83,6 +89,7 @@ final class ReportWriter {
         # Eval run %s (dry run)
 
         Estimate: $%s of $%s cap for %d scenarios (%s) x %d trials. No model call, no eval_run row.
+        Judges: %s.
 
         %s
         """
@@ -93,6 +100,7 @@ final class ReportWriter {
                 plan.selected().size(),
                 header.selection(),
                 header.trials(),
+                JudgeSection.planned(header.judges(), judgeCalls, judgeEstimate),
                 plan.selected().stream()
                     .map(scenario -> "- " + scenario.id())
                     .collect(Collectors.joining("\n"))));
@@ -102,7 +110,8 @@ final class ReportWriter {
     return headerSection(plan, summary)
         + gatesSection(summary)
         + coverageSection(plan.selected(), summary)
-        + scenariosSection(summary)
+        + scenariosSection(plan.header(), summary)
+        + JudgeSection.render(plan.header().judges(), summary)
         + costSection(plan.header(), summary)
         + notes.stream().map(note -> "\n" + note + "\n").collect(Collectors.joining());
   }
@@ -121,6 +130,7 @@ final class ReportWriter {
         | Clock | per scenario |
         | Scenarios | %d selected (%s) |
         | Trials per scenario | %d |
+        | Judges | %s |
         | Trials | %d run, %d skipped, %d crashed |
         | Pass^k | %s |
         | Per-trial pass rate | %s |
@@ -140,6 +150,7 @@ final class ReportWriter {
             plan.selected().size(),
             header.selection(),
             header.trials(),
+            JudgeSection.line(header.judges(), summary),
             summary.ran(),
             summary.skipped(),
             summary.crashed(),
@@ -266,16 +277,25 @@ final class ReportWriter {
             .collect(Collectors.joining());
   }
 
-  /** One row per scenario: a link per trial, the trials cell, the result, failures and cost. */
-  private static String scenariosSection(RunSummary summary) {
+  /**
+   * One row per scenario: a link per trial, the trials cell, the result, failures and cost, and
+   * when judges were asked, their answers.
+   */
+  private static String scenariosSection(RunHeader header, RunSummary summary) {
+    boolean judged = header.judges() instanceof JudgeMode.Asked;
     return """
 
         ## Scenarios
-        | Scenario | Trials | Result | Failed checks | Cost | Model calls |
-        |---|---|---|---|---|---|
+        | Scenario | Trials | Result | Failed checks | Cost | Model calls |%s
+        |---|---|---|---|---|---|%s
         """
+            .formatted(judged ? " Judges |" : "", judged ? "---|" : "")
         + summary.byScenario().stream()
-            .map(ReportWriter::scenarioRow)
+            .map(
+                trials ->
+                    scenarioRow(trials)
+                        + (judged ? " " + JudgeSection.cell(trials) + " |" : "")
+                        + "\n")
             .collect(Collectors.joining());
   }
 
@@ -297,7 +317,7 @@ final class ReportWriter {
                     (trials.size() > 1 ? "#" + trial.trialNo() + ": " : "")
                         + String.join(", ", trial.failedNames()))
             .collect(Collectors.joining("; "));
-    return "| %s | %s | %s | %s | $%s | %d |%n"
+    return "| %s | %s | %s | %s | $%s | %d |"
         .formatted(
             links,
             trialsCell(trials),
@@ -330,7 +350,10 @@ final class ReportWriter {
         : trials.getFirst().status().name();
   }
 
-  /** A keyed run's boot also makes the product's model check, one small call not counted here. */
+  /**
+   * The trials' total, never the judges', whose cost the header gives; a keyed run's boot also
+   * makes the product's model check, one small call not counted here.
+   */
   private static String costSection(RunHeader header, RunSummary summary) {
     String check =
         header.mode() instanceof RunMode.Keyed
@@ -339,7 +362,7 @@ final class ReportWriter {
     return """
 
         ## Cost
-        Total $%s. Per scenario: see table; a story's includes its simulated lead. Judges: none.%s
+        Total $%s. Per scenario: see table; a story's includes its simulated lead, never the judges.%s
         """
         .formatted(usd(summary.cost()), check);
   }
@@ -354,6 +377,7 @@ final class ReportWriter {
         trial.checks(),
         trial.judges(),
         trial.costUsd(),
+        trial.judgeCostUsd(),
         trial.modelCalls(),
         trial.conversationId(),
         trial.lastTurn(),
