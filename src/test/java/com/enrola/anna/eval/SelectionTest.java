@@ -50,6 +50,16 @@ class SelectionTest {
         .hasMessageEndingWith("turn-gone, turn-nope");
   }
 
+  /**
+   * A typo in a filter fails the run as an unknown id does, never an empty run that looks green.
+   */
+  @Test
+  void filtersNoScenarioMatchesAreNamed() {
+    assertThatThrownBy(() -> new Selection(null, null, "nosuchtag", "turn", null).apply(ALL))
+        .isInstanceOf(ScenarioException.class)
+        .hasMessageEndingWith("tag nosuchtag, kind turn");
+  }
+
   @Test
   void kindIsTurnOrStory() {
     assertThatThrownBy(() -> new Selection(null, null, null, "turns", null))

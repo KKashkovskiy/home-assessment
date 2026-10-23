@@ -15,9 +15,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A run's branches with fake runners at $0.04 a trial and $0.05 a typical call: what each mode
- * runs, the cap before and during the run, k trials, the gates' exit code, a trial that crashes,
- * and the judges asked after the trials at $0.01 a typical judge call. The app database does not
- * exist here, so no row is written and the report says so.
+ * runs, the cap before and during the run, k trials, the run's exit code, a trial that crashes, and
+ * the judges asked after the trials at $0.01 a typical judge call. The app database does not exist
+ * here, so no row is written and the report says so.
  */
 class EvalRunTest {
 
@@ -50,30 +50,32 @@ class EvalRunTest {
     EvalRun run = run(new RunMode.DryRun(), "10", 1, this::pass, FIRST, SECOND, STORY);
 
     assertThat(run.begin()).isEmpty();
-    run.finish();
+    assertThat(run.finish()).isZero();
 
     assertThat(Files.readString(dir.resolve("report.md")))
         .contains("(dry run)", "Estimate: $0.9000 of $10.00 cap for 3 scenarios (all) x 1 trials");
     assertThat(run.trials()).isEmpty();
   }
 
+  /** Without a key every trial is skipped and the report written, and the run is never green. */
   @Test
-  void withoutAKeyEveryTrialIsSkippedAndTheReportWritten() throws IOException {
+  void nothingRanExitsEight() throws IOException {
     EvalRun run = run(new RunMode.NoKey(), "10", 2, this::pass, FIRST, STORY);
 
     assertThat(run.begin()).isEmpty();
-    GateResult gates = run.finish();
+    assertThat(run.finish()).isEqualTo(8);
 
     assertThat(run.trials())
         .extracting(Trial::status)
         .containsOnly(TrialStatus.SKIPPED_NO_KEY)
         .hasSize(4);
-    assertThat(gates.exitCode()).isZero();
+    assertThat(Files.readString(dir.resolve(ReportWriter.EXIT_CODE))).isEqualTo("8\n");
     assertThat(Files.readString(dir.resolve("report.md")))
         .contains(
             "| Verdict | SKIPPED |",
             "| Judges | none (no key) |",
             "hard: SKIPPED",
+            "exit code: 8   (no trial judged)",
             "No key",
             "No eval_run row");
   }
@@ -90,6 +92,7 @@ class EvalRunTest {
     assertThat(run.trials()).extracting(Trial::status).containsOnly(TrialStatus.SKIPPED_BUDGET);
     assertThat(Files.readString(dir.resolve("report.md")))
         .contains("Refused: the estimate $0.2000");
+    assertThat(Files.readString(dir.resolve(ReportWriter.EXIT_CODE))).isEqualTo("8\n");
   }
 
   /** The estimate counts every trial: one turn at $0.10 is $0.20 at two trials. */
@@ -100,7 +103,10 @@ class EvalRunTest {
     assertThatThrownBy(run::begin).hasMessageContaining("estimate $0.2000");
   }
 
-  /** At $0.08 spent of $0.10, one more $0.05 call would pass the cap, so the third skips. */
+  /**
+   * At $0.08 spent of $0.10, one more $0.05 call would pass the cap, so the third skips; the run
+   * judged two, so it exits 0.
+   */
   @Test
   void capReachedMidRunSkipsTheRest() {
     EvalRun run = run(new RunMode.Offline(), "0.10", 1, this::pass, FIRST, SECOND, THIRD);
@@ -111,6 +117,7 @@ class EvalRunTest {
         .extracting(Trial::status)
         .containsExactly(TrialStatus.PASS, TrialStatus.PASS, TrialStatus.SKIPPED_BUDGET);
     assertThat(ran).containsExactly("turn-first#1", "turn-second#1");
+    assertThat(run.finish()).isZero();
   }
 
   /**
@@ -134,7 +141,7 @@ class EvalRunTest {
 
     run.begin().forEach(scenario -> List.of(1, 2).forEach(k -> run.trial(scenario, k)));
 
-    assertThat(run.finish().exitCode()).isEqualTo(2);
+    assertThat(run.finish()).isEqualTo(2);
     assertThat(Files.readString(dir.resolve(ReportWriter.EXIT_CODE))).isEqualTo("2\n");
     assertThat(Files.readString(dir.resolve("report.md"))).contains("| Verdict | FAIL |");
   }
@@ -179,7 +186,7 @@ class EvalRunTest {
     EvalRun run = run(new RunMode.Keyed("eval"), "10", 1, this::pass, FIRST, OTHER_CORE);
 
     run.begin().forEach(scenario -> run.trial(scenario, 1));
-    GateResult gates = run.finish();
+    int exitCode = run.finish();
 
     assertThat(ran)
         .containsExactly(
@@ -189,7 +196,7 @@ class EvalRunTest {
         .flatExtracting(Trial::judges)
         .extracting(JudgeResult::verdict)
         .containsOnly(JudgeResult.Verdict.FAIL);
-    assertThat(gates.exitCode()).isZero();
+    assertThat(exitCode).isZero();
     assertThat(Files.readString(dir.resolve(ReportWriter.EXIT_CODE))).isEqualTo("0\n");
     assertThat(budget.spent()).isEqualByComparingTo("0.10");
   }
@@ -204,7 +211,7 @@ class EvalRunTest {
     EvalRun run = run(new RunMode.Keyed("eval"), "10", 1, this::pass, FIRST);
 
     run.trial(run.begin().getFirst(), 1);
-    GateResult gates = run.finish();
+    int exitCode = run.finish();
 
     assertThat(run.trials().getFirst().judges())
         .singleElement()
@@ -213,7 +220,7 @@ class EvalRunTest {
               assertThat(answer.verdict()).isEqualTo(JudgeResult.Verdict.UNKNOWN);
               assertThat(answer.note()).isEqualTo("judge crashed: IllegalStateException");
             });
-    assertThat(gates.exitCode()).isZero();
+    assertThat(exitCode).isZero();
     assertThat(Files.readString(dir.resolve(ReportWriter.EXIT_CODE))).isEqualTo("0\n");
     assertThat(dir.resolve("report.md")).exists();
   }

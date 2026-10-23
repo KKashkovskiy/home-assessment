@@ -2,31 +2,43 @@ package com.enrola.anna.web;
 
 /**
  * How an eval run ended, read from what it left behind, never from Maven's exit, which is only 0 or
- * 1: a failed gate in its {@code exit-code} file makes it red whatever else is there; otherwise its
- * {@code eval_run} row's verdict decides; without a row, a report with green gates is green and a
- * report without gates a dry run's plan; anything less is an error the log explains. A cancelled
- * run is cancelled whatever it wrote.
+ * 1: a failed gate's bit in its {@code exit-code} file makes it red, else its nothing-judged bit
+ * skipped, whatever else is there; otherwise its verdict decides, from its {@code eval_run} row or,
+ * without one, its report's header; a report with neither a verdict nor an exit code is a dry run's
+ * plan; anything else, exit code 0 alone included, is an error the log explains. A cancelled run is
+ * cancelled whatever it wrote.
  */
 public enum RunOutcome {
   GREEN,
   RED,
-  /** Nothing ran: no eval key, or the estimate was over the budget. */
+  /**
+   * Nothing was judged: no eval key, the estimate over the budget, or every trial skipped or
+   * INVALID.
+   */
   SKIPPED,
   /** A dry run: the plan and its estimate, no call. */
   PLANNED,
   CANCELLED,
-  /** No verdict: the run crashed, or its row could not be written. */
+  /** No verdict in its row or report: the run crashed before its report. */
   ERROR;
 
+  /** The exit code's bit for a run that judged no trial, beside the gates' 1, 2 and 4. */
+  static final int NOTHING_JUDGED = 8;
+
   /**
-   * What a finished run left: its row's verdict (null without a row), its gates' code from the
-   * {@code exit-code} file (null without one), and whether it wrote a report.
+   * What a finished run left: its verdict from the row, else from the report (null with neither),
+   * its exit code from the {@code exit-code} file (null without one), and whether it wrote a
+   * report.
    */
-  record Evidence(String verdict, Integer gatesCode, boolean reported) {}
+  record Evidence(String verdict, Integer exitCode, boolean reported) {}
 
   static RunOutcome of(Evidence evidence) {
-    if (evidence.gatesCode() != null && evidence.gatesCode() != 0) {
+    Integer code = evidence.exitCode();
+    if (code != null && (code & ~NOTHING_JUDGED) != 0) {
       return RED;
+    }
+    if (code != null && (code & NOTHING_JUDGED) != 0) {
+      return SKIPPED;
     }
     if (evidence.verdict() != null) {
       return switch (evidence.verdict()) {
@@ -36,9 +48,6 @@ public enum RunOutcome {
         default -> ERROR;
       };
     }
-    if (!evidence.reported()) {
-      return ERROR;
-    }
-    return evidence.gatesCode() == null ? PLANNED : GREEN;
+    return evidence.reported() && code == null ? PLANNED : ERROR;
   }
 }

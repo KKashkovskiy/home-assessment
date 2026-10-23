@@ -23,8 +23,7 @@ evals/run.sh --tag core --judges none           # the gates only, no judge calls
 ```
 
 **A prompt or model change needs a green core run before it is committed:** `--tag core`, exit code 0 and
-`| Verdict | PASS |` in the report header. With no eval key the run exits 0 as SKIPPED, so the code alone proves
-nothing.
+`| Verdict | PASS |` in the report header. With no eval key nothing is judged and the run exits 8 as SKIPPED.
 
 The run id is the UTC time. Output lands in `evals/runs/<id>/`, which git ignores: `report.md` (header with the
 statistics, the gates, coverage by tag, one row per scenario with its trials, cost), one page per trial
@@ -64,9 +63,11 @@ ones included, since their replies were really sent; **global** fails (2) when a
 failed; **validity** fails (4) when INVALID trials are more than `--validity-threshold` (default 0.2) of the trials
 that ran. A FAIL outside the core set that broke no hard check is in the report, not in the exit code. A model
 failure, or a reply the guards rejected twice so the fallback went out, is a `FAIL`: an unreliable model is a real
-failure. With the gates green the exit code is still 1 when a trial crashed or the run was refused, and 64 is a flag
-`run.sh` does not know or a flag without its value. Maven's own exit is only 0 or 1: the gates' code is in
-`exit-code` and in the row's gate columns.
+failure. With the gates green, a run that judged no trial exits 8, **nothing judged** (no key, refused estimate,
+every trial skipped or INVALID), so it is never green; a dry run is a plan and exits 0. The exit code is
+still 1 when a trial crashed, an id has no file or no scenario matches the filters, and 64 is a flag `run.sh` does
+not know or a flag without its value. Maven's own exit is only 0 or 1: the run's code is in `exit-code`, the gates'
+in the row's gate columns.
 
 Offline, `StandInModel` derives a turn's answer from its `expect` block: it calls the tools listed, then decides with
 the expected intent, stage, flags and handoff and a reply that satisfies `reply_matches`. A story's lead sends its

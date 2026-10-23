@@ -10,11 +10,14 @@ import java.util.stream.Collectors;
 
 /**
  * A run's trials against the {@code expected} count, every selected scenario times the trials per
- * scenario, with the gates they passed: counts by status, cost, the statistics and the verdict the
- * report and the row show, and the judges' answers beside them. An expected trial with no record
- * crashed, so the run fails.
+ * scenario, with the gates they passed: counts by status, cost, the statistics, the verdict the
+ * report and the row show and the exit code, and the judges' answers beside them. An expected trial
+ * with no record crashed, so the run fails.
  */
 record RunSummary(List<Trial> trials, int expected, GateResult gates) {
+
+  /** The exit code's bit for a run that judged no trial, outside the gates' 1, 2 and 4. */
+  static final int NOTHING_JUDGED = 8;
 
   /** How the run went. */
   enum Verdict {
@@ -117,11 +120,22 @@ record RunSummary(List<Trial> trials, int expected, GateResult gates) {
     return Stats.wilson(count(TrialStatus.PASS), judged(), Stats.Z95);
   }
 
-  /** FAIL on a crash or a red gate; else SKIPPED when nothing ran; else PASS. */
+  /**
+   * FAIL on a crash or a red gate; else SKIPPED when no trial reached PASS or FAIL, so a run of
+   * skipped or INVALID trials proves nothing about Anna; else PASS.
+   */
   Verdict verdict() {
     if (crashed() > 0 || gates.exitCode() != 0) {
       return Verdict.FAIL;
     }
-    return ran() == 0 ? Verdict.SKIPPED : Verdict.PASS;
+    return judged() == 0 ? Verdict.SKIPPED : Verdict.PASS;
+  }
+
+  /**
+   * The gates' code, plus {@value #NOTHING_JUDGED} when the verdict is SKIPPED: a run that judged
+   * nothing is never green.
+   */
+  int exitCode() {
+    return gates.exitCode() | (verdict() == Verdict.SKIPPED ? NOTHING_JUDGED : 0);
   }
 }

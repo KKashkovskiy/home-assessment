@@ -231,8 +231,6 @@ Nothing is deleted: messages and each turn's raw request and response stay in `d
 
 ## Known issues
 
-- **Exit code 0 is not a green run.** With no eval key, `evals/run.sh` skips every trial and exits 0 with report
-  verdict SKIPPED; read the verdict.
 - **A distressed lead's health information can go unflagged.** In one of two keyed trials of the vulnerable-lead story
   the model flagged the lead vulnerable but not as health information, so the bodies were not hidden: prompt v1's
   distress rule asks only for the first, while its rule 6 asks for the second. One line in a v2, which needs a green

@@ -30,8 +30,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * What the Evals page shows of finished runs: the {@code eval_run} rows of the app database, and
  * each run's folder under {@code evals/runs/<id>/}: its report and per-trial pages rendered, its
- * {@code trials.jsonl} read line by line, and its gates' {@code exit-code} file. With the PII mask
- * on, phone- and email-shaped text is masked everywhere but in the run's own id.
+ * {@code trials.jsonl} read line by line, and its {@code exit-code} file. With the PII mask on,
+ * phone- and email-shaped text is masked everywhere but in the run's own id.
  */
 @Component
 public class EvalReports {
@@ -46,6 +46,10 @@ public class EvalReports {
    */
   private static final Pattern TRIAL_PAGE =
       Pattern.compile("(" + ScenarioFiles.ID + ")(?:\\.(\\d{1,3}))?\\.md");
+
+  /** The report header's verdict row, which a dry run's plan does not have. */
+  private static final Pattern VERDICT =
+      Pattern.compile("^\\| Verdict \\| (PASS|FAIL|SKIPPED) \\|$", Pattern.MULTILINE);
 
   /** One {@code eval_run} row: counts are trials; a share is null when nothing was judged. */
   public record RunRow(
@@ -98,13 +102,9 @@ public class EvalReports {
       return passed ? Gate.PASS : Gate.FAIL;
     }
 
-    /** The gates' exit code as the run summed it: hard 1, global 2, validity 4. */
-    public int gatesCode() {
-      return (gateHard ? 0 : 1) | (gateGlobal ? 0 : 2) | (gateValidity ? 0 : 4);
-    }
-
+    /** From the row's verdict alone; {@link EvalReports#outcome} also reads the run's folder. */
     public RunOutcome outcome() {
-      return RunOutcome.of(new RunOutcome.Evidence(verdict, gatesCode(), true));
+      return RunOutcome.of(new RunOutcome.Evidence(verdict, null, true));
     }
 
     public Duration duration() {
@@ -198,13 +198,20 @@ public class EvalReports {
         .optional();
   }
 
-  /** How the run ended, from its row, its exit-code file and its report. */
+  /**
+   * How the run ended, from its exit-code file and its verdict: the row's, or the report header's
+   * when the row did not land.
+   */
   public RunOutcome outcome(String runId) {
+    Optional<String> report = text(runId, "report.md");
     return RunOutcome.of(
         new RunOutcome.Evidence(
-            row(runId).map(RunRow::verdict).orElse(null),
+            row(runId)
+                .map(RunRow::verdict)
+                .or(() -> report.flatMap(EvalReports::reportVerdict))
+                .orElse(null),
             text(runId, "exit-code").map(code -> Integer.valueOf(code.strip())).orElse(null),
-            Files.exists(folder(runId).resolve("report.md"))));
+            report.isPresent()));
   }
 
   /** The run's {@code report.md} as HTML, its trial links to the trial pages; empty without one. */
@@ -271,6 +278,11 @@ public class EvalReports {
     }
     int trialNo = page.group(3) == null ? 1 : Integer.parseInt(page.group(3));
     return EvalsPage.trialPageUrl(runId, page.group(1), trialNo);
+  }
+
+  private static Optional<String> reportVerdict(String report) {
+    Matcher verdict = VERDICT.matcher(report);
+    return verdict.find() ? Optional.of(verdict.group(1)) : Optional.empty();
   }
 
   private static String result(List<TrialLine> trials) {

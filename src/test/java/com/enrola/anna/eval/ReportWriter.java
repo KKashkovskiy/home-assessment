@@ -18,7 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Writes a run's files under {@code evals/runs/<id>/}: {@code report.md} (header with the
  * statistics, the three gates, coverage by tag, one row per scenario with its trials, the advisory
  * {@link JudgeSection}, cost, notes), one {@link ScenarioPage} per trial, {@code trials.jsonl}, and
- * {@code exit-code}, the gates' code that {@code run.sh} exits with. Markdown because a reviewer
+ * {@code exit-code}, the run's code that {@code run.sh} exits with. Markdown because a reviewer
  * reads it on GitHub; JSONL so later columns do not change the shape of a line. The numbers come
  * from {@link RunSummary} and {@link Gates}; nothing is computed here.
  */
@@ -27,7 +27,7 @@ final class ReportWriter {
   private static final JsonMapper JSON =
       JsonMapper.builder().propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE).build();
 
-  /** The file whose one line is the gates' exit code. */
+  /** The file whose one line is the run's exit code. */
   static final String EXIT_CODE = "exit-code";
 
   /**
@@ -64,7 +64,7 @@ final class ReportWriter {
     Map<String, Scenario> byId =
         plan.selected().stream().collect(Collectors.toMap(Scenario::id, Function.identity()));
     writeFile(plan.dir().resolve("report.md"), report(plan, summary, notes));
-    writeFile(plan.dir().resolve(EXIT_CODE), summary.gates().exitCode() + "\n");
+    writeFile(plan.dir().resolve(EXIT_CODE), summary.exitCode() + "\n");
     writeFile(
         plan.dir().resolve("trials.jsonl"),
         summary.trials().stream()
@@ -185,8 +185,9 @@ final class ReportWriter {
   }
 
   /**
-   * The three gates, each failure listed under its gate, and the exit code they add up to. With
-   * nothing run each gate says so.
+   * The three gates, each failure listed under its gate, and the run's exit code: their sum, plus
+   * {@value RunSummary#NOTHING_JUDGED} when no trial was judged. With nothing run each gate says
+   * so.
    */
   private static String gatesSection(RunSummary summary) {
     if (summary.ran() == 0) {
@@ -196,16 +197,21 @@ final class ReportWriter {
           hard: SKIPPED   (no trial ran)
           global: SKIPPED   (no trial ran)
           validity: SKIPPED   (no trial ran)
-          exit code: 0
-          """;
+          """
+          + exitCodeLine(summary);
     }
     GateResult gates = summary.gates();
     return "\n## Gates\n"
         + hardGate(gates)
         + globalGate(gates)
         + validityGate(gates)
-        + "exit code: "
-        + gates.exitCode()
+        + exitCodeLine(summary);
+  }
+
+  private static String exitCodeLine(RunSummary summary) {
+    return "exit code: "
+        + summary.exitCode()
+        + (summary.verdict() == RunSummary.Verdict.SKIPPED ? "   (no trial judged)" : "")
         + "\n";
   }
 

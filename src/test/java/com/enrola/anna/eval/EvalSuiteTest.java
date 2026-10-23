@@ -20,9 +20,10 @@ import org.springframework.test.context.DynamicPropertySource;
  * {@code -Deval.*} properties {@link EvalOptions} reads; the normal build leaves it out. The run
  * gets a fresh database and data directory under {@code evals/runs/<id>/}, starting from the
  * owner's settings, one dynamic test per trial ({@code <id> #k}) and a last one for the gates, in
- * which a keyed run's judges are then asked. Only the gates fail the build, never a judge: a trial
- * that did not pass is aborted with its reason, since a FAIL outside the core set and the hard
- * checks is reported, not gating. A crashed trial fails its test, and a refused run the factory.
+ * which a keyed run's judges are then asked. Only the gates, or a run that judged nothing, fail the
+ * build, never a judge: a trial that did not pass is aborted with its reason, since a FAIL outside
+ * the core set and the hard checks is reported, not gating. A crashed trial fails its test, and a
+ * refused run or a selection no scenario matches the factory.
  */
 @SpringBootTest
 @Import(EvalConfig.class)
@@ -67,7 +68,7 @@ class EvalSuiteTest {
     assumeTrue(trial.passed(), () -> trial.status() + " " + String.join(", ", trial.failedNames()));
   }
 
-  private static void assertGreen(GateResult gates) {
-    assertEquals(0, gates.exitCode(), () -> gates + "; see " + OPTIONS.dir().resolve("report.md"));
+  private static void assertGreen(int exitCode) {
+    assertEquals(0, exitCode, () -> "see " + OPTIONS.dir().resolve("report.md"));
   }
 }

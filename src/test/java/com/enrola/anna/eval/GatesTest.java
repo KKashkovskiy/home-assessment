@@ -95,8 +95,9 @@ class GatesTest {
     assertThat(gates.exitCode()).isEqualTo(valid ? 0 : 4);
   }
 
+  /** No gate fails on trials that never ran; the run's own code says nothing was judged. */
   @Test
-  void allSkippedIsGreen() {
+  void allSkippedLeavesTheGatesGreen() {
     List<Trial> trials = List.of(trial(CORE, 1, SKIPPED_NO_KEY), trial(SIDE, 1, SKIPPED_NO_KEY));
 
     assertThat(Gates.evaluate(trials, SELECTED, 0.2).exitCode()).isZero();

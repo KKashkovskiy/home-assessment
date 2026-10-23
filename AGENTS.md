@@ -67,7 +67,8 @@ evals/run.sh --offline                   # the eval suite on the stand-ins, $0
 evals/run.sh --tag core                  # needs EVAL_OPENAI_API_KEY; green before a prompt or model change
 ```
 
-Green means exit code 0 and `| Verdict | PASS |` in the report header: with no eval key the run exits 0 as SKIPPED.
+Green means exit code 0 and `| Verdict | PASS |` in the report header; a run that judged no trial, as with no eval
+key, exits 8 as SKIPPED.
 
 Java 25 on the path. The build is red if Spotless, Error Prone or a test fails; no commit on red. Error Prone runs in
 compile and every warning fails the build, so a suppression needs a reason. It reads javac internals, so

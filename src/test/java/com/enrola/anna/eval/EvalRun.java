@@ -90,19 +90,22 @@ final class EvalRun {
   }
 
   /**
-   * A dry run's plan; otherwise the gates, from the checks alone, then the judges, then the row and
-   * the report, which says when the row failed. The gates are returned for the build to fail on.
+   * A dry run's plan, exit code 0; otherwise the gates, from the checks alone, then the judges,
+   * then the row and the report, which says when the row failed, and the run's exit code for the
+   * build to fail on.
    */
-  GateResult finish() {
+  int finish() {
     GateResult gates = Gates.evaluate(trials, plan.selected(), plan.header().validityThreshold());
-    switch (plan.header().mode()) {
-      case RunMode.DryRun _ -> writePlan();
+    return switch (plan.header().mode()) {
+      case RunMode.DryRun _ -> {
+        writePlan();
+        yield 0;
+      }
       case RunMode.Offline _, RunMode.Keyed _, RunMode.NoKey _ -> {
         judgeTrials();
-        writeReport(gates);
+        yield writeReport(gates);
       }
-    }
-    return gates;
+    };
   }
 
   /** The trials' estimate against the cap, and the judges' apart, since only the cap stops them. */
@@ -124,10 +127,11 @@ final class EvalRun {
         ReportWriter.usd(judgeEstimate));
   }
 
-  private void writeReport(GateResult gates) {
+  private int writeReport(GateResult gates) {
     var summary = new RunSummary(trials, expected(), gates);
     EvalRunRow.record(plan, summary).ifPresent(notes::add);
     ReportWriter.write(plan, summary, notes);
+    return summary.exitCode();
   }
 
   private void refuseOverCap() {

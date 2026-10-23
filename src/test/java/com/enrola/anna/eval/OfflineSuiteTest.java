@@ -32,7 +32,7 @@ class OfflineSuiteTest extends EvalFixture {
 
   List<Scenario> selected;
   List<Trial> trials;
-  GateResult gates;
+  int exitCode;
 
   @BeforeAll
   void runEveryScenarioTwice() throws IOException {
@@ -52,7 +52,7 @@ class OfflineSuiteTest extends EvalFixture {
     selected = run.begin();
     selected.forEach(
         scenario -> IntStream.rangeClosed(1, TRIALS).forEach(k -> run.trial(scenario, k)));
-    gates = run.finish();
+    exitCode = run.finish();
     trials = run.trials();
   }
 
@@ -81,9 +81,8 @@ class OfflineSuiteTest extends EvalFixture {
   }
 
   @Test
-  void statisticsAndGatesAreGreen() {
-    assertThat(new RunSummary(trials, trials.size(), gates).passK()).isEqualTo(1.0);
-    assertThat(gates.exitCode()).isZero();
+  void theRunExitsGreen() {
+    assertThat(exitCode).isZero();
   }
 
   @Test

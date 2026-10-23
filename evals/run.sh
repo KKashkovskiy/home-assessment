@@ -25,9 +25,10 @@ Keys: EVAL_OPENAI_API_KEY, or OPENAI_API_KEY when EVAL_ALLOW_SHARED_KEY=true. Wi
 --offline every trial is SKIPPED_NO_KEY and the report is still written. EVAL_SIMULATOR_MODEL and
 EVAL_JUDGE_MODEL name cheaper models for the simulated lead and the judge; the price table must price them, or the
 run is refused for the lead and runs without a judge.
-Exit codes: the gates', summed: 0 green; 1 a hard check failed; 2 a core scenario's trial failed; 4 more
-INVALID trials than the threshold allows. With the gates green, 1 when a trial crashed or the run was refused.
-64 a flag this script does not know or a flag without its value.
+Exit codes, summed: 0 green; 1 a hard check failed; 2 a core scenario's trial failed; 4 more INVALID trials
+than the threshold allows; 8 nothing judged (no key, refused estimate, every trial skipped or INVALID). With the
+gates green, 1 when a trial crashed, an id has no file or no scenario matches the filters. 64 a flag this script
+does not know or a flag without its value.
 Each flag becomes one -Deval.* property; the Evals page builds the same properties, so this list is the contract.
 EOF
 }
@@ -76,7 +77,8 @@ STATUS=0
 ./mvnw -q -Dtest=EvalSuiteTest -Dsurefire.failIfNoSpecifiedTests=false -Deval.runId="$RUN_ID" "$@" test \
   || STATUS=$?
 echo "report: evals/runs/$RUN_ID/report.md"
-# The gates' code when one failed; otherwise Maven's, non-zero only for a crash, a refusal or a broken build.
-GATES=$(cat "evals/runs/$RUN_ID/exit-code" 2>/dev/null || echo 0)
-if [ "$GATES" -ne 0 ]; then STATUS=$GATES; fi
+# The run's exit-code file when it is not 0; otherwise Maven's exit, non-zero for a crashed trial, a selection
+# that fails or a broken build.
+RUN_CODE=$(cat "evals/runs/$RUN_ID/exit-code" 2>/dev/null || echo 0)
+if [ "$RUN_CODE" -ne 0 ]; then STATUS=$RUN_CODE; fi
 exit $STATUS

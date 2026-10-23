@@ -70,7 +70,7 @@
     <section th:replace="~{fragments/scenario-editor :: editor(${evals.editor})}"></section>
 
     <section class="panel" aria-labelledby="runs-title" id="runs-panel">
-      <header><h2 id="runs-title">Past runs</h2><span class="small muted">From the CLI and this page alike; each wrote <code>evals/runs/&lt;id&gt;/report.md</code>, and its gates set the exit code.</span></header>
+      <header><h2 id="runs-title">Past runs</h2><span class="small muted">From the CLI and this page alike; each wrote <code>evals/runs/&lt;id&gt;/report.md</code> and an exit code: the gates' bits, or 8 when no trial was judged.</span></header>
       <div class="table-wrap" th:unless="${#lists.isEmpty(evals.runs)}"><table id="runs-table">
         <thead><tr><th scope="col">Run</th><th scope="col">Started</th><th scope="col">Prompt</th><th scope="col">Model</th><th scope="col" class="num">Trials passed</th><th scope="col">Verdict</th><th scope="col">Gates</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Time</th></tr></thead>
         <tbody th:replace="~{fragments/runs-rows :: rows(${evals.runs})}"></tbody>

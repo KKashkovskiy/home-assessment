@@ -50,7 +50,6 @@ class EvalReportsTest extends ConsoleFixture {
         .extracting(RunRow::id)
         .containsExactly(RUN, "2026-10-22T09-00-00Z");
     RunRow red = reports.row(RUN).orElseThrow();
-    assertThat(red.gatesCode()).isEqualTo(3);
     assertThat(red.outcome()).isEqualTo(RunOutcome.RED);
     assertThat(red.duration()).isEqualTo(Duration.ofSeconds(90));
     assertThat(reports.row("2026-10-22T09-00-00Z").orElseThrow().outcome())
@@ -118,6 +117,28 @@ class EvalReportsTest extends ConsoleFixture {
             "<a href=\"/evals/runs/" + RUN + "/scenarios/turn-happy-pick-a-time?trial=2\">#2</a>",
             "<a href=\"/evals/runs/" + RUN + "/scenarios/turn-non-english\">turn-non-english</a>");
     assertThat(reports.outcome(RUN)).isEqualTo(RunOutcome.RED);
+  }
+
+  /**
+   * Without a row the header of the report the harness writes decides, and an exit code of 0 with
+   * no verdict is no green run.
+   */
+  @Test
+  void withoutARowTheReportsVerdictDecides() throws IOException {
+    String run = "2026-10-20T08-00-00Z";
+    String golden = Files.readString(Path.of("src/test/resources/eval/golden-report.md"));
+    write(run, "exit-code", "0\n");
+    write(run, "report.md", golden.replace("| Verdict | FAIL |", "| Verdict | PASS |"));
+    assertThat(reports.outcome(run)).isEqualTo(RunOutcome.GREEN);
+
+    write(run, "report.md", golden);
+    assertThat(reports.outcome(run)).isEqualTo(RunOutcome.RED);
+
+    write(run, "report.md", golden.replace("| Verdict | FAIL |\n", ""));
+    assertThat(reports.outcome(run)).isEqualTo(RunOutcome.ERROR);
+
+    write(run, "exit-code", "8\n");
+    assertThat(reports.outcome(run)).isEqualTo(RunOutcome.SKIPPED);
   }
 
   /** A phone is masked wherever it is, a heading included; the run's own id never is. */

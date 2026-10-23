@@ -12,8 +12,8 @@ import java.util.stream.Collectors;
 
 /**
  * Which scenarios a run takes. {@code ids} (comma-separated) wins over the rest, and an id no file
- * has fails the run; otherwise the id glob, the tag, the kind and the priority tag all apply. Null
- * means no filter.
+ * has fails the run; otherwise the id glob, the tag, the kind and the priority tag all apply, and
+ * filters no scenario matches fail it too. Null means no filter.
  */
 record Selection(String ids, String glob, String tag, String kind, String priority) {
 
@@ -29,7 +29,11 @@ record Selection(String ids, String glob, String tag, String kind, String priori
     if (ids != null) {
       return byIds(all);
     }
-    return all.stream().filter(filters()).toList();
+    List<Scenario> selected = all.stream().filter(filters()).toList();
+    if (selected.isEmpty()) {
+      throw new ScenarioException("no scenario matches " + describe());
+    }
+    return selected;
   }
 
   /** The report header's words for it: "tag core, kind turn", or "all". */

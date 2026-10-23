@@ -649,7 +649,8 @@ public class ViewFormats {
       case GREEN -> "Every gate passed.";
       case RED -> "A gate failed: the report names the trials and the checks.";
       case SKIPPED ->
-          "Nothing ran: no eval key, or the estimate was over the budget. The report says which.";
+          "Nothing was judged: no eval key, the estimate over the budget, or every trial skipped"
+              + " or INVALID. The report says which.";
       case PLANNED -> "Dry run: the report holds the plan and its estimate; nothing was called.";
       case CANCELLED -> "Cancelled. The run's folder keeps what it wrote before it stopped.";
       case ERROR -> "The run ended without a result; the log above says why.";
