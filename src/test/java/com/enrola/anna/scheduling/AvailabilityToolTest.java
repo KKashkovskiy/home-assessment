@@ -134,15 +134,17 @@ class AvailabilityToolTest {
     assertThat(result.note()).isEqualTo(ToolResult.Note.NO_SLOTS_IN_WINDOW);
   }
 
-  /** The last date java.time can parse cannot be placed in a zone: a failure, not a crash. */
+  /**
+   * The last date java.time can parse cannot be placed in a zone: a rejected call, not a crash. The
+   * dates are the model's mistake, so neither counts against the calendar.
+   */
   @Test
-  void badDateOrRangeIsCompactError() {
-    ToolResult.Failure badDate = new ToolResult.Failure("BAD_DATE", "dates must be YYYY-MM-DD");
-
-    assertThat(run("next monday", MONDAY)).isEqualTo(badDate);
-    assertThat(run(MONDAY, "+999999999-12-31")).isEqualTo(badDate);
-    assertThat(run("2026-07-28", MONDAY))
-        .isEqualTo(new ToolResult.Failure("BAD_RANGE", "date_to is before date_from"));
+  void badDateOrRangeIsRejected() {
+    assertThat(run("next monday", MONDAY)).isInstanceOf(ToolResult.Rejected.class);
+    assertThat(SchedulingFixtures.codeOf(run("next monday", MONDAY))).isEqualTo("BAD_DATE");
+    assertThat(SchedulingFixtures.codeOf(run(MONDAY, "+999999999-12-31"))).isEqualTo("BAD_DATE");
+    assertThat(run("2026-07-28", MONDAY)).isInstanceOf(ToolResult.Rejected.class);
+    assertThat(SchedulingFixtures.codeOf(run("2026-07-28", MONDAY))).isEqualTo("BAD_RANGE");
   }
 
   /**

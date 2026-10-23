@@ -33,23 +33,34 @@ class DecisionApplier {
 
   /**
    * What every decision leaves, whatever becomes of its reply: stage, flags, extracted facts and
-   * summary. Until a booking exists the goal is not met and the stage is not BOOKED.
+   * summary. Until a booking exists the goal is not met and the stage is not BOOKED; once one does,
+   * the stage stays BOOKED.
    */
   void classify(RunningTurn turn, Decision decision) {
     Conversation conversation = turn.conversation();
-    conversation.stage = decision.stage();
-    if (decision.stage() == Stage.BOOKED && !conversation.goalMet) {
-      conversation.stage = Stage.OFFER_TIMES;
-      override(turn, "stage", Map.of("model", Stage.BOOKED, "code", Stage.OFFER_TIMES));
-    }
+    conversation.stage = stageOf(turn, decision.stage());
     if (decision.goalMet() && !conversation.goalMet) {
       override(turn, "goal_met", Map.of("model", true, "code", false));
     }
     decision.flags().forEach(conversation::addFlag);
     conversation.extractedJson = merged(conversation.extractedJson, decision.extracted());
     if (decision.summary() != null) {
-      conversation.summary = AgentCall.cut(decision.summary(), SUMMARY_MAX);
+      conversation.summary = TurnQuestions.cut(decision.summary(), SUMMARY_MAX);
     }
+  }
+
+  /**
+   * Code owns BOOKED: a booking keeps the stage there, and the model's claim of it is overridden.
+   */
+  private Stage stageOf(RunningTurn turn, Stage claimed) {
+    if (turn.conversation().goalMet) {
+      return Stage.BOOKED;
+    }
+    if (claimed == Stage.BOOKED) {
+      override(turn, "stage", Map.of("model", Stage.BOOKED, "code", Stage.OFFER_TIMES));
+      return Stage.OFFER_TIMES;
+    }
+    return claimed;
   }
 
   /** The handoff the model asks for, then the ending, each only with its flag set. */
@@ -78,14 +89,23 @@ class DecisionApplier {
     }
   }
 
-  /** The model may end DECLINED or HANDOFF; every other end belongs to a code path. */
+  /**
+   * The model may end DECLINED or HANDOFF; every other end belongs to a code path, and the model
+   * naming the end code already made, as on the turn book_call booked, overrides nothing.
+   */
   private void end(RunningTurn turn, EndReason reason) {
     switch (reason) {
       case NONE -> {}
       case DECLINED, HANDOFF -> StateRules.end(turn.conversation(), reason, turn.now());
       case BOOKED, UNSUBSCRIBED, ABUSIVE, OFF_TOPIC_LIMIT, MAX_TURNS, SAFETY ->
-          override(
-              turn, "end_reason", Map.of("model", reason, "code", turn.conversation().endReason));
+          overrideUnlessCurrent(turn, reason);
+    }
+  }
+
+  private void overrideUnlessCurrent(RunningTurn turn, EndReason claimed) {
+    EndReason current = turn.conversation().endReason;
+    if (claimed != current) {
+      override(turn, "end_reason", Map.of("model", claimed, "code", current));
     }
   }
 

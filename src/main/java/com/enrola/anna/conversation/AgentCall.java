@@ -2,53 +2,43 @@ package com.enrola.anna.conversation;
 
 import com.enrola.anna.agent.AgentService;
 import com.enrola.anna.agent.Decision;
-import com.enrola.anna.agent.Flag;
-import com.enrola.anna.agent.ModelRequest;
 import com.enrola.anna.agent.ModelResponse;
-import com.enrola.anna.agent.TurnContext;
-import com.enrola.anna.config.LimitsProperties;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.agent.ToolLoopCallbacks;
+import com.enrola.anna.config.AgentProperties;
 import com.enrola.anna.prompt.PromptLoader;
-import java.time.ZoneId;
-import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * One recorded model call for a running turn: the conversation's prompt bundle, the whole
- * transcript and the turn's context go in, the model's function calls are answered by {@link
- * TurnToolCalls}, and a decision or a failure comes out, with the turn's model columns either way.
- * Output that is not a decision is recorded as a SCHEMA failure.
+ * One recorded model call for a running turn: the conversation's prompt bundle and a {@link
+ * TurnQuestions.Question} go in, each round is traced as it ends, the model's function calls are
+ * answered by {@link TurnToolCalls} while the turn has tool rounds left, and a decision or a
+ * failure comes out, with the turn's model columns either way. Output that is not a decision is
+ * recorded as a SCHEMA failure.
  */
 @Component
 class AgentCall {
 
   private final AgentService agent;
   private final PromptLoader prompts;
-  private final MessageRepository messages;
+  private final TurnQuestions questions;
   private final ModelCallRecorder modelCalls;
   private final TurnToolCalls tools;
-  private final LimitsProperties limits;
-  private final SmsProperties sms;
+  private final AgentProperties agentProps;
 
   AgentCall(
       AgentService agent,
       PromptLoader prompts,
-      MessageRepository messages,
+      TurnQuestions questions,
       ModelCallRecorder modelCalls,
       TurnToolCalls tools,
-      LimitsProperties limits,
-      SmsProperties sms) {
+      AgentProperties agentProps) {
     this.agent = agent;
     this.prompts = prompts;
-    this.messages = messages;
+    this.questions = questions;
     this.modelCalls = modelCalls;
     this.tools = tools;
-    this.limits = limits;
-    this.sms = sms;
+    this.agentProps = agentProps;
   }
-
-  /** What the model is asked: the transcript and the turn's context, as of the turn's start. */
-  record Question(List<Message> transcript, TurnContext context) {}
 
   /** What one recorded call came to, with the turn's model columns either way. */
   sealed interface Answer {
@@ -59,101 +49,101 @@ class AgentCall {
     record Failed(ModelResponse.Failure code, Turn.ModelCall call) implements Answer {}
   }
 
-  /** {@code text} cut to its first {@code maxChars} characters when it is longer. */
-  static String cut(String text, int maxChars) {
-    return text.length() > maxChars ? text.substring(0, maxChars) : text;
-  }
-
-  Question questionFor(RunningTurn turn) {
-    return new Question(messages.transcript(turn.conversation().id), contextFor(turn));
-  }
-
   /**
-   * {@code asked} again with a note on what the rejected reply broke, and the offer as it stands
-   * now: this turn's tool calls may have replaced the one the question started with.
+   * The tool rounds of {@code turn}, {@code anna.agent.max-tool-rounds} of them for all its calls.
    */
-  Question repairOf(RunningTurn turn, Question asked, String note) {
-    return new Question(
-        asked.transcript(),
-        asked.context().withRepair(note, turn.conversation().lastOfferedSlots()));
+  ToolRounds toolRoundsFor(RunningTurn turn) {
+    return new ToolRounds(turn, agentProps.maxToolRounds());
   }
 
-  /** A call that may use the scheduling tools, answered for this turn by {@link TurnToolCalls}. */
-  Answer ask(RunningTurn turn, Question question) {
+  /** A call that may use the scheduling tools while {@code rounds} has some left. */
+  Answer ask(RunningTurn turn, TurnQuestions.Question question, ToolRounds rounds) {
     return answerOf(
         turn,
         agent.decide(
             prompts.load(turn.conversation().promptVersion),
-            input(question.transcript()),
+            questions.transcriptOf(question),
             question.context(),
-            (name, argumentsJson) -> tools.answer(turn, name, argumentsJson)));
+            rounds));
   }
 
-  /** A call with no tools, after an end, when the model only classifies the message. */
-  Answer classify(RunningTurn turn, Question question) {
+  /**
+   * A call with no tools, for after an end: nothing may be scheduled then, so {@code rounds} grants
+   * no tool round from here on.
+   */
+  Answer classify(RunningTurn turn, TurnQuestions.Question question, ToolRounds rounds) {
+    rounds.endToolRounds();
     return answerOf(
         turn,
         agent.classify(
             prompts.load(turn.conversation().promptVersion),
-            input(question.transcript()),
-            question.context()));
+            questions.transcriptOf(question),
+            question.context(),
+            rounds));
   }
 
-  private Answer answerOf(RunningTurn turn, ModelResponse response) {
-    return switch (response) {
-      case ModelResponse.Decided decided -> decisionOf(turn, decided);
-      case ModelResponse.Failed failed -> failure(turn, failed);
+  private Answer answerOf(RunningTurn turn, AgentService.TurnResult result) {
+    return switch (result.last()) {
+      case ModelResponse.Decided decided -> decisionOf(turn, result, decided);
+      case ModelResponse.Failed failed -> failure(turn, result, failed);
     };
   }
 
-  private Answer decisionOf(RunningTurn turn, ModelResponse.Decided decided) {
+  private Answer decisionOf(
+      RunningTurn turn, AgentService.TurnResult result, ModelResponse.Decided decided) {
     Decision decision;
     try {
       decision = decided.decision();
     } catch (ModelResponse.SchemaMismatch e) {
-      return failure(turn, decided.failed(ModelResponse.Failure.SCHEMA, e.getMessage()));
+      ModelResponse.Failed failed = decided.failed(ModelResponse.Failure.SCHEMA, e.getMessage());
+      return failure(turn, result.withLast(failed), failed);
     }
-    return new Answer.Decided(
-        decision, modelCalls.record(turn.conversation(), turn.turnNo(), decided));
+    return new Answer.Decided(decision, modelCalls.record(turn, result));
   }
 
-  private Answer failure(RunningTurn turn, ModelResponse.Failed failed) {
-    return new Answer.Failed(
-        failed.code(), modelCalls.record(turn.conversation(), turn.turnNo(), failed));
+  private Answer failure(
+      RunningTurn turn, AgentService.TurnResult result, ModelResponse.Failed failed) {
+    return new Answer.Failed(failed.code(), modelCalls.record(turn, result));
   }
 
   /**
-   * Anna's messages, the opener included, as assistant items and the lead's as user items, each cut
-   * to {@code anna.sms.max-inbound-chars}: the model sees what the lead saw and said.
+   * A turn's side of its calls' tool loops: each round is traced as it ends, numbered across the
+   * turn so a repair's rounds follow the decision's, rounds are granted while any are left, and
+   * {@link TurnToolCalls} answers the calls. The decision call and its repair share one.
    */
-  private List<ModelRequest.InputItem> input(List<Message> transcript) {
-    return transcript.stream()
-        .<ModelRequest.InputItem>map(
-            message ->
-                switch (message.direction()) {
-                  case OUT -> new ModelRequest.AssistantText(message.text());
-                  case IN -> new ModelRequest.UserText(cut(message.text(), sms.maxInboundChars()));
-                })
-        .toList();
-  }
+  final class ToolRounds implements ToolLoopCallbacks {
 
-  /** The lead's clock is in the zone fixed at start; book_call books nothing, so no booking. */
-  private TurnContext contextFor(RunningTurn turn) {
-    Conversation conversation = turn.conversation();
-    return new TurnContext(
-        turn.lead(),
-        turn.now().atZone(ZoneId.of(conversation.leadZoneId)),
-        conversation.flags().contains(Flag.TZ_ASSUMED),
-        new TurnContext.Counters(
-            conversation.agentTurns,
-            conversation.objectionsUsed,
-            conversation.offTopicStreak,
-            conversation.postTerminalReplies),
-        limits,
-        null,
-        conversation.lastOfferedSlots(),
-        conversation.ended,
-        conversation.endReason,
-        null);
+    private final RunningTurn turn;
+    private int toolRoundsLeft;
+    private int roundsEnded;
+
+    private ToolRounds(RunningTurn turn, int toolRounds) {
+      this.turn = turn;
+      this.toolRoundsLeft = toolRounds;
+    }
+
+    private void endToolRounds() {
+      toolRoundsLeft = 0;
+    }
+
+    @Override
+    public void roundEnded(ModelResponse response) {
+      roundsEnded++;
+      modelCalls.recordRound(turn, roundsEnded, response);
+    }
+
+    @Override
+    public boolean grantToolRound() {
+      if (toolRoundsLeft == 0) {
+        return false;
+      }
+      toolRoundsLeft--;
+      return true;
+    }
+
+    @Override
+    public String answer(String name, String argumentsJson) {
+      return tools.answer(turn, name, argumentsJson);
+    }
   }
 }

@@ -80,13 +80,12 @@ class OpenAiModelClientTest {
       """;
 
   final FakeOpenAi openAi = new FakeOpenAi();
-  final List<ToolCall> executed = new ArrayList<>();
 
   @Test
   void paramsAreStatelessAndStrict() {
     openAi.answer(response(DECIDED));
 
-    openAi.client().call(request(ModelRequest.Tools.NONE));
+    openAi.client().call(request(List.of()));
 
     ResponseCreateParams params = openAi.requests.getFirst();
     assertThat(params.store()).contains(false);
@@ -108,7 +107,7 @@ class OpenAiModelClientTest {
   void transcriptKeepsOrderAndRoles() {
     openAi.answer(response(DECIDED));
 
-    openAi.client().call(request(ModelRequest.Tools.NONE));
+    openAi.client().call(request(List.of()));
 
     List<EasyInputMessage> items =
         openAi.requests.getFirst().input().orElseThrow().asResponse().stream()
@@ -143,7 +142,7 @@ class OpenAiModelClientTest {
   void toolsAreOfferedStrictOneCallAtATime() {
     openAi.answer(response(DECIDED));
 
-    openAi.client().call(request(tools(1)));
+    openAi.client().call(request(TOOLS));
 
     ResponseCreateParams params = openAi.requests.getFirst();
     List<FunctionTool> offered =
@@ -160,25 +159,45 @@ class OpenAiModelClientTest {
   }
 
   /**
-   * The second round replays the reasoning and the call, without its unstored item id, then the
-   * answer; the response covers both rounds.
+   * A round that calls a tool comes back for the caller to answer, with what the next round must
+   * replay: the reasoning unchanged and the call without its item id.
    */
   @Test
-  void functionCallIsAnsweredThenTheModelDecides() {
-    openAi.answer(response(CALLS_AVAILABILITY)).answer(response(DECIDED));
+  void functionCallComesBackToBeAnswered() {
+    openAi.answer(response(CALLS_AVAILABILITY));
 
-    ModelResponse response = openAi.client().call(request(tools(1)));
+    ModelResponse response = openAi.client().call(request(TOOLS));
 
-    ToolCall call = new ToolCall("get_availability", "{\"date_from\":\"2026-07-27\"}", "slots!");
-    assertThat(executed).containsExactly(call);
+    InputItem.FunctionCall call =
+        new InputItem.FunctionCall("c1", "get_availability", "{\"date_from\":\"2026-07-27\"}");
+    assertThat(openAi.requests).hasSize(1);
     assertThat(response)
         .isInstanceOfSatisfying(
-            ModelResponse.Decided.class,
-            decided -> {
-              assertThat(decided.output().get("ok").booleanValue()).isTrue();
-              assertThat(decided.toolCalls()).containsExactly(call);
-              assertThat(decided.usage()).isEqualTo(new ModelResponse.Usage(200, 80, 40, 10));
+            ModelResponse.ToolCalls.class,
+            asked -> {
+              assertThat(asked.calls()).containsExactly(call);
+              assertThat(asked.replay()).hasSize(2).endsWith(call);
+              assertThat(asked.replay().getFirst())
+                  .isInstanceOfSatisfying(
+                      InputItem.Opaque.class,
+                      reasoning ->
+                          assertThat(reasoning.raw().asReasoning().encryptedContent())
+                              .contains("opaque"));
+              assertThat(asked.usage()).isEqualTo(new ModelResponse.Usage(100, 40, 20, 5));
             });
+  }
+
+  /** The replayed items and the answer go out as the SDK's items, in order, with no item id. */
+  @Test
+  void answeredRoundIsSentBackInOrder() {
+    openAi.answer(response(CALLS_AVAILABILITY)).answer(response(DECIDED));
+    ModelResponse.ToolCalls asked = (ModelResponse.ToolCalls) openAi.client().call(request(TOOLS));
+    List<InputItem> next = new ArrayList<>(request(TOOLS).input());
+    next.addAll(asked.replay());
+    next.add(new InputItem.FunctionOutput("c1", "slots!"));
+
+    ModelResponse response = openAi.client().call(request(TOOLS).withInput(next));
+
     List<JsonNode> input =
         List.copyOf(JSON.readTree(response.rawRequestJson()).get("input").values());
     assertThat(input).hasSize(6);
@@ -190,25 +209,6 @@ class OpenAiModelClientTest {
     assertThat(input.get(5).get("type").stringValue()).isEqualTo("function_call_output");
     assertThat(input.get(5).get("call_id").stringValue()).isEqualTo("c1");
     assertThat(input.get(5).get("output").stringValue()).isEqualTo("slots!");
-  }
-
-  /** The round after the last answered one still calls a tool: it goes unanswered and fails. */
-  @Test
-  void callsBeyondTheRoundCapFail() {
-    openAi.answer(response(CALLS_AVAILABILITY)).answer(response(CALLS_AVAILABILITY));
-
-    ModelResponse response = openAi.client().call(request(tools(1)));
-
-    assertThat(openAi.requests).hasSize(2);
-    assertThat(executed).hasSize(1);
-    assertThat(response)
-        .isInstanceOfSatisfying(
-            ModelResponse.Failed.class,
-            failed -> {
-              assertThat(failed.code()).isEqualTo(ModelResponse.Failure.TOOL_ROUNDS);
-              assertThat(failed.toolCalls()).hasSize(1);
-              assertThat(failed.usage()).isEqualTo(new ModelResponse.Usage(200, 80, 40, 10));
-            });
   }
 
   /** Responses as OpenAI sends them, read by the SDK's own mapper. */
@@ -226,7 +226,7 @@ class OpenAiModelClientTest {
   void unusableResponseIsAFailure(String name, String fields, ModelResponse.Failure code) {
     openAi.answer(response(fields));
 
-    assertThat(openAi.client().call(request(ModelRequest.Tools.NONE)))
+    assertThat(openAi.client().call(request(List.of())))
         .isInstanceOfSatisfying(
             ModelResponse.Failed.class,
             failed -> {
@@ -239,7 +239,7 @@ class OpenAiModelClientTest {
   void completedResponseIsDecidedWithUsageAndSummary() {
     openAi.answer(response(DECIDED));
 
-    ModelResponse response = openAi.client().call(request(ModelRequest.Tools.NONE));
+    ModelResponse response = openAi.client().call(request(List.of()));
 
     assertThat(response)
         .isInstanceOfSatisfying(
@@ -248,7 +248,6 @@ class OpenAiModelClientTest {
               assertThat(decided.output().get("ok").booleanValue()).isTrue();
               assertThat(decided.reasoningSummary()).isEqualTo("Lead wants to save.");
               assertThat(decided.usage()).isEqualTo(new ModelResponse.Usage(100, 40, 20, 5));
-              assertThat(decided.toolCalls()).isEmpty();
               assertThat(decided.rawRequestJson()).contains("\"store\":false");
               assertThat(decided.rawResponseJson()).contains("\"cached_tokens\":40");
             });
@@ -268,7 +267,7 @@ class OpenAiModelClientTest {
                     .build())
             .build());
 
-    ModelResponse response = openAi.client().call(request(ModelRequest.Tools.NONE));
+    ModelResponse response = openAi.client().call(request(List.of()));
 
     assertThat(response)
         .isInstanceOfSatisfying(
@@ -309,14 +308,14 @@ class OpenAiModelClientTest {
                     .doesNotHaveBean(ModelCheck.class));
   }
 
-  private static ModelRequest request(ModelRequest.Tools tools) {
+  private static ModelRequest request(List<JsonNode> tools) {
     return new ModelRequest(
         "gpt-5.1",
         "You are Anna.",
         List.of(
-            new ModelRequest.AssistantText("Hi Lauren"),
-            new ModelRequest.UserText("save money"),
-            new ModelRequest.UserText("### Context for this turn")),
+            new InputItem.AssistantText("Hi Lauren"),
+            new InputItem.UserText("save money"),
+            new InputItem.UserText("### Context for this turn")),
         "agent_decision",
         JSON.readTree(
             """
@@ -327,17 +326,6 @@ class OpenAiModelClientTest {
         "low",
         "auto",
         1200);
-  }
-
-  /** Both tools, every call answered "slots!" and kept, at most {@code maxRounds} rounds. */
-  private ModelRequest.Tools tools(int maxRounds) {
-    return new ModelRequest.Tools(
-        TOOLS,
-        (name, argumentsJson) -> {
-          executed.add(new ToolCall(name, argumentsJson, "slots!"));
-          return "slots!";
-        },
-        maxRounds);
   }
 
   private static Response response(String fields) {

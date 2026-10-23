@@ -1,6 +1,7 @@
 package com.enrola.anna.conversation;
 
 import com.enrola.anna.AppClock;
+import com.enrola.anna.scheduling.BookingRepository;
 import java.time.Instant;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -26,6 +27,7 @@ public class InboundTurns {
   private final ConversationRepository conversations;
   private final MessageRepository messages;
   private final TurnRepository turns;
+  private final BookingRepository bookings;
   private final TurnLocks locks;
   private final TurnPipeline pipeline;
   private final TransactionTemplate tx;
@@ -36,6 +38,7 @@ public class InboundTurns {
       ConversationRepository conversations,
       MessageRepository messages,
       TurnRepository turns,
+      BookingRepository bookings,
       TurnLocks locks,
       TurnPipeline pipeline,
       PlatformTransactionManager transactions,
@@ -44,6 +47,7 @@ public class InboundTurns {
     this.conversations = conversations;
     this.messages = messages;
     this.turns = turns;
+    this.bookings = bookings;
     this.locks = locks;
     this.pipeline = pipeline;
     this.tx = new TransactionTemplate(transactions);
@@ -117,7 +121,13 @@ public class InboundTurns {
     conversation.updatedAt = now;
     conversations.save(conversation);
     TurnResponse response =
-        TurnResponse.of(conversation, outcome.reply(), messages.transcript(conversation.id), now);
+        TurnResponse.of(
+            new TurnResponse.Rows(
+                conversation,
+                bookings.findByConversationId(conversation.id).orElse(null),
+                messages.transcript(conversation.id)),
+            outcome.reply(),
+            now);
     turns.save(Turn.of(inbound, outcome, json.writeValueAsString(response), now));
     log.info(
         "conversation {} turn {} {}: {}",

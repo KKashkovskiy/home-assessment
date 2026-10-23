@@ -10,8 +10,27 @@ public sealed interface ToolResult {
    */
   record Slots(String timezone, List<Slot> slots, Note note) implements ToolResult {}
 
-  /** A compact code and a one-line hint for the model, never a stack trace. */
+  /** The booked call: the calendar's event id and the lead-local label of its start. */
+  record Booked(String bookingId, String label) implements ToolResult {}
+
+  /**
+   * The calendar refused or the tool broke: a compact code and a one-line hint for the model, never
+   * a stack trace. These add up toward a handoff.
+   */
   record Failure(String code, String hint) implements ToolResult {}
+
+  /**
+   * The call was refused before the calendar was asked: not the declared arguments, no such date or
+   * tool, a slot that was never offered, no phone to call. Answered like a {@link Failure}, but the
+   * model's mistake, not the calendar's, so it adds to no handoff count.
+   */
+  record Rejected(String code, String hint) implements ToolResult {}
+
+  /**
+   * The calendar accepted a booking the database did not keep: whether the call is booked is
+   * unknown, so a human checks before anyone retries.
+   */
+  record BookingUnknown(String hint) implements ToolResult {}
 
   /** What the model is told about an availability window: a closed set the prompt can rely on. */
   enum Note {

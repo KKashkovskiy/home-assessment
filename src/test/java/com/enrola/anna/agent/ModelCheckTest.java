@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import com.enrola.anna.config.AgentProperties;
 import java.time.Duration;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
 
@@ -24,8 +23,7 @@ class ModelCheckTest {
             ModelResponse.Usage.ZERO,
             5,
             "{}",
-            "{}",
-            List.of()));
+            "{}"));
 
     new ModelCheck(model, agent(false)).run(null);
 

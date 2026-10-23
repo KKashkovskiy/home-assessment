@@ -1,15 +1,18 @@
 package com.enrola.anna.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.enrola.anna.AppClock;
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.Decisions;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.HandoffReason;
+import com.enrola.anna.agent.InputItem;
 import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.agent.ModelRequest;
 import com.enrola.anna.agent.ModelResponse;
@@ -22,12 +25,16 @@ import com.enrola.anna.guard.ScriptedModerationClient;
 import com.enrola.anna.lead.LeadRepository;
 import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
+import com.enrola.anna.scheduling.Booking;
+import com.enrola.anna.scheduling.BookingRepository;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -99,10 +106,14 @@ class InboundTurnsTest {
   @Autowired PromptLoader prompts;
   @Autowired WebApplicationContext context;
   @Autowired JdbcTemplate jdbc;
+  @Autowired BookingRepository bookings;
+  @Autowired AppClock clock;
   String id;
 
   @BeforeEach
   void startLauren() {
+    clock.fixAt(Instant.parse(NOW));
+    jdbc.update("delete from booking");
     jdbc.update("delete from trace_event");
     jdbc.update("delete from turn");
     jdbc.update("delete from message");
@@ -176,7 +187,10 @@ class InboundTurnsTest {
         .contains("\"code\":\"TIMEOUT\"");
   }
 
-  /** Recorded like any failed call: the raw output stays on the turn for the inspector. */
+  /**
+   * Recorded like any failed call: the round returned output, which code then rejected, and the raw
+   * output stays on the turn for the inspector.
+   */
   @Test
   void outputThatIsNotADecisionHandsOff() {
     ModelResponse.Decided decided = Decisions.decided(Decisions.engaged().build());
@@ -197,7 +211,7 @@ class InboundTurnsTest {
                 String.class,
                 id))
         .satisfiesExactly(
-            call -> assertThat(call).contains("\"status\":\"SCHEMA\""),
+            call -> assertThat(call).contains("\"status\":\"DECIDED\""),
             error -> assertThat(error).contains("\"code\":\"SCHEMA\""));
   }
 
@@ -207,7 +221,7 @@ class InboundTurnsTest {
 
     TurnResponse response = turns.handle(id, "a".repeat(1700), "p1");
 
-    assertThat(model.calls().getFirst().input().get(1).text()).hasSize(1600);
+    assertThat(text(model.calls().getFirst().input().get(1))).hasSize(1600);
     assertThat(response.transcript().get(1).chars()).isEqualTo(1700);
     assertThat(response.flags()).contains(Flag.INPUT_TRUNCATED);
   }
@@ -385,16 +399,16 @@ class InboundTurnsTest {
 
     turns.handle(id, "hospital", "p2");
 
-    List<ModelRequest.InputItem> input = model.calls().getLast().input();
+    List<InputItem> input = model.calls().getLast().input();
     assertThat(input)
         .hasExactlyElementsOfTypes(
-            ModelRequest.AssistantText.class,
-            ModelRequest.UserText.class,
-            ModelRequest.AssistantText.class,
-            ModelRequest.UserText.class,
-            ModelRequest.UserText.class);
-    assertThat(input.get(1).text()).isEqualTo("save money");
-    assertThat(input.getLast().text()).contains("Agent turns used: 1 of");
+            InputItem.AssistantText.class,
+            InputItem.UserText.class,
+            InputItem.AssistantText.class,
+            InputItem.UserText.class,
+            InputItem.UserText.class);
+    assertThat(text(input.get(1))).isEqualTo("save money");
+    assertThat(text(input.getLast())).contains("Agent turns used: 1 of");
   }
 
   /** The scripted model throws when called with nothing queued, so these never reached it. */
@@ -785,12 +799,12 @@ class InboundTurnsTest {
 
       turns.handle(id, "too busy", "p1");
 
-      List<ModelRequest.InputItem> first = model.calls().get(0).input();
-      List<ModelRequest.InputItem> repair = model.calls().get(1).input();
+      List<InputItem> first = model.calls().get(0).input();
+      List<InputItem> repair = model.calls().get(1).input();
       assertThat(repair.subList(0, repair.size() - 1))
           .isEqualTo(first.subList(0, first.size() - 1));
-      assertThat(repair.getLast().text())
-          .startsWith(first.getLast().text())
+      assertThat(text(repair.getLast()))
+          .startsWith(text(first.getLast()))
           .contains("length:", "400");
     }
 
@@ -954,7 +968,10 @@ class InboundTurnsTest {
     }
   }
 
-  /** get_availability answered inside the model call, on the real calendar, for Lauren in VIC. */
+  /**
+   * The model's function calls answered round by round by the agent's loop, on the real calendar,
+   * for Lauren in VIC. Each scripted response is one round trip.
+   */
   @Nested
   class ToolLoop {
 
@@ -964,8 +981,12 @@ class InboundTurnsTest {
         "{\"date_from\":\"next monday\",\"date_to\":\"2026-07-27\",\"part_of_day\":\"ANY\"}";
     static final String OFFER = "I've got Monday at 9:00 or 9:30 AM. Would either of those work?";
     static final String SORRY = "Sorry, I couldn't check that. Which day suits you?";
+    static final String INVENTED = "How about 3:00 PM?";
 
-    /** The offered times pass the time check, and the next turn's context still lists them. */
+    /**
+     * Each round is traced before the call it asked for, the offered times pass the time check, and
+     * the next turn's context still lists them.
+     */
     @Test
     void availabilityThenDecision() {
       model
@@ -980,25 +1001,55 @@ class InboundTurnsTest {
       assertThat(response.lastOfferedSlots())
           .hasSize(6)
           .startsWith("Mon 27 Jul 9:00 AM AEST", "Mon 27 Jul 9:30 AM AEST");
+      assertThat(trace())
+          .containsSubsequence(
+              "MODEL_CALL decide INFO",
+              "TOOL_CALL get_availability PASS",
+              "MODEL_CALL decide INFO");
       assertThat(toolCallEvents())
           .singleElement()
           .satisfies(
-              event -> {
-                assertThat(event)
-                    .containsEntry("NAME", "get_availability")
-                    .containsEntry("OUTCOME", "PASS");
-                assertThat(event.get("PAYLOAD_JSON").toString())
-                    .contains("2026-07-27", "\"slot_count\":6", "\"latency_ms\":");
-              });
+              event ->
+                  assertThat(event.get("PAYLOAD_JSON").toString())
+                      .contains("2026-07-27", "\"slot_count\":6", "\"latency_ms\":"));
       assertThat(
               jdbc.queryForObject(
                   "select tool_calls_json from turn where conversation_id = ? and turn_no = 1",
                   String.class,
                   id))
           .contains("\"name\":\"get_availability\"", "Mon 27 Jul 9:00 AM AEST");
-      assertThat(model.calls().get(1).input().getLast().text())
+      assertThat(contextOf(model.calls().get(2)))
           .containsPattern(
               "Last offered slots: Mon 27 Jul 9:00 AM AEST \\[s[\\w-]+]; Mon 27 Jul 9:30 AM AEST \\[s");
+    }
+
+    /**
+     * The turn costs what its rounds cost, each priced and rounded on its own: 1,001 input tokens
+     * cost $0.001251 a round, so two cost $0.002502, not the $0.002503 their sum would.
+     */
+    @Test
+    void turnCostsTheSumOfItsRounds() {
+      ModelResponse.Usage odd = new ModelResponse.Usage(1001, 0, 0, 0);
+      ModelResponse.ToolCalls asked = Decisions.toolCall("get_availability", MONDAY);
+      model
+          .enqueue(new ModelResponse.ToolCalls(asked.replay(), odd, 5, "{}", "{}"))
+          .enqueue(
+              new ModelResponse.Decided(
+                  Decisions.decided(Decisions.engaged().reply(OFFER).build()).output(),
+                  null,
+                  odd,
+                  5,
+                  "{}",
+                  "{}"));
+
+      turns.handle(id, "monday works", "p1");
+
+      assertThat(
+              jdbc.queryForMap(
+                  "select tokens_in, cost_usd, latency_ms from turn where conversation_id = ?", id))
+          .containsEntry("TOKENS_IN", 2002)
+          .containsEntry("COST_USD", new BigDecimal("0.002502"))
+          .containsEntry("LATENCY_MS", 10);
     }
 
     /** The repair sees the offer this turn's tool call made, not the empty one it started with. */
@@ -1006,15 +1057,14 @@ class InboundTurnsTest {
     void repairReadsTheOfferAsItStandsNow() {
       model
           .callTool("get_availability", MONDAY)
-          .decide(Decisions.engaged().reply("How about 3:00 PM?").build())
+          .decide(Decisions.engaged().reply(INVENTED).build())
           .decide(Decisions.engaged().reply(OFFER).build());
 
       TurnResponse response = turns.handle(id, "monday works", "p1");
 
       assertThat(response.reply()).isEqualTo(OFFER);
-      assertThat(model.calls().get(0).input().getLast().text())
-          .contains("Last offered slots: none.");
-      assertThat(model.calls().get(1).input().getLast().text())
+      assertThat(contextOf(model.calls().get(0))).contains("Last offered slots: none.");
+      assertThat(contextOf(model.calls().get(2)))
           .contains("Last offered slots: Mon 27 Jul 9:00 AM AEST [s", "time-mention:");
     }
 
@@ -1028,11 +1078,25 @@ class InboundTurnsTest {
 
       turns.handle(id, "ok thanks", "p2");
 
-      assertThat(model.calls().get(0).tools().definitions()).hasSize(2);
-      assertThat(model.calls().get(1).tools()).isEqualTo(ModelRequest.Tools.NONE);
+      assertThat(model.calls().get(0).tools()).hasSize(2);
+      assertThat(model.calls().get(1).tools()).isEmpty();
     }
 
-    /** Four rounds are answered, as anna.agent.max-tool-rounds says; the fifth call is not. */
+    /** A function call after an end is never answered, offered tools or not. */
+    @Test
+    void toolCallAfterAnEndIsNeverAnswered() {
+      model
+          .decide(Decisions.engaged().ends(EndReason.DECLINED).noReply().build())
+          .callTool("get_availability", MONDAY);
+      turns.handle(id, "no thanks", "p1");
+
+      turns.handle(id, "actually, monday?", "p2");
+
+      assertThat(toolCallEvents()).isEmpty();
+      assertThat(model.calls()).hasSize(2);
+    }
+
+    /** Four rounds are answered, as anna.agent.max-tool-rounds says; the fifth is not. */
     @Test
     void loopStopsAtCap() {
       for (int round = 0; round < 5; round++) {
@@ -1045,6 +1109,7 @@ class InboundTurnsTest {
       assertThat(response.needsHuman()).isTrue();
       assertThat(response.handoffReason()).isEqualTo(HandoffReason.ERROR);
       assertThat(toolCallEvents()).hasSize(4);
+      assertThat(model.calls()).hasSize(5);
       assertThat(turnStatus()).isEqualTo("ERROR");
       assertThat(
               jdbc.queryForObject(
@@ -1055,60 +1120,423 @@ class InboundTurnsTest {
           .contains("\"code\":\"TOOL_ROUNDS\"");
     }
 
-    /** The model reads a compact code; the second error in a row asks for a human. */
+    /**
+     * The cap is the turn's: three rounds for the decision leave one for the repair, whose second
+     * tool call goes unanswered, so the repair fails and the fallback goes.
+     */
     @Test
-    void secondErrorInARowHandsOff() {
+    void repairDrawsOnTheSameToolRounds() {
+      model
+          .callTool("get_availability", MONDAY)
+          .callTool("get_availability", MONDAY)
+          .callTool("get_availability", MONDAY)
+          .decide(Decisions.engaged().reply(INVENTED).build())
+          .callTool("get_availability", MONDAY)
+          .callTool("get_availability", MONDAY);
+
+      TurnResponse response = turns.handle(id, "monday works", "p1");
+
+      assertThat(toolCallEvents()).hasSize(4);
+      assertThat(model.calls()).hasSize(6);
+      assertThat(response.reply()).isEqualTo(rendered(Template.FALLBACK));
+      assertThat(turnStatus()).isEqualTo("FALLBACK");
+      assertThat(
+              jdbc.queryForList(
+                  "select payload_json from trace_event where conversation_id = ?"
+                      + " and type = 'MODEL_CALL' order by seq",
+                  String.class,
+                  id))
+          .extracting(payload -> payload.replaceAll(".*\"round\":(\\d+).*", "$1"))
+          .as("the repair's rounds follow the decision's")
+          .containsExactly("1", "2", "3", "4", "5", "6");
+    }
+
+    /**
+     * A date the model got wrong goes back to it as a code, every time: its own mistakes add to no
+     * handoff count, and the tool rounds bound them.
+     */
+    @Test
+    void modelMistakesGoBackWithoutCounting() {
       model
           .callTool("get_availability", NOT_A_DATE)
-          .decide(Decisions.engaged().reply(SORRY).build());
-      TurnResponse first = turns.handle(id, "next monday?", "p1");
-      model
+          .decide(Decisions.engaged().reply(SORRY).build())
           .callTool("get_availability", NOT_A_DATE)
           .decide(Decisions.engaged().reply(SORRY).build());
+      turns.handle(id, "next monday?", "p1");
 
       TurnResponse second = turns.handle(id, "tuesday then?", "p2");
 
-      assertThat(first.needsHuman()).isFalse();
-      assertThat(
-              jdbc.queryForObject(
-                  "select payload_json from trace_event where conversation_id = ?"
-                      + " and turn_no = 1 and type = 'STATE_DIFF'",
-                  String.class,
-                  id))
-          .contains("\"upstream_errors\":{\"from\":0,\"to\":1}");
+      assertThat(second.needsHuman()).isFalse();
+      assertThat(second.reply()).isEqualTo(SORRY);
+      assertThat(rows.findById(id).orElseThrow().upstreamErrors).isZero();
       assertThat(toolCallEvents())
           .extracting(event -> event.get("OUTCOME"))
           .containsExactly("BLOCK", "BLOCK");
       assertThat(toolCallEvents().getFirst().get("PAYLOAD_JSON").toString())
           .contains("\\\"status\\\":\\\"ERROR\\\"", "\\\"code\\\":\\\"BAD_DATE\\\"");
+    }
+  }
+
+  /**
+   * book_call through the whole turn, on the real calendar and the H2 bookings: Lauren is offered
+   * Monday's midday slots, then picks noon.
+   */
+  @Nested
+  class BookCall {
+
+    static final String MIDDAY =
+        "{\"date_from\":\"2026-07-27\",\"date_to\":\"2026-07-27\",\"part_of_day\":\"MIDDAY\"}";
+    static final String NOON = "Mon 27 Jul 12:00 PM AEST";
+    static final String TUESDAY = "Tue 28 Jul 9:00 AM AEST";
+    static final String TUESDAY_CONFIRMATION =
+        "Booked, you're in for Tue 28 Jul at 9:00 AM AEST. Your advisor will call you then.";
+    static final String SORRY = "Sorry, that time has gone. Shall I find another?";
+    static final String OFFER = "I've got Monday at 11:00 AM, 11:30 AM or 12:00 PM. Which suits?";
+    static final String CONFIRMATION =
+        "Booked, you're in for Mon 27 Jul at 12:00 PM AEST. Your advisor will call you then,"
+            + " it takes about 15 mins.";
+
+    @Test
+    void happyPathBooks() {
+      TurnResponse booked = bookNoon();
+
+      assertThat(booked.reply()).isEqualTo(CONFIRMATION);
+      assertThat(booked.goalMet()).isTrue();
+      assertThat(booked.stage()).isEqualTo(Stage.BOOKED);
+      assertThat(booked.endReason()).isEqualTo(EndReason.BOOKED);
+      assertThat(booked.conversationEnded()).isTrue();
+      assertThat(booked.needsHuman()).isFalse();
+      assertThat(booked.booking().startUtc()).hasToString("2026-07-27T02:00:00Z");
+      assertThat(booked.booking().localLabel()).isEqualTo(NOON);
+      assertThat(jdbc.queryForObject("select count(*) from booking", Integer.class)).isOne();
+      assertThat(trace()).noneMatch(event -> event.endsWith("OVERRIDE"));
+    }
+
+    /** The confirmation is the goal's reply, not a close: one closing reply may follow it. */
+    @Test
+    void confirmationLeavesRoomForOneClosingReply() {
+      bookNoon();
+      model
+          .decide(Decisions.engaged().intent(LeadIntent.PLEASANTRY).reply("Talk Monday.").build())
+          .decide(Decisions.engaged().intent(LeadIntent.PLEASANTRY).reply("Bye.").build());
+
+      TurnResponse thanks = turns.handle(id, "thanks", "p3");
+      TurnResponse ok = turns.handle(id, "ok", "p4");
+
+      assertThat(thanks.reply()).isEqualTo("Talk Monday.");
+      assertThat(ok.reply()).isNull();
+      assertThat(ok.flags()).contains(Flag.LOOP_SUPPRESSED);
+    }
+
+    /**
+     * A wrong id goes back to the model as a code, which then books an offered slot; the booking
+     * resets the error streak.
+     */
+    @Test
+    void unknownSlotGoesBackToTheModel() {
+      offerMidday();
+      model
+          .callTool("book_call", slotArgs("sNOPE"))
+          .callTool("book_call", slotArgs(noonId()))
+          .decide(confirmation().build());
+
+      TurnResponse booked = turns.handle(id, "12", "p2");
+
+      assertThat(text(model.calls().get(3).input().getLast())).contains("UNKNOWN_SLOT");
+      assertThat(booked.goalMet()).isTrue();
+      assertThat(rows.findById(id).orElseThrow().upstreamErrors).isZero();
+      assertThat(jdbc.queryForObject("select count(*) from booking", Integer.class)).isOne();
+    }
+
+    /** The repair after a booking is told of it, so it confirms rather than offering again. */
+    @Test
+    void repairSeesTheBookingMadeThisTurn() {
+      offerMidday();
+      model
+          .callTool("book_call", slotArgs(noonId()))
+          .decide(confirmation().reply(CONFIRMATION + " Anything else?").build())
+          .decide(confirmation().build());
+
+      TurnResponse booked = turns.handle(id, "12", "p2");
+
+      assertThat(contextOf(model.calls().get(4))).contains("Booking: " + NOON + ".");
+      assertThat(booked.reply()).isEqualTo(CONFIRMATION);
+    }
+
+    /**
+     * The calendar booked but no row records it: a human checks what exists, the model is told not
+     * to retry, and nothing counts as booked.
+     */
+    @Test
+    void bookingNoRowRecordsHandsOff() {
+      offerMidday();
+      model
+          .callTool("book_call", slotArgs(noonId()))
+          .decide(
+              Decisions.engaged().reply("Is it ok if the team confirms a time with you?").build());
+
+      TurnResponse response = whileBookingInsertsFail(() -> turns.handle(id, "12", "p2"));
+
+      assertThat(text(model.calls().get(3).input().getLast())).contains("UNKNOWN_BOOKING");
+      assertThat(response.needsHuman()).isTrue();
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.ERROR);
+      assertThat(response.goalMet()).isFalse();
+      assertThat(response.conversationEnded()).isFalse();
+    }
+
+    /**
+     * A turn that saved its booking and then died is run again: the row is the truth, so the turn
+     * starts BOOKED, the model's confirmation goes out as the closing reply with no tool call and
+     * no fallback, and the booked time passes the time check though it is not in the offer.
+     */
+    @Test
+    void savedBookingWhoseTurnDiedEndsBookedOnTheRerun() {
+      bookingSavedByATurnThatDied();
+      model.decide(confirmation().reply(TUESDAY_CONFIRMATION).build());
+
+      TurnResponse rerun = turns.handle(id, "12", "p2");
+
+      assertThat(rerun.reply()).isEqualTo(TUESDAY_CONFIRMATION);
+      assertThat(rerun.goalMet()).isTrue();
+      assertThat(rerun.endReason()).isEqualTo(EndReason.BOOKED);
+      assertThat(rerun.booking().localLabel()).isEqualTo(TUESDAY);
+      assertThat(model.calls().getLast().tools()).isEmpty();
+    }
+
+    @Test
+    void stopAfterABookingWhoseTurnDiedKeepsItForReview() {
+      bookingSavedByATurnThatDied();
+
+      TurnResponse stopped = turns.handle(id, "STOP", "p2");
+
+      assertThat(stopped.unsubscribed()).isTrue();
+      assertThat(stopped.handoffReason()).isEqualTo(HandoffReason.BOOKING_REVIEW);
+      assertThat(stopped.booking().localLabel()).isEqualTo(TUESDAY);
+    }
+
+    @Test
+    void cancelAfterABookingWhoseTurnDiedIsABookingChange() {
+      bookingSavedByATurnThatDied();
+
+      TurnResponse cancelled = turns.handle(id, "CANCEL", "p2");
+
+      assertThat(cancelled.reply()).isEqualTo(rendered(Template.BOOKING_CHANGE_HANDOFF));
+      assertThat(cancelled.handoffReason()).isEqualTo(HandoffReason.RESCHEDULE);
+      assertThat(cancelled.unsubscribed()).isFalse();
+    }
+
+    /**
+     * The decision ends the conversation and its reply needs a repair: the repair is asked with no
+     * tools, so nothing can be booked after the end.
+     */
+    @Test
+    void repairAfterTheDecisionEndedOffersNoTools() {
+      offerMidday();
+      model
+          .decide(
+              Decisions.engaged()
+                  .ends(EndReason.DECLINED)
+                  .reply("No worries. Shall I check back later?")
+                  .build())
+          .decide(Decisions.engaged().reply("No worries, take care.").build());
+
+      TurnResponse declined = turns.handle(id, "no thanks", "p2");
+
+      assertThat(declined.reply()).isEqualTo("No worries, take care.");
+      assertThat(model.calls().get(2).tools()).hasSize(2);
+      assertThat(model.calls().get(3).tools()).isEmpty();
+    }
+
+    @Test
+    void stopAfterBookingKeepsTheBookingForReview() {
+      bookNoon();
+
+      TurnResponse stopped = turns.handle(id, "STOP", "p3");
+
+      assertThat(stopped.reply()).isEqualTo(rendered(Template.UNSUBSCRIBE_CONFIRMATION));
+      assertThat(stopped.unsubscribed()).isTrue();
+      assertThat(stopped.needsHuman()).isTrue();
+      assertThat(stopped.handoffReason()).isEqualTo(HandoffReason.BOOKING_REVIEW);
+      assertThat(stopped.booking().localLabel()).isEqualTo(NOON);
+    }
+
+    @Test
+    void moveItAfterBookingHandsOff() {
+      bookNoon();
+      model.decide(Decisions.engaged().intent(LeadIntent.RESCHEDULE).reply("Sure.").build());
+
+      TurnResponse moved = turns.handle(id, "can we move it to Tuesday", "p3");
+
+      assertThat(moved.reply()).isEqualTo(rendered(Template.BOOKING_CHANGE_HANDOFF));
+      assertThat(moved.handoffReason()).isEqualTo(HandoffReason.RESCHEDULE);
+      assertThat(moved.endReason()).isEqualTo(EndReason.BOOKED);
+      assertThat(moved.booking().localLabel()).isEqualTo(NOON);
+    }
+
+    /** The change was acknowledged once; CANCEL again is not a second SMS. */
+    @Test
+    void repeatedLoneCancelIsSuppressed() {
+      bookNoon();
+      turns.handle(id, "CANCEL", "p3");
+
+      TurnResponse again = turns.handle(id, "CANCEL", "p4");
+
+      assertThat(again.reply()).isNull();
+      assertThat(again.flags()).contains(Flag.LOOP_SUPPRESSED);
+      assertThat(again.unsubscribed()).isFalse();
+    }
+
+    /**
+     * The calendar refuses the stale noon slot twice in a row, across turns: the second refusal
+     * asks for a human, and the model is still told both times.
+     */
+    @Test
+    void secondCalendarFailureInARowHandsOff() {
+      offerMidday();
+      clock.fixAt(Instant.parse("2026-07-27T02:30:00Z"));
+      model
+          .callTool("book_call", slotArgs(noonId()))
+          .decide(Decisions.engaged().reply(SORRY).build())
+          .callTool("book_call", slotArgs(noonId()))
+          .decide(Decisions.engaged().reply(SORRY).build());
+
+      TurnResponse first = turns.handle(id, "12", "p2");
+      TurnResponse second = turns.handle(id, "12 please", "p3");
+
+      assertThat(first.needsHuman()).isFalse();
+      assertThat(text(model.calls().get(3).input().getLast())).contains("NOT_BOOKED");
       assertThat(second.needsHuman()).isTrue();
       assertThat(second.handoffReason()).isEqualTo(HandoffReason.ERROR);
       assertThat(second.conversationEnded()).isFalse();
       assertThat(second.reply()).isEqualTo(SORRY);
     }
 
+    /**
+     * An answer between two calendar failures resets the count: noon is refused, fresh times are
+     * found, and when the clock has passed those too the next refusal is only the first in a row.
+     */
     @Test
-    void answerBetweenErrorsResetsTheStreak() {
+    void answerBetweenCalendarFailuresResetsTheStreak() {
+      offerMidday();
+      clock.fixAt(Instant.parse("2026-07-27T02:30:00Z"));
       model
-          .callTool("get_availability", NOT_A_DATE)
-          .decide(Decisions.engaged().reply(SORRY).build())
-          .callTool("get_availability", MONDAY)
-          .decide(Decisions.engaged().reply(OFFER).build())
-          .callTool("get_availability", NOT_A_DATE)
+          .callTool("book_call", slotArgs(noonId()))
+          .callTool("get_availability", MIDDAY)
           .decide(Decisions.engaged().reply(SORRY).build());
-      turns.handle(id, "next monday?", "p1");
-      turns.handle(id, "monday the 27th", "p2");
+      turns.handle(id, "12", "p2");
+      clock.fixAt(Instant.parse("2026-07-27T04:00:00Z"));
+      model
+          .callTool("book_call", slotArgs(slotIdOf("Mon 27 Jul 1:30 PM AEST")))
+          .decide(Decisions.engaged().reply(SORRY).build());
 
-      TurnResponse third = turns.handle(id, "or next monday?", "p3");
+      TurnResponse refusedAgain = turns.handle(id, "1:30 then", "p3");
 
-      assertThat(third.needsHuman()).isFalse();
+      assertThat(toolCallEvents())
+          .extracting(event -> event.get("NAME") + " " + event.get("OUTCOME"))
+          .endsWith("book_call BLOCK", "get_availability PASS", "book_call BLOCK");
+      assertThat(refusedAgain.needsHuman()).isFalse();
     }
 
-    private List<Map<String, Object>> toolCallEvents() {
-      return jdbc.queryForList(
-          "select name, outcome, payload_json from trace_event where conversation_id = ?"
-              + " and type = 'TOOL_CALL' order by turn_no, seq",
-          id);
+    /** CANCEL after a booking means the call: no model call, no opt-out. */
+    @Test
+    void loneCancelAfterBookingSkipsTheModel() {
+      bookNoon();
+      int callsBefore = model.calls().size();
+
+      TurnResponse cancelled = turns.handle(id, "CANCEL", "p3");
+
+      assertThat(model.calls()).hasSize(callsBefore);
+      assertThat(cancelled.reply()).isEqualTo(rendered(Template.BOOKING_CHANGE_HANDOFF));
+      assertThat(cancelled.handoffReason()).isEqualTo(HandoffReason.RESCHEDULE);
+      assertThat(cancelled.unsubscribed()).isFalse();
+      assertThat(cancelled.booking().localLabel()).isEqualTo(NOON);
+    }
+
+    @Test
+    void loneCancelWithoutBookingUnsubscribes() {
+      TurnResponse cancelled = turns.handle(id, "CANCEL", "p1");
+
+      assertThat(cancelled.unsubscribed()).isTrue();
+      assertThat(cancelled.reply()).isEqualTo(rendered(Template.UNSUBSCRIBE_CONFIRMATION));
+    }
+
+    @Test
+    void viewShowsTheBooking() throws Exception {
+      String bookingId = bookNoon().booking().id();
+
+      MockMvcBuilders.webAppContextSetup(context)
+          .build()
+          .perform(get("/api/conversations/" + id))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.booking.id").value(bookingId))
+          .andExpect(jsonPath("$.booking.start_utc").value("2026-07-27T02:00:00Z"))
+          .andExpect(jsonPath("$.booking.local_label").value(NOON));
+    }
+
+    /**
+     * Turn 1 offers Monday midday; a turn that booked Tuesday 9:00 then died after saving the row,
+     * leaving the conversation as it was before it.
+     */
+    private void bookingSavedByATurnThatDied() {
+      offerMidday();
+      bookings.save(
+          new Booking(
+              "cal-saved",
+              id,
+              "sTuesday",
+              Instant.parse("2026-07-27T23:00:00Z"),
+              TUESDAY,
+              "Australia/Melbourne",
+              Instant.parse(NOW)));
+    }
+
+    /** {@code turn} while every booking insert fails, as when the database refuses the row. */
+    private TurnResponse whileBookingInsertsFail(Supplier<TurnResponse> turn) {
+      jdbc.execute("alter table booking add constraint booking_refused check (id is null)");
+      try {
+        return turn.get();
+      } finally {
+        jdbc.execute("alter table booking drop constraint booking_refused");
+      }
+    }
+
+    /** Turn 1 offers Monday midday; turn 2 books noon and confirms. */
+    private TurnResponse bookNoon() {
+      offerMidday();
+      model.callTool("book_call", slotArgs(noonId())).decide(confirmation().build());
+      return turns.handle(id, "12", "p2");
+    }
+
+    private void offerMidday() {
+      model
+          .callTool("get_availability", MIDDAY)
+          .decide(Decisions.engaged().stage(Stage.OFFER_TIMES).reply(OFFER).build());
+      turns.handle(id, "monday lunchtime?", "p1");
+    }
+
+    /** The decision the prompt asks for once book_call returned BOOKED. */
+    private Decisions.Builder confirmation() {
+      return Decisions.engaged()
+          .stage(Stage.BOOKED)
+          .goalMet()
+          .ends(EndReason.BOOKED)
+          .reply(CONFIRMATION);
+    }
+
+    private String noonId() {
+      return slotIdOf(NOON);
+    }
+
+    private String slotIdOf(String label) {
+      return rows.findById(id).orElseThrow().lastOfferedSlots().stream()
+          .filter(slot -> slot.label().equals(label))
+          .findFirst()
+          .orElseThrow()
+          .slotId();
+    }
+
+    private static String slotArgs(String slotId) {
+      return "{\"slot_id\":\"" + slotId + "\"}";
     }
   }
 
@@ -1194,6 +1622,26 @@ class InboundTurnsTest {
     assertThat(conversations.viewWithHealth(id).transcript().get(4).text()).isEqualTo(flaggedReply);
   }
 
+  /** The text of a transcript or context item. */
+  private static String text(InputItem item) {
+    return switch (item) {
+      case InputItem.UserText user -> user.text();
+      case InputItem.AssistantText anna -> anna.text();
+      case InputItem.FunctionCall call -> call.argumentsJson();
+      case InputItem.FunctionOutput output -> output.outputJson();
+      case InputItem.Opaque _ -> throw new AssertionError("no text in a replayed reasoning item");
+    };
+  }
+
+  /** The turn's context in {@code request}: its last user item, which tool rounds follow. */
+  private static String contextOf(ModelRequest request) {
+    return request.input().stream()
+        .filter(InputItem.UserText.class::isInstance)
+        .map(InboundTurnsTest::text)
+        .reduce((first, last) -> last)
+        .orElseThrow();
+  }
+
   private String rendered(Template template) {
     return prompts.active().templates().render(template, leads.findById("lauren").orElseThrow());
   }
@@ -1220,6 +1668,14 @@ class InboundTurnsTest {
         "select type || ' ' || name || ' ' || outcome from trace_event where conversation_id = ?"
             + " order by turn_no, seq",
         String.class,
+        id);
+  }
+
+  /** The conversation's TOOL_CALL events in order, each with its name, outcome and payload. */
+  private List<Map<String, Object>> toolCallEvents() {
+    return jdbc.queryForList(
+        "select name, outcome, payload_json from trace_event where conversation_id = ?"
+            + " and type = 'TOOL_CALL' order by turn_no, seq",
         id);
   }
 

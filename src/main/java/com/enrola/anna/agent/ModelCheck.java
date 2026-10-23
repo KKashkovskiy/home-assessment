@@ -31,11 +31,15 @@ public class ModelCheck implements ApplicationRunner {
   public void run(ApplicationArguments args) {
     switch (client.call(ModelRequest.ping(agent.model()))) {
       case ModelResponse.Decided _ -> log.info("model check ok: {}", agent.model());
-      case ModelResponse.Failed failed when agent.strictModelCheck() ->
-          throw new IllegalStateException(
-              "model check failed for " + agent.model() + ": " + failed.code());
-      case ModelResponse.Failed failed ->
-          log.warn("model check failed for {}: {}", agent.model(), failed.code());
+      case ModelResponse.Failed failed -> failed(failed.code().name());
+      case ModelResponse.ToolCalls _ -> failed("called a tool none was offered");
     }
+  }
+
+  private void failed(String why) {
+    if (agent.strictModelCheck()) {
+      throw new IllegalStateException("model check failed for " + agent.model() + ": " + why);
+    }
+    log.warn("model check failed for {}: {}", agent.model(), why);
   }
 }

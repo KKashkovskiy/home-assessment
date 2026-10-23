@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.HandoffReason;
+import com.enrola.anna.agent.Stage;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -12,8 +13,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 /**
- * Terminal precedence, handoff stickiness, safety after an end and the closing-reply rule, from a
- * fresh, open conversation.
+ * Terminal precedence, handoff stickiness, the goal, safety after an end and the closing-reply
+ * rule, from a fresh, open conversation.
  */
 class StateRulesTest {
 
@@ -26,6 +27,7 @@ class StateRulesTest {
     Conversation conversation = new Conversation();
     conversation.id = "c-test";
     conversation.status = ConversationStatus.ACTIVE;
+    conversation.stage = Stage.OFFER_TIMES;
     conversation.endReason = EndReason.NONE;
     conversation.handoffReason = HandoffReason.NONE;
     conversation.setEndReasonHistory(List.of());
@@ -106,6 +108,50 @@ class StateRulesTest {
 
     assertThat(conversation.needsHuman).isFalse();
     assertThat(conversation.handoffReason).isEqualTo(HandoffReason.NONE);
+  }
+
+  @Test
+  void bookedSetsGoalStageAndEnd() {
+    StateRules.booked(conversation, T1);
+
+    assertThat(conversation.goalMet).isTrue();
+    assertThat(conversation.stage).isEqualTo(Stage.BOOKED);
+    assertThat(conversation.endReason).isEqualTo(EndReason.BOOKED);
+    assertThat(conversation.status).isEqualTo(ConversationStatus.BOOKED);
+    assertThat(conversation.endReasonHistory())
+        .containsExactly(new EndReasonEntry(EndReason.BOOKED, T1));
+  }
+
+  @Test
+  void bookedIsNoOpAfterEnd() {
+    StateRules.end(conversation, EndReason.DECLINED, T1);
+
+    StateRules.booked(conversation, T2);
+
+    assertThat(conversation.goalMet).isFalse();
+    assertThat(conversation.stage).isEqualTo(Stage.OFFER_TIMES);
+    assertThat(conversation.endReason).isEqualTo(EndReason.DECLINED);
+  }
+
+  /** The booking stays and a human cancels the call: the handoff is set before the opt-out. */
+  @ParameterizedTest
+  @CsvSource({"UNSUBSCRIBED", "ABUSIVE"})
+  void optOutOrAbuseAfterBookingAddsReview(EndReason reason) {
+    StateRules.booked(conversation, T1);
+
+    StateRules.end(conversation, reason, T2);
+
+    assertThat(conversation.endReason).isEqualTo(reason);
+    assertThat(conversation.goalMet).isTrue();
+    assertThat(conversation.needsHuman).isTrue();
+    assertThat(conversation.handoffReason).isEqualTo(HandoffReason.BOOKING_REVIEW);
+  }
+
+  @Test
+  void optOutWithoutBookingNeedsNoReview() {
+    StateRules.end(conversation, EndReason.UNSUBSCRIBED, T1);
+
+    assertThat(conversation.needsHuman).isFalse();
   }
 
   @Test

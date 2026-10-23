@@ -37,15 +37,13 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The Responses API over openai-java, stateless: {@code store} false, no previous response id, the
- * whole transcript supplied by the caller on every call, the output held to a strict JSON schema.
- * Exists only when {@code OPENAI_API_KEY} is set, over the shared {@link OpenAiClientConfig}
- * client; the key travels as a header and is never part of the recorded request JSON. The SDK
- * retries timeouts and 5xx; whatever is left after that becomes a {@link ModelResponse.Failed}.
- *
- * <p>The request's function tools are offered strict, one call at a time, and the calls are
- * answered here through the request's {@link ToolExecutor}, round after round, until the model
- * answers without one or the rounds run out.
+ * The Responses API over openai-java, one round trip per call and stateless: {@code store} false,
+ * no previous response id, the whole input supplied by the caller every time, the output held to a
+ * strict JSON schema. Function definitions are offered strict, one call at a time, and the calls
+ * the model makes come back as {@link ModelResponse.ToolCalls} for the caller to answer. Exists
+ * only when {@code OPENAI_API_KEY} is set, over the shared {@link OpenAiClientConfig} client; the
+ * key travels as a header and is never part of the recorded request JSON. The SDK retries timeouts
+ * and 5xx; whatever is left after that becomes a {@link ModelResponse.Failed}.
  */
 @Component
 @ConditionalOnExpression(OpenAiClientConfig.WHEN_KEY_SET)
@@ -62,124 +60,59 @@ public final class OpenAiModelClient implements ModelClient {
 
   @Override
   public ModelResponse call(ModelRequest request) {
-    Rounds rounds = new Rounds(request);
-    Round round = rounds.send();
-    for (int answered = 0;
-        round instanceof Round.CallsTools calling && answered < request.tools().maxRounds();
-        answered++) {
-      rounds.answer(calling.response());
-      round = rounds.send();
+    long start = System.nanoTime();
+    ResponseCreateParams params = params(request);
+    String rawRequest = sdkJson(params._body());
+    Response response;
+    try {
+      response = client.responses().create(params);
+    } catch (OpenAIException e) {
+      return failure(e, rawRequest, millisSince(start));
     }
-    return switch (round) {
-      case Round.Finished finished -> finished.response();
-      case Round.CallsTools calling ->
-          calling
-              .trip()
+    RoundTrip trip =
+        new RoundTrip(usage(response), millisSince(start), rawRequest, sdkJson(response));
+    return response.output().stream().anyMatch(ResponseOutputItem::isFunctionCall)
+        ? trip.toolCalls(replay(response))
+        : parse(response, trip);
+  }
+
+  /** What is left of an SDK error after its retries; an HTTP error's body is valid JSON. */
+  private static ModelResponse.Failed failure(
+      OpenAIException error, String rawRequest, long latencyMs) {
+    return switch (error) {
+      case OpenAIServiceException http ->
+          new RoundTrip(Usage.ZERO, latencyMs, rawRequest, sdkJson(http.body()))
               .failed(
-                  Failure.TOOL_ROUNDS,
-                  "still calling tools after " + request.tools().maxRounds() + " answered rounds");
+                  http.statusCode() >= 500 ? Failure.HTTP_5XX : Failure.HTTP_4XX,
+                  "status " + http.statusCode());
+      case OpenAIIoException io ->
+          new RoundTrip(Usage.ZERO, latencyMs, rawRequest, null)
+              .failed(Failure.TIMEOUT, io.getClass().getSimpleName());
+      default ->
+          new RoundTrip(Usage.ZERO, latencyMs, rawRequest, null)
+              .failed(Failure.SDK, error.getClass().getSimpleName());
     };
   }
 
-  /** How one round ended: the call's response, or function calls that wait for answers. */
-  private sealed interface Round {
-
-    record Finished(ModelResponse response) implements Round {}
-
-    /** {@code trip} is the call so far, for a failure if the calls are never answered. */
-    record CallsTools(Response response, RoundTrip trip) implements Round {}
-  }
-
   /**
-   * One call's rounds. Each round sends the transcript and every earlier round's function calls
-   * with their answers; with nothing stored server-side, the reasoning that led to a call goes back
-   * too, as the encrypted content the request asked for. Usage and latency add up over the rounds.
+   * The SDK parameters. With tools offered, the reasoning comes back encrypted, so a round that
+   * calls one can be replayed with nothing stored.
    */
-  private final class Rounds {
-
-    private final ModelRequest request;
-    private final List<ResponseInputItem> input;
-    private final List<ToolCall> answered = new ArrayList<>();
-    private final long start = System.nanoTime();
-    private Usage used = Usage.ZERO;
-
-    Rounds(ModelRequest request) {
-      this.request = request;
-      this.input =
-          new ArrayList<>(request.input().stream().map(OpenAiModelClient::message).toList());
-    }
-
-    /** Sends the input so far; a failed round finishes the call. */
-    Round send() {
-      ResponseCreateParams params = params(request, input);
-      String rawRequest = sdkJson(params._body());
-      Response response;
-      try {
-        response = client.responses().create(params);
-      } catch (OpenAIException e) {
-        return new Round.Finished(failure(e, rawRequest));
-      }
-      used = used.plus(usage(response));
-      RoundTrip trip = trip(rawRequest, sdkJson(response));
-      return functionCalls(response).isEmpty()
-          ? new Round.Finished(parse(response, trip))
-          : new Round.CallsTools(response, trip);
-    }
-
-    /**
-     * Answers {@code response}'s function calls and adds them, and what led to them, to the input.
-     */
-    void answer(Response response) {
-      input.addAll(replayable(response));
-      for (ResponseFunctionToolCall call : functionCalls(response)) {
-        String result = request.tools().executor().execute(call.name(), call.arguments());
-        answered.add(new ToolCall(call.name(), call.arguments(), result));
-        input.add(
-            ResponseInputItem.ofFunctionCallOutput(
-                ResponseInputItem.FunctionCallOutput.builder()
-                    .callId(call.callId())
-                    .output(result)
-                    .build()));
-      }
-    }
-
-    /** What is left of an SDK error after its retries; an HTTP error's body is valid JSON. */
-    private ModelResponse.Failed failure(OpenAIException error, String rawRequest) {
-      return switch (error) {
-        case OpenAIServiceException http ->
-            trip(rawRequest, sdkJson(http.body()))
-                .failed(
-                    http.statusCode() >= 500 ? Failure.HTTP_5XX : Failure.HTTP_4XX,
-                    "status " + http.statusCode());
-        case OpenAIIoException io ->
-            trip(rawRequest, null).failed(Failure.TIMEOUT, io.getClass().getSimpleName());
-        default -> trip(rawRequest, null).failed(Failure.SDK, error.getClass().getSimpleName());
-      };
-    }
-
-    private RoundTrip trip(String rawRequest, String rawResponse) {
-      return new RoundTrip(
-          used, millisSince(start), rawRequest, rawResponse, List.copyOf(answered));
-    }
-  }
-
-  /** The SDK parameters for one round, {@code input} being everything the model is to see. */
-  private static ResponseCreateParams params(ModelRequest request, List<ResponseInputItem> input) {
+  private static ResponseCreateParams params(ModelRequest request) {
     ResponseCreateParams.Builder params =
         ResponseCreateParams.builder()
             .model(request.model())
             .instructions(request.instructions())
             .store(false)
             .maxOutputTokens(request.maxOutputTokens())
-            .inputOfResponse(input)
+            .inputOfResponse(request.input().stream().map(OpenAiModelClient::sdkItem).toList())
             .text(strictJsonSchema(request.schemaName(), request.schema()));
     if (request.reasoningEffort() != null) {
       params.reasoning(reasoning(request.reasoningEffort(), request.reasoningSummary()));
     }
-    List<JsonNode> tools = request.tools().definitions();
-    if (!tools.isEmpty()) {
+    if (!request.tools().isEmpty()) {
       params.parallelToolCalls(false).addInclude(ResponseIncludable.REASONING_ENCRYPTED_CONTENT);
-      tools.forEach(definition -> params.addTool(functionTool(definition)));
+      request.tools().forEach(definition -> params.addTool(functionTool(definition)));
     }
     return params.build();
   }
@@ -228,44 +161,47 @@ public final class OpenAiModelClient implements ModelClient {
                 });
   }
 
-  private static List<ResponseFunctionToolCall> functionCalls(Response response) {
-    return response.output().stream()
-        .filter(ResponseOutputItem::isFunctionCall)
-        .map(ResponseOutputItem::asFunctionCall)
-        .toList();
-  }
-
   /**
-   * What the next round must see again of a round that called tools: its reasoning and its function
-   * calls, each call rebuilt without the item id, which names nothing when nothing is stored.
+   * What the next round must see again of a round that called tools: its reasoning, unchanged, and
+   * its function calls, each without the item id, which names nothing when nothing is stored.
    */
-  private static List<ResponseInputItem> replayable(Response response) {
-    List<ResponseInputItem> items = new ArrayList<>();
+  private static List<InputItem> replay(Response response) {
+    List<InputItem> items = new ArrayList<>();
     for (ResponseOutputItem item : response.output()) {
       if (item.isReasoning()) {
-        items.add(ResponseInputItem.ofReasoning(item.asReasoning()));
+        items.add(new InputItem.Opaque(ResponseInputItem.ofReasoning(item.asReasoning())));
       } else if (item.isFunctionCall()) {
         ResponseFunctionToolCall call = item.asFunctionCall();
-        items.add(
-            ResponseInputItem.ofFunctionCall(
-                ResponseFunctionToolCall.builder()
-                    .callId(call.callId())
-                    .name(call.name())
-                    .arguments(call.arguments())
-                    .build()));
+        items.add(new InputItem.FunctionCall(call.callId(), call.name(), call.arguments()));
       }
     }
     return items;
   }
 
-  private static ResponseInputItem message(ModelRequest.InputItem item) {
-    EasyInputMessage.Role role =
-        switch (item) {
-          case ModelRequest.UserText _ -> EasyInputMessage.Role.USER;
-          case ModelRequest.AssistantText _ -> EasyInputMessage.Role.ASSISTANT;
-        };
+  private static ResponseInputItem sdkItem(InputItem item) {
+    return switch (item) {
+      case InputItem.UserText user -> message(EasyInputMessage.Role.USER, user.text());
+      case InputItem.AssistantText anna -> message(EasyInputMessage.Role.ASSISTANT, anna.text());
+      case InputItem.FunctionCall call ->
+          ResponseInputItem.ofFunctionCall(
+              ResponseFunctionToolCall.builder()
+                  .callId(call.callId())
+                  .name(call.name())
+                  .arguments(call.argumentsJson())
+                  .build());
+      case InputItem.FunctionOutput output ->
+          ResponseInputItem.ofFunctionCallOutput(
+              ResponseInputItem.FunctionCallOutput.builder()
+                  .callId(output.callId())
+                  .output(output.outputJson())
+                  .build());
+      case InputItem.Opaque opaque -> opaque.raw();
+    };
+  }
+
+  private static ResponseInputItem message(EasyInputMessage.Role role, String text) {
     return ResponseInputItem.ofEasyInputMessage(
-        EasyInputMessage.builder().role(role).content(item.text()).build());
+        EasyInputMessage.builder().role(role).content(text).build());
   }
 
   /** The schema is sent as the caller gives it, not derived from Java types. */
@@ -364,25 +300,20 @@ public final class OpenAiModelClient implements ModelClient {
     return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
   }
 
-  /**
-   * What every outcome of a call shares: usage and latency so far, the latest round's raw JSON both
-   * ways, and the function calls answered on the way.
-   */
-  private record RoundTrip(
-      Usage usage,
-      long latencyMs,
-      String rawRequest,
-      String rawResponse,
-      List<ToolCall> toolCalls) {
+  /** What every outcome of a round trip shares: usage, latency and the raw JSON both ways. */
+  private record RoundTrip(Usage usage, long latencyMs, String rawRequest, String rawResponse) {
 
     ModelResponse.Failed failed(Failure code, String detail) {
-      return new ModelResponse.Failed(
-          code, detail, usage, latencyMs, rawRequest, rawResponse, toolCalls);
+      return new ModelResponse.Failed(code, detail, usage, latencyMs, rawRequest, rawResponse);
     }
 
     ModelResponse.Decided decided(JsonNode output, String reasoningSummary) {
       return new ModelResponse.Decided(
-          output, reasoningSummary, usage, latencyMs, rawRequest, rawResponse, toolCalls);
+          output, reasoningSummary, usage, latencyMs, rawRequest, rawResponse);
+    }
+
+    ModelResponse.ToolCalls toolCalls(List<InputItem> replay) {
+      return new ModelResponse.ToolCalls(replay, usage, latencyMs, rawRequest, rawResponse);
     }
   }
 }

@@ -4,6 +4,7 @@ import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.Stage;
+import com.enrola.anna.scheduling.Booking;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -14,11 +15,11 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * API response for every conversation call: one shape, snake_case on the wire by the app's Jackson
- * setting. Fields with nothing to report ({@code booking}, {@code extracted}) are null, not absent,
- * so the platform parses one contract. {@code lastOfferedSlots} are the labels of the latest
- * availability result, empty before the first. {@code trace_url} is the conversation's page path.
- * Once a turn carried health information, message bodies from that turn on are hidden unless asked
- * for; {@code reply} is always what is to be sent.
+ * setting. Fields with nothing to report ({@code booking} before book_call, {@code extracted}) are
+ * null, not absent, so the platform parses one contract. {@code lastOfferedSlots} are the labels of
+ * the latest availability result, empty before the first. {@code trace_url} is the conversation's
+ * page path. Once a turn carried health information, message bodies from that turn on are hidden
+ * unless asked for; {@code reply} is always what is to be sent.
  */
 public record TurnResponse(
     String conversationId,
@@ -75,21 +76,30 @@ public record TurnResponse(
     }
   }
 
-  /** The booked call. */
-  public record BookingView(String id, Instant startUtc, String localLabel) {}
+  /** The booked call, as the booking row has it. */
+  public record BookingView(String id, Instant startUtc, String localLabel) {
+
+    static BookingView of(Booking booking) {
+      return booking == null
+          ? null
+          : new BookingView(booking.id(), booking.startUtc(), booking.localLabel());
+    }
+  }
+
+  /** The rows a response is built from: the conversation, its booking or null, its transcript. */
+  record Rows(Conversation conversation, Booking booking, List<Message> transcript) {}
 
   /** "Sun 26 Jul 10:00 AM AEST": the lead's wall clock, readable without arithmetic. */
   private static final DateTimeFormatter LEAD_LOCAL_TIME =
       DateTimeFormatter.ofPattern("EEE d MMM h:mm a z", Locale.ENGLISH);
 
   /** Bodies from the conversation's HEALTH_INFO turn on are hidden. */
-  static TurnResponse of(
-      Conversation conversation, String reply, List<Message> transcript, Instant now) {
-    Integer hiddenFrom = conversation.healthInfoTurn;
+  static TurnResponse of(Rows rows, String reply, Instant now) {
+    Integer hiddenFrom = rows.conversation().healthInfoTurn;
     return build(
-        conversation,
+        rows,
         reply,
-        transcript.stream()
+        rows.transcript().stream()
             .map(
                 message ->
                     hiddenFrom != null && message.turnNo() >= hiddenFrom
@@ -100,12 +110,13 @@ public record TurnResponse(
   }
 
   /** Every body shown, health information included; there is no reply. */
-  static TurnResponse withHealth(Conversation conversation, List<Message> transcript, Instant now) {
-    return build(conversation, null, transcript.stream().map(MessageView::of).toList(), now);
+  static TurnResponse withHealth(Rows rows, Instant now) {
+    return build(rows, null, rows.transcript().stream().map(MessageView::of).toList(), now);
   }
 
   private static TurnResponse build(
-      Conversation conversation, String reply, List<MessageView> transcript, Instant now) {
+      Rows rows, String reply, List<MessageView> transcript, Instant now) {
+    Conversation conversation = rows.conversation();
     return new TurnResponse(
         conversation.id,
         reply,
@@ -118,7 +129,7 @@ public record TurnResponse(
         conversation.handoffReason,
         List.copyOf(conversation.flags()),
         conversation.endReasonHistory(),
-        null,
+        BookingView.of(rows.booking()),
         conversation.lastOfferedLabels(),
         conversation.extracted(),
         now.atZone(ZoneId.of(conversation.leadZoneId)).format(LEAD_LOCAL_TIME),

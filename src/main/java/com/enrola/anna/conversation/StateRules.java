@@ -2,15 +2,16 @@ package com.enrola.anna.conversation;
 
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.HandoffReason;
+import com.enrola.anna.agent.Stage;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The conversation's state machine: the only code that sets {@code ended}, {@code endReason},
- * {@code status} after start, {@code unsubscribed}, {@code needsHuman} and {@code handoffReason},
- * and the rules for what may follow an end. Every switch lists every constant, so a new reason
- * fails to compile until it is placed.
+ * The conversation's state machine: the only code that sets {@code goalMet}, {@code ended}, {@code
+ * endReason}, {@code status} after start, {@code unsubscribed}, {@code needsHuman} and {@code
+ * handoffReason}, and the rules for what may follow an end. Every switch lists every constant, so a
+ * new reason fails to compile until it is placed.
  */
 final class StateRules {
 
@@ -21,7 +22,9 @@ final class StateRules {
 
   /**
    * Ends the conversation with {@code reason} unless the current reason ranks the same or higher,
-   * and records the transition. Nothing outranks UNSUBSCRIBED, so an opt-out is final.
+   * and records the transition. Nothing outranks UNSUBSCRIBED, so an opt-out is final. An opt-out
+   * or abuse after a booking keeps the booking and hands off BOOKING_REVIEW, so a human cancels the
+   * call.
    */
   static void end(Conversation conversation, EndReason reason, Instant at) {
     if (reason == EndReason.NONE) {
@@ -30,11 +33,28 @@ final class StateRules {
     if (conversation.ended && rank(reason) <= rank(conversation.endReason)) {
       return;
     }
+    if (conversation.goalMet && (reason == EndReason.UNSUBSCRIBED || reason == EndReason.ABUSIVE)) {
+      handoff(conversation, HandoffReason.BOOKING_REVIEW); // before unsubscribing freezes handoffs
+    }
     conversation.ended = true;
     conversation.endReason = reason;
     conversation.status = statusOf(reason);
     conversation.unsubscribed = reason == EndReason.UNSUBSCRIBED;
     appendHistory(conversation, reason, at);
+  }
+
+  /**
+   * The goal: a booking was made, so the stage is BOOKED and the conversation ends BOOKED, which
+   * leaves room for one closing reply. A conversation that already ended stays as it is; book_call
+   * is offered only before an end, and a late booking must not reopen anything.
+   */
+  static void booked(Conversation conversation, Instant at) {
+    if (conversation.ended) {
+      return;
+    }
+    conversation.goalMet = true;
+    conversation.stage = Stage.BOOKED;
+    end(conversation, EndReason.BOOKED, at);
   }
 
   /**

@@ -28,6 +28,14 @@ public final class StopKeywords {
   }
 
   /**
+   * True when the message is CANCEL alone, as {@link #isStop} reads it: the keyword that, after a
+   * booking, means the call rather than the messages.
+   */
+  public static boolean isLoneCancel(String text) {
+    return normalise(text).equals("CANCEL");
+  }
+
+  /**
    * The text upper-cased with punctuation and spaces removed: what a keyword is matched on, and
    * what two messages are compared on when one may repeat the other.
    */

@@ -11,6 +11,7 @@ import com.enrola.anna.guard.StopKeywords;
 import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
+import com.enrola.anna.scheduling.BookingRepository;
 import java.time.Instant;
 import java.util.Map;
 import org.springframework.beans.factory.ObjectProvider;
@@ -28,6 +29,7 @@ import org.springframework.stereotype.Component;
 class TurnPipeline {
 
   private final LeadRepository leads;
+  private final BookingRepository bookings;
   private final Suppressions suppressions;
   private final ModerationClient moderation;
   private final PreGuards preGuards;
@@ -40,6 +42,7 @@ class TurnPipeline {
 
   TurnPipeline(
       LeadRepository leads,
+      BookingRepository bookings,
       Suppressions suppressions,
       ObjectProvider<ModerationClient> moderation,
       PreGuards preGuards,
@@ -50,6 +53,7 @@ class TurnPipeline {
       TraceLog trace,
       SmsProperties sms) {
     this.leads = leads;
+    this.bookings = bookings;
     this.suppressions = suppressions;
     this.moderation = moderation.getIfAvailable(() -> ModerationClient.NONE);
     this.preGuards = preGuards;
@@ -67,13 +71,20 @@ class TurnPipeline {
    */
   TurnOutcome run(Conversation conversation, Message inbound, Instant now) {
     StateSnapshot before = StateSnapshot.of(conversation);
-    RunningTurn turn = new RunningTurn(conversation, leadOf(conversation), inbound, now);
+    RunningTurn turn =
+        new RunningTurn(
+            conversation,
+            leadOf(conversation),
+            inbound,
+            now,
+            bookings.findByConversationId(conversation.id).isPresent());
     if (inbound.charCount() > sms.maxInboundChars()) {
       conversation.addFlag(Flag.INPUT_TRUNCATED);
     }
+    meetGoalOfSavedBooking(turn);
     followPhoneOptOut(turn);
     TurnOutcome outcome = route(turn, decide(turn, screen(turn)));
-    countSent(conversation, outcome);
+    countSent(conversation, outcome, before);
     anchorHealthInfo(turn);
     trace.record(
         turn,
@@ -83,6 +94,16 @@ class TurnPipeline {
             TraceOutcome.INFO,
             before.changesTo(StateSnapshot.of(conversation))));
     return outcome;
+  }
+
+  /**
+   * The booking row commits before its turn does, so a turn that died in between leaves a booking
+   * the conversation does not show; it is the truth, and the goal is met before anything else runs.
+   */
+  private static void meetGoalOfSavedBooking(RunningTurn turn) {
+    if (turn.bookedAtStart() && !turn.conversation().goalMet) {
+      StateRules.booked(turn.conversation(), turn.now());
+    }
   }
 
   /**
@@ -117,7 +138,11 @@ class TurnPipeline {
             turn.inbound().text(),
             verdict,
             new PreGuards.Standing(
-                conversation.endReason, safetySent(conversation), conversation.agentTurns),
+                conversation.endReason,
+                safetySent(conversation),
+                conversation.agentTurns,
+                turn.bookedAtStart(),
+                conversation.handoffReason),
             new PreGuards.ModelAccess(
                 agent.available(),
                 spend.appCapReached(),
@@ -131,14 +156,15 @@ class TurnPipeline {
   }
 
   /**
-   * A model call goes ahead on PASS; an opt-out is honoured, not a check that failed; every other
-   * outcome stops the model.
+   * A model call goes ahead on PASS; an opt-out or a booking change is honoured, not a check that
+   * failed; every other outcome stops the model.
    */
   private static TraceOutcome verdictOf(PreGuards.Outcome outcome) {
     return switch (outcome) {
       case PreGuards.Proceed _, PreGuards.ClassifyOnly _ -> TraceOutcome.PASS;
-      case PreGuards.Unsubscribe _ -> TraceOutcome.INFO;
-      case PreGuards.EndAbusive _,
+      case PreGuards.BookingChange _, PreGuards.Unsubscribe _ -> TraceOutcome.INFO;
+      case PreGuards.SuppressRepeat _,
+          PreGuards.EndAbusive _,
           PreGuards.SafetyReply _,
           PreGuards.FixedClose _,
           PreGuards.HandoffNoModel _,
@@ -151,6 +177,8 @@ class TurnPipeline {
     return switch (outcome) {
       case PreGuards.Proceed _ -> agentTurn.run(turn);
       case PreGuards.ClassifyOnly _ -> agentTurn.classifyOnly(turn);
+      case PreGuards.BookingChange _ -> outcomes.bookingChange(turn);
+      case PreGuards.SuppressRepeat _ -> outcomes.suppressRepeat(turn);
       case PreGuards.Unsubscribe unsubscribe -> outcomes.unsubscribe(turn, unsubscribe.reason());
       case PreGuards.EndAbusive abusive -> outcomes.endAbusive(turn, abusive.detector());
       case PreGuards.SafetyReply _ -> outcomes.safety(turn);
@@ -163,14 +191,19 @@ class TurnPipeline {
 
   /**
    * A sent message is an agent turn, and on or after the turn that ended the conversation a
-   * post-terminal reply too, so a fixed close or the model's sign-off is the one closing reply.
+   * post-terminal reply too, so a fixed close or the model's sign-off is the one closing reply. The
+   * reply on the turn that booked confirms the goal and closes nothing, so one closing reply may
+   * still follow it.
    */
-  private static void countSent(Conversation conversation, TurnOutcome outcome) {
-    if (outcome.reply() != null) {
-      conversation.agentTurns++;
-      if (conversation.ended) {
-        conversation.postTerminalReplies++;
-      }
+  private static void countSent(
+      Conversation conversation, TurnOutcome outcome, StateSnapshot before) {
+    if (outcome.reply() == null) {
+      return;
+    }
+    conversation.agentTurns++;
+    boolean confirmsBooking = conversation.goalMet && !before.goalMet();
+    if (conversation.ended && !confirmsBooking) {
+      conversation.postTerminalReplies++;
     }
   }
 

@@ -40,17 +40,17 @@ public record TurnContext(
       DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.UK);
 
   /**
-   * This context for the repair call: the same facts but the offer as it stands now, after this
-   * turn's tool calls, then what the rejected reply broke.
+   * This context for the repair call: the same facts but the offer and the booking as they stand
+   * now, after this turn's tool calls, then what the rejected reply broke.
    */
-  public TurnContext withRepair(String note, List<Slot> offeredNow) {
+  public TurnContext withRepair(String note, List<Slot> offeredNow, String bookingNow) {
     return new TurnContext(
         lead,
         leadNow,
         zoneAssumed,
         counters,
         limits,
-        bookingLabel,
+        bookingNow,
         offeredNow,
         ended,
         endReason,

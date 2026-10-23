@@ -32,6 +32,11 @@ record StateSnapshot(Map<String, Object> fields) {
     return new StateSnapshot(fields);
   }
 
+  /** Whether the goal was met when the snapshot was taken. */
+  boolean goalMet() {
+    return (boolean) fields.get("goal_met");
+  }
+
   /** The fields that differ in {@code after}, in snapshot order; empty when none do. */
   Map<String, Change> changesTo(StateSnapshot after) {
     Map<String, Change> changes = new LinkedHashMap<>();

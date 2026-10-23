@@ -1,7 +1,9 @@
 package com.enrola.anna.scheduling;
 
+import static com.enrola.anna.scheduling.SchedulingFixtures.LAUREN;
 import static com.enrola.anna.scheduling.SchedulingFixtures.MELBOURNE;
 import static com.enrola.anna.scheduling.SchedulingFixtures.SUNDAY;
+import static com.enrola.anna.scheduling.SchedulingFixtures.codeOf;
 import static com.enrola.anna.scheduling.SchedulingFixtures.melbourne;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,6 +23,9 @@ class FakeCalendarTest {
 
   static final LocalDate MONDAY = LocalDate.of(2026, 7, 27);
   static final LocalDate SATURDAY = LocalDate.of(2026, 8, 1);
+  static final Instant MONDAY_NOON = melbourne(MONDAY, LocalTime.NOON);
+  static final Slot NOON =
+      new Slot(Slot.idFor(MONDAY_NOON), MONDAY_NOON, "Mon 27 Jul 12:00 PM AEST");
 
   final AppClock clock = SchedulingFixtures.clockAt(SUNDAY);
   final FakeCalendar calendar = new FakeCalendar(clock, SchedulingFixtures.defaults());
@@ -108,6 +113,38 @@ class FakeCalendarTest {
             new Slot("a", monday, "a"), new Slot("b", wednesday, "b"), new Slot("c", past, "c")));
 
     assertThat(calendar.freeStarts(past, plusDays(14))).containsExactly(monday, wednesday);
+  }
+
+  @Test
+  void freeStartIsBookedWithAFreshEventId() {
+    ToolResult first = calendar.book(NOON, LAUREN);
+    ToolResult second = calendar.book(NOON, LAUREN);
+
+    assertThat(first)
+        .isInstanceOfSatisfying(
+            ToolResult.Booked.class,
+            event -> {
+              assertThat(event.bookingId()).startsWith("cal-");
+              assertThat(event.label()).isEqualTo(NOON.label());
+            });
+    assertThat(second).isNotEqualTo(first);
+  }
+
+  @Test
+  void slotTakenPresetRefusesTheFirstBookingOnly() {
+    FakeCalendar slotTaken =
+        new FakeCalendar(clock, SchedulingFixtures.props(CalendarPreset.SLOT_TAKEN, List.of()));
+
+    assertThat(codeOf(slotTaken.book(NOON, LAUREN))).isEqualTo("SLOT_TAKEN");
+    assertThat(codeOf(slotTaken.book(NOON, LAUREN))).isEqualTo("Booked");
+  }
+
+  /** An offer goes stale: by Monday 11:30 the noon start is inside the lead time. */
+  @Test
+  void startNoLongerFreeIsNotBooked() {
+    clock.fixAt(melbourne(MONDAY, LocalTime.of(11, 30)));
+
+    assertThat(codeOf(calendar.book(NOON, LAUREN))).isEqualTo("NOT_BOOKED");
   }
 
   /** Every free start from Sunday 26 July to Sunday 2 August, as Melbourne wall time. */

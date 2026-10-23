@@ -3,20 +3,24 @@ package com.enrola.anna.scheduling;
 import com.enrola.anna.AppClock;
 import com.enrola.anna.config.SchedulingProperties;
 import com.enrola.anna.config.SchedulingProperties.CalendarPreset;
+import com.enrola.anna.lead.Lead;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Component;
 
 /**
  * The calendar: a deterministic stand-in for Calendly, and the only one there is. Free starts come
- * from the clock, the advisor hours, the slot grid and the preset; nothing is stored. It keeps the
- * real API's limits, a 31-day range and no start in the past, so the tool contract would not change
- * under a real calendar.
+ * from the clock, the advisor hours, the slot grid and the preset; nothing is stored, so a booking
+ * takes no start from anyone else. It keeps the real API's limits, a 31-day range and no start in
+ * the past, so the tool contract would not change under a real calendar.
  */
 @Component
 public class FakeCalendar {
@@ -24,9 +28,17 @@ public class FakeCalendar {
   /** Calendly's own range cap. */
   private static final Duration MAX_RANGE = Duration.ofDays(31);
 
+  private static final ToolResult.Failure SLOT_TAKEN =
+      new ToolResult.Failure("SLOT_TAKEN", "slot was just taken; call get_availability again");
+  private static final ToolResult.Failure NOT_BOOKED =
+      new ToolResult.Failure("NOT_BOOKED", "slot is no longer available; re-check availability");
+
   private final AppClock clock;
   private final SchedulingProperties props;
   private final AdvisorHours hours;
+
+  /** Set once the SLOT_TAKEN preset has answered a booking as taken. */
+  private final AtomicBoolean takenOnce = new AtomicBoolean();
 
   /** Explicit slots for a scenario; null means generate them from the hours. */
   private volatile List<Slot> fixture;
@@ -60,6 +72,23 @@ public class FakeCalendar {
     Stream<Instant> starts =
         explicit == null ? gridStarts(earliest, latest) : explicit.stream().map(Slot::startUtc);
     return starts.filter(start -> !start.isBefore(earliest) && !start.isAfter(latest)).toList();
+  }
+
+  /**
+   * Books {@code slot} for {@code invitee}: SLOT_TAKEN for the first booking under the SLOT_TAKEN
+   * preset, NOT_BOOKED for a start that is no longer free, else BOOKED with a fresh event id. The
+   * invitee is required as the real call requires it; the fake keeps nothing of it.
+   */
+  public ToolResult book(Slot slot, Lead invitee) {
+    Objects.requireNonNull(invitee, "invitee");
+    if (props.calendarPreset() == CalendarPreset.SLOT_TAKEN
+        && takenOnce.compareAndSet(false, true)) {
+      return SLOT_TAKEN;
+    }
+    Instant start = slot.startUtc();
+    return freeStarts(start, start).contains(start)
+        ? new ToolResult.Booked("cal-" + UUID.randomUUID(), slot.label())
+        : NOT_BOOKED;
   }
 
   /** Scenario hook: exactly these slots instead of the grid, still held to the same limits. */

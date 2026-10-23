@@ -3,6 +3,7 @@ package com.enrola.anna.guard;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /** The opt-out table: what is a STOP and, just as important, what is not. */
@@ -48,5 +49,19 @@ class StopKeywordsTest {
       })
   void proseIsNotStop(String text) {
     assertThat(StopKeywords.isStop(text)).as(text).isFalse();
+  }
+
+  /** CANCEL alone, read like any keyword; nothing else, prose with "cancel" in it included. */
+  @ParameterizedTest(name = "\"{0}\" -> {1}")
+  @CsvSource({
+    "CANCEL, true",
+    "' cancel. ', true",
+    "Cancel!, true",
+    "STOP, false",
+    "cancel my call, false",
+    "'Cancel that, Thursday''s better', false"
+  })
+  void loneCancelIsTheKeywordAlone(String text, boolean lone) {
+    assertThat(StopKeywords.isLoneCancel(text)).isEqualTo(lone);
   }
 }

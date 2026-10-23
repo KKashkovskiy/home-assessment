@@ -12,6 +12,7 @@ import com.enrola.anna.prompt.PromptLoader;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,12 @@ import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.core.io.DefaultResourceLoader;
 import tools.jackson.databind.json.JsonMapper;
 
-/** The request one decision is asked with, built from the shipped v1 bundle, with no network. */
+/**
+ * The loop over the scripted model, with no network: the request built from the shipped v1 bundle,
+ * function calls answered round by round, each round reported as it ends, and the turn's tool
+ * rounds as the cap. The fake model only queues responses; the loop under test is the production
+ * one.
+ */
 class AgentServiceTest {
 
   static final PersonaProperties PERSONA = new PersonaProperties("Anna", "Comparato", true);
@@ -27,8 +33,8 @@ class AgentServiceTest {
   static final PromptBundle BUNDLE =
       new PromptLoader(new DefaultResourceLoader(), PERSONA, JsonMapper.builder().build(), "v1")
           .active();
-  static final List<ModelRequest.InputItem> TRANSCRIPT =
-      List.of(new ModelRequest.AssistantText("Hi Lauren"), new ModelRequest.UserText("save money"));
+  static final List<InputItem> TRANSCRIPT =
+      List.of(new InputItem.AssistantText("Hi Lauren"), new InputItem.UserText("save money"));
   static final TurnContext CONTEXT =
       new TurnContext(
           new Lead(
@@ -51,11 +57,9 @@ class AgentServiceTest {
           false,
           EndReason.NONE,
           null);
-
-  static final ToolExecutor NO_TOOL_RUNS =
-      (name, argumentsJson) -> {
-        throw new AssertionError("nothing scripted calls " + name);
-      };
+  static final String AVAILABILITY = "{\"date_from\":\"2026-07-27\"}";
+  static final String BOOKING = "{\"slot_id\":\"sA\"}";
+  static final String BOOKED = "{\"status\":\"BOOKED\",\"booking_id\":\"cal-1\"}";
 
   final ScriptedModelClient model = new ScriptedModelClient();
   final AgentService agent =
@@ -69,20 +73,20 @@ class AgentServiceTest {
   void transcriptIsReplayedWithTheContextLast() {
     model.decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, NO_TOOL_RUNS);
+    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
 
     assertThat(model.calls().getFirst().input())
         .containsExactly(
-            new ModelRequest.AssistantText("Hi Lauren"),
-            new ModelRequest.UserText("save money"),
-            new ModelRequest.UserText(CONTEXT.render()));
+            new InputItem.AssistantText("Hi Lauren"),
+            new InputItem.UserText("save money"),
+            new InputItem.UserText(CONTEXT.render()));
   }
 
   @Test
   void requestCarriesTheRenderedPromptAndTheStrictSchema() {
     model.decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, NO_TOOL_RUNS);
+    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
 
     ModelRequest request = model.calls().getFirst();
     assertThat(request.model()).isEqualTo("gpt-5.1");
@@ -92,28 +96,107 @@ class AgentServiceTest {
     assertThat(request.reasoningEffort()).isEqualTo("low");
   }
 
-  /** The bundle's two tools, answered by the caller's executor, capped by the configured rounds. */
+  /** The decision call offers the bundle's two tools; after an end nothing could be right. */
   @Test
-  void requestOffersTheBundlesToolsAnsweredByTheCaller() {
-    model.decide(Decisions.engaged().build());
+  void onlyTheDecisionCallOffersTools() {
+    model.decide(Decisions.engaged().build()).decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, (name, argumentsJson) -> name + " answered");
+    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
+    agent.classify(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
 
-    ModelRequest.Tools tools = model.calls().getFirst().tools();
-    assertThat(tools.definitions())
+    assertThat(model.calls().get(0).tools())
         .extracting(definition -> definition.get("name").stringValue())
         .containsExactly("get_availability", "book_call");
-    assertThat(tools.executor().execute("book_call", "{}")).isEqualTo("book_call answered");
-    assertThat(tools.maxRounds()).isEqualTo(4);
+    assertThat(model.calls().get(1).tools()).isEmpty();
   }
 
-  /** After an end the model only classifies; nothing it could call would be right. */
+  /**
+   * Each round is reported before its call is answered, each answer goes back to the model after
+   * the call it answers, and the result sums what the rounds used.
+   */
   @Test
-  void classifyOffersNoTools() {
-    model.decide(Decisions.engaged().build());
+  void availabilityThenBookThenDecision() {
+    model
+        .callTool("get_availability", AVAILABILITY)
+        .callTool("book_call", BOOKING)
+        .decide(Decisions.engaged().build());
+    Rounds rounds = new Rounds(4);
 
-    agent.classify(BUNDLE, TRANSCRIPT, CONTEXT);
+    AgentService.TurnResult result = agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, rounds);
 
-    assertThat(model.calls().getFirst().tools()).isEqualTo(ModelRequest.Tools.NONE);
+    assertThat(rounds.events)
+        .containsExactly(
+            "ended ToolCalls",
+            "answer get_availability",
+            "ended ToolCalls",
+            "answer book_call",
+            "ended Decided");
+    assertThat(model.calls()).hasSize(3);
+    assertThat(model.calls().get(2).input())
+        .endsWith(
+            Decisions.REASONING,
+            new InputItem.FunctionCall("call-book_call", "book_call", BOOKING),
+            new InputItem.FunctionOutput("call-book_call", BOOKED));
+    assertThat(model.calls().get(2).input())
+        .startsWith(model.calls().get(1).input().toArray(new InputItem[0]));
+    assertThat(result.last()).isInstanceOf(ModelResponse.Decided.class);
+    assertThat(result.toolCalls())
+        .containsExactly(
+            new ToolCall("get_availability", AVAILABILITY, "slots"),
+            new ToolCall("book_call", BOOKING, BOOKED));
+    assertThat(result.usage()).isEqualTo(new ModelResponse.Usage(3000, 0, 300, 0));
+    assertThat(result.latencyMs()).isEqualTo(15);
+  }
+
+  /** Two rounds are answered; the third still calls a tool, so the call fails unanswered. */
+  @Test
+  void stopsAtRoundCap() {
+    model
+        .callTool("get_availability", AVAILABILITY)
+        .callTool("get_availability", AVAILABILITY)
+        .callTool("get_availability", AVAILABILITY);
+    Rounds rounds = new Rounds(2);
+
+    AgentService.TurnResult result = agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, rounds);
+
+    assertThat(result.last())
+        .isInstanceOfSatisfying(
+            ModelResponse.Failed.class,
+            failed -> assertThat(failed.code()).isEqualTo(ModelResponse.Failure.TOOL_ROUNDS));
+    assertThat(rounds.events).filteredOn(event -> event.startsWith("answer")).hasSize(2);
+    assertThat(model.calls()).hasSize(3);
+    assertThat(result.toolCalls()).hasSize(2);
+    assertThat(result.usage()).isEqualTo(new ModelResponse.Usage(3000, 0, 300, 0));
+  }
+
+  // The scripted client has no loop and no reference to the tools: the loop above is the only one.
+
+  /**
+   * The turn's side: records what happened, grants {@code toolRounds}, answers with canned JSON.
+   */
+  private static final class Rounds implements ToolLoopCallbacks {
+
+    final List<String> events = new ArrayList<>();
+    private int toolRounds;
+
+    Rounds(int toolRounds) {
+      this.toolRounds = toolRounds;
+    }
+
+    @Override
+    public void roundEnded(ModelResponse response) {
+      events.add("ended " + response.getClass().getSimpleName());
+    }
+
+    @Override
+    public boolean grantToolRound() {
+      return toolRounds-- > 0;
+    }
+
+    @Override
+    public String answer(String name, String argumentsJson) {
+      events.add("answer " + name);
+      return name.equals("book_call") ? BOOKED : "slots";
+    }
   }
 }

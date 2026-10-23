@@ -1,6 +1,8 @@
 package com.enrola.anna.agent;
 
 import com.enrola.anna.agent.ModelResponse.Usage;
+import com.openai.models.responses.ResponseInputItem;
+import com.openai.models.responses.ResponseReasoningItem;
 import java.util.List;
 
 /** Decisions and responses for tests: an engaged, open decision unless a test says otherwise. */
@@ -20,14 +22,26 @@ public final class Decisions {
     return new Decision.Extracted(coverageGoal, coverType, null, null, Decision.TimeOfDay.UNKNOWN);
   }
 
-  /** {@code decision} as a successful call's output, the way the client returns it. */
+  /** {@code decision} as a successful round's output, the way the client returns it. */
   public static ModelResponse.Decided decided(Decision decision) {
     return new ModelResponse.Decided(
-        ModelResponse.Decided.JSON.valueToTree(decision), null, USAGE, 5, "{}", "{}", List.of());
+        ModelResponse.Decided.JSON.valueToTree(decision), null, USAGE, 5, "{}", "{}");
   }
 
   public static ModelResponse.Failed failed(ModelResponse.Failure code) {
-    return new ModelResponse.Failed(code, "scripted", Usage.ZERO, 5, "{}", null, List.of());
+    return new ModelResponse.Failed(code, "scripted", Usage.ZERO, 5, "{}", null);
+  }
+
+  /** The reasoning the scripted model replays before each of its function calls. */
+  public static final InputItem.Opaque REASONING =
+      new InputItem.Opaque(
+          ResponseInputItem.ofReasoning(
+              ResponseReasoningItem.builder().id("rs-scripted").summary(List.of()).build()));
+
+  /** A round in which the model reasons, then calls the tool {@code name}. */
+  public static ModelResponse.ToolCalls toolCall(String name, String argumentsJson) {
+    InputItem.FunctionCall call = new InputItem.FunctionCall("call-" + name, name, argumentsJson);
+    return new ModelResponse.ToolCalls(List.of(REASONING, call), USAGE, 5, "{}", "{}");
   }
 
   /** Mutable, test scope only. */

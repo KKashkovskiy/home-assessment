@@ -116,6 +116,21 @@ class GuardOutcomes {
   }
 
   /**
+   * Reschedule or cancel after a booking: a human moves or cancels the call, the booking stays, and
+   * the lead is told.
+   */
+  TurnOutcome bookingChange(RunningTurn turn) {
+    StateRules.handoff(turn.conversation(), HandoffReason.RESCHEDULE);
+    return fixed(turn, Template.BOOKING_CHANGE_HANDOFF, "booking change");
+  }
+
+  /** The lead repeats a request already acknowledged: no reply, so no loop of acknowledgements. */
+  TurnOutcome suppressRepeat(RunningTurn turn) {
+    turn.conversation().addFlag(Flag.LOOP_SUPPRESSED);
+    return TurnOutcome.silent("repeat suppressed");
+  }
+
+  /**
    * The model's reply failed the reply guards and its repair did not fix it; what goes instead
    * follows the state the turn's decision left.
    */

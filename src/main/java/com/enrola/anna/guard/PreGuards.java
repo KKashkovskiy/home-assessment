@@ -1,6 +1,7 @@
 package com.enrola.anna.guard;
 
 import com.enrola.anna.agent.EndReason;
+import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.config.LimitsProperties;
 import com.enrola.anna.config.ModerationProperties;
 import com.enrola.anna.lead.Suppression;
@@ -8,13 +9,14 @@ import com.enrola.anna.prompt.Template;
 import org.springframework.stereotype.Component;
 
 /**
- * Everything decided before the main model call, in an order that is the specification: a STOP
- * keyword first, because it works with no model and overrides everything; self-harm second, because
- * the safety template goes out once whatever the state; hard-terminal silence third, so nothing
- * more is spent on that conversation; abuse fourth, so a distressed lead who swears gets Lifeline,
- * not a cut-off; then whether the model can be called at all; then the soft-terminal classify-only
- * path; then the turn cap. Pure: it reads plain values and returns an {@link Outcome}, and the
- * caller acts on it.
+ * Everything decided before the main model call, in an order that is the specification: a lone
+ * CANCEL after a booking first, because it asks to change the call, not to stop the messages; a
+ * STOP keyword second, because it works with no model and overrides everything; self-harm third,
+ * because the safety template goes out once whatever the state; hard-terminal silence fourth, so
+ * nothing more is spent on that conversation; abuse fifth, so a distressed lead who swears gets
+ * Lifeline, not a cut-off; then whether the model can be called at all; then the soft-terminal
+ * classify-only path; then the turn cap. Pure: it reads plain values and returns an {@link
+ * Outcome}, and the caller acts on it.
  */
 @Component
 public class PreGuards {
@@ -23,6 +25,8 @@ public class PreGuards {
   public sealed interface Outcome
       permits Proceed,
           ClassifyOnly,
+          BookingChange,
+          SuppressRepeat,
           Unsubscribe,
           EndAbusive,
           SafetyReply,
@@ -35,6 +39,12 @@ public class PreGuards {
 
   /** Soft-terminal: the model classifies, and replies only through the closing-reply rule. */
   public record ClassifyOnly() implements Outcome {}
+
+  /** Hand off RESCHEDULE, keep the booking, send the fixed booking-change template. */
+  public record BookingChange() implements Outcome {}
+
+  /** A repeat of a request already acknowledged: no reply, flagged LOOP_SUPPRESSED. */
+  public record SuppressRepeat() implements Outcome {}
 
   /** End UNSUBSCRIBED, suppress the phone, send the fixed confirmation. */
   public record Unsubscribe(Suppression.Reason reason) implements Outcome {}
@@ -69,9 +79,15 @@ public class PreGuards {
 
   /**
    * The conversation before this turn: its end reason, NONE while open; whether the safety template
-   * already went out; and the agent turns used.
+   * already went out; the agent turns used; whether a call is booked; and the latest handoff
+   * reason.
    */
-  public record Standing(EndReason endReason, boolean safetySent, int agentTurns) {}
+  public record Standing(
+      EndReason endReason,
+      boolean safetySent,
+      int agentTurns,
+      boolean booked,
+      HandoffReason handoffReason) {}
 
   /** Whether the main model can be called: a key is configured and neither spend cap is reached. */
   public record ModelAccess(
@@ -86,11 +102,20 @@ public class PreGuards {
   }
 
   /**
-   * The outcome for one inbound {@code text}. A STOP from a conversation already unsubscribed is
-   * not a new opt-out, so its confirmation is not sent twice.
+   * The outcome for one inbound {@code text}. A lone CANCEL after a hard end is a STOP like any
+   * other, and one after the booking change was acknowledged gets no second acknowledgement. A STOP
+   * from a conversation already unsubscribed is not a new opt-out, so its confirmation is not sent
+   * twice.
    */
   public Outcome decide(
       String text, ModerationVerdict verdict, Standing standing, ModelAccess model) {
+    if (StopKeywords.isLoneCancel(text)
+        && standing.booked()
+        && !standing.endReason().isHardTerminal()) {
+      return standing.handoffReason() == HandoffReason.RESCHEDULE
+          ? new SuppressRepeat()
+          : new BookingChange();
+    }
     if (StopKeywords.isStop(text) && standing.endReason() != EndReason.UNSUBSCRIBED) {
       return new Unsubscribe(Suppression.Reason.KEYWORD);
     }

@@ -56,7 +56,7 @@ class TurnContextTest {
   @Test
   void offeredSlotsCarryTheirIds() {
     assertThat(context(john("John"), false).render()).contains("Last offered slots: none.");
-    assertThat(context(john("John"), false).withRepair("note", OFFERED).render())
+    assertThat(context(john("John"), false).withRepair("note", OFFERED, null).render())
         .contains(
             "Last offered slots: Mon 27 Jul 9:00 AM AWST [sA]; Mon 27 Jul 9:30 AM AWST [sB].");
   }
@@ -99,7 +99,8 @@ class TurnContextTest {
   void repairNoteComesLastOnlyOnARepair() {
     TurnContext context = context(john("John"), false);
 
-    String repair = context.withRepair("length: reply is 341 chars, limit 320", List.of()).render();
+    String repair =
+        context.withRepair("length: reply is 341 chars, limit 320", List.of(), null).render();
 
     assertThat(repair).startsWith(context.render()).endsWith("limit 320\n");
     assertThat(repair.indexOf("length: reply is 341 chars"))

@@ -9,12 +9,11 @@ import tools.jackson.databind.cfg.EnumFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What one call produced, with what it used and took and the raw JSON either way. A call that
- * answered function calls on the way covers all its rounds: usage and latency are their sum, the
- * raw JSON is the last round's, and {@link #toolCalls()} lists the calls answered. A failure
- * carries a {@link Failure} code, never a stack trace.
+ * What one round trip produced, with what it used and took and the raw JSON either way: the model's
+ * output, function calls it wants answered first, or a failure, which carries a {@link Failure}
+ * code, never a stack trace. {@link AgentService} switches over it exhaustively.
  */
-public sealed interface ModelResponse permits ModelResponse.Decided, ModelResponse.Failed {
+public sealed interface ModelResponse permits ModelResponse.Final, ModelResponse.ToolCalls {
 
   Usage usage();
 
@@ -24,8 +23,13 @@ public sealed interface ModelResponse permits ModelResponse.Decided, ModelRespon
 
   String rawResponseJson();
 
-  /** The function calls answered on the way, in order; empty when there were none. */
-  List<ToolCall> toolCalls();
+  /** This round as a failure with {@code code}, keeping what it used, took and returned. */
+  default Failed failed(Failure code, String detail) {
+    return new Failed(code, detail, usage(), latencyMs(), rawRequestJson(), rawResponseJson());
+  }
+
+  /** A round that ends the call: the model's output, or a failure. */
+  sealed interface Final extends ModelResponse permits Decided, Failed {}
 
   /**
    * The JSON the model returned, untyped: the transport does not know the schema, so a caller with
@@ -37,9 +41,8 @@ public sealed interface ModelResponse permits ModelResponse.Decided, ModelRespon
       Usage usage,
       long latencyMs,
       String rawRequestJson,
-      String rawResponseJson,
-      List<ToolCall> toolCalls)
-      implements ModelResponse {
+      String rawResponseJson)
+      implements Final {
 
     /**
      * Strict on purpose: an unknown property, an unknown enum value or a coerced scalar ({@code 0}
@@ -64,23 +67,47 @@ public sealed interface ModelResponse permits ModelResponse.Decided, ModelRespon
         throw new SchemaMismatch(e.getOriginalMessage());
       }
     }
+  }
 
-    /** This call as a failure with {@code code}, keeping what it used, took, returned and ran. */
-    public Failed failed(Failure code, String detail) {
-      return new Failed(code, detail, usage, latencyMs, rawRequestJson, rawResponseJson, toolCalls);
+  /**
+   * The model asked for function calls before it answers. {@code replay} is every output item the
+   * next round must see again, in order, its reasoning and the calls themselves; each of {@link
+   * #calls()} is then answered with one {@link InputItem.FunctionOutput}.
+   */
+  record ToolCalls(
+      List<InputItem> replay,
+      Usage usage,
+      long latencyMs,
+      String rawRequestJson,
+      String rawResponseJson)
+      implements ModelResponse {
+
+    public ToolCalls {
+      replay = List.copyOf(replay);
+    }
+
+    /** The function calls among {@link #replay()}, in order. */
+    public List<InputItem.FunctionCall> calls() {
+      return replay.stream()
+          .<InputItem.FunctionCall>mapMulti(
+              (item, calls) -> {
+                if (item instanceof InputItem.FunctionCall call) {
+                  calls.accept(call);
+                }
+              })
+          .toList();
     }
   }
 
-  /** The call failed after the SDK's retries; {@code detail} says more, for the trace. */
+  /** The round failed after the SDK's retries; {@code detail} says more, for the trace. */
   record Failed(
       Failure code,
       String detail,
       Usage usage,
       long latencyMs,
       String rawRequestJson,
-      String rawResponseJson,
-      List<ToolCall> toolCalls)
-      implements ModelResponse {}
+      String rawResponseJson)
+      implements Final {}
 
   /** Why a call failed. */
   enum Failure {
@@ -99,7 +126,7 @@ public sealed interface ModelResponse permits ModelResponse.Decided, ModelRespon
     NO_OUTPUT,
     /** The output was not JSON, or not the JSON the schema describes. */
     SCHEMA,
-    /** The model still called tools after the rounds the request allows. */
+    /** The model still called tools when the turn had no tool round left. */
     TOOL_ROUNDS
   }
 
@@ -107,7 +134,7 @@ public sealed interface ModelResponse permits ModelResponse.Decided, ModelRespon
   record Usage(int in, int cached, int out, int reasoning) {
     public static final Usage ZERO = new Usage(0, 0, 0, 0);
 
-    /** This usage and {@code other}'s summed, for a call that took several rounds. */
+    /** This usage and {@code other}'s summed, for a turn that took several rounds. */
     public Usage plus(Usage other) {
       return new Usage(
           in + other.in, cached + other.cached, out + other.out, reasoning + other.reasoning);

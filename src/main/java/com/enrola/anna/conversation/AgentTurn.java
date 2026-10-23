@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 @Component
 class AgentTurn {
 
+  private final TurnQuestions questions;
   private final AgentCall calls;
   private final DecisionApplier decisions;
   private final TurnCounters counters;
@@ -29,12 +30,14 @@ class AgentTurn {
   private final TraceLog trace;
 
   AgentTurn(
+      TurnQuestions questions,
       AgentCall calls,
       DecisionApplier decisions,
       TurnCounters counters,
       GuardOutcomes outcomes,
       ReplyRepair replies,
       TraceLog trace) {
+    this.questions = questions;
     this.calls = calls;
     this.decisions = decisions;
     this.counters = counters;
@@ -43,12 +46,16 @@ class AgentTurn {
     this.trace = trace;
   }
 
-  /** An open conversation's turn; it stays open when the call fails. */
+  /**
+   * An open conversation's turn; it stays open when the call fails. The decision call and its
+   * repair share the turn's tool rounds.
+   */
   TurnOutcome run(RunningTurn turn) {
-    AgentCall.Question question = calls.questionFor(turn);
-    return switch (calls.ask(turn, question)) {
+    TurnQuestions.Question question = questions.questionFor(turn);
+    AgentCall.ToolRounds rounds = calls.toolRoundsFor(turn);
+    return switch (calls.ask(turn, question, rounds)) {
       case AgentCall.Answer.Decided(Decision decision, Turn.ModelCall call) ->
-          answerOpen(turn, decision, question).addModelCall(call);
+          answerOpen(turn, decision, question, rounds).addModelCall(call);
       case AgentCall.Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->
           failed(turn, code).addModelCall(call);
     };
@@ -58,11 +65,12 @@ class AgentTurn {
    * A soft-terminal conversation's turn: the model classifies, with no tools, since nothing is
    * scheduled after an end. Code-owned intents act as on an open conversation; RESCHEDULE and
    * HANDOFF_REQUEST break the silence once, because ignoring them is a compliance problem, not a
-   * loop; anything else gets at most one closing reply. A failed call hands off like one on an open
+   * loop, and RESCHEDULE after a booking asks a human to move the call, which stays booked;
+   * anything else gets at most one closing reply. A failed call hands off like one on an open
    * conversation, since the message may be a request no one read.
    */
   TurnOutcome classifyOnly(RunningTurn turn) {
-    return switch (calls.classify(turn, calls.questionFor(turn))) {
+    return switch (calls.classify(turn, questions.questionFor(turn), calls.toolRoundsFor(turn))) {
       case AgentCall.Answer.Decided(Decision decision, Turn.ModelCall call) ->
           classifyEnded(turn, decision).addModelCall(call);
       case AgentCall.Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->
@@ -77,7 +85,11 @@ class AgentTurn {
   }
 
   /** Classification, code-owned intents, the counters and the close they force, then the reply. */
-  private TurnOutcome answerOpen(RunningTurn turn, Decision decision, AgentCall.Question question) {
+  private TurnOutcome answerOpen(
+      RunningTurn turn,
+      Decision decision,
+      TurnQuestions.Question question,
+      AgentCall.ToolRounds rounds) {
     decisions.classify(turn, decision);
     Optional<TurnOutcome> codeOwned = outcomes.codeOwned(turn, decision.leadIntent());
     if (codeOwned.isPresent()) {
@@ -89,17 +101,21 @@ class AgentTurn {
       return outcomes.fixedClose(turn, close.get().template(), close.get().reason());
     }
     decisions.applyEnding(turn, decision);
-    return reply(turn, decision, question);
+    return reply(turn, decision, question, rounds);
   }
 
   /**
    * The model's reply once its ending is applied. No reply before an end is a bad decision, handled
    * like output that is not one, though a handoff the decision asked for is kept.
    */
-  private TurnOutcome reply(RunningTurn turn, Decision decision, AgentCall.Question question) {
+  private TurnOutcome reply(
+      RunningTurn turn,
+      Decision decision,
+      TurnQuestions.Question question,
+      AgentCall.ToolRounds rounds) {
     Conversation conversation = turn.conversation();
     if (decision.sendReply()) {
-      return replies.send(turn, decision.reply(), question);
+      return replies.send(turn, decision.reply(), question, rounds);
     }
     if (conversation.ended) {
       return TurnOutcome.silent("model ended without a reply");
@@ -121,11 +137,14 @@ class AgentTurn {
     if (codeOwned.isPresent()) {
       return codeOwned.get();
     }
+    Conversation conversation = turn.conversation();
     HandoffReason requested = requestedHandoff(decision.leadIntent());
-    if (requested != HandoffReason.NONE && turn.conversation().handoffReason != requested) {
-      return outcomes.handoffAck(turn, requested);
+    if (requested == HandoffReason.NONE || conversation.handoffReason == requested) {
+      return closingReply(turn, decision);
     }
-    return closingReply(turn, decision);
+    return requested == HandoffReason.RESCHEDULE && turn.bookedAtStart()
+        ? outcomes.bookingChange(turn)
+        : outcomes.handoffAck(turn, requested);
   }
 
   /** The handoff an actionable intent asks for: RESCHEDULE, or a person for HANDOFF_REQUEST. */

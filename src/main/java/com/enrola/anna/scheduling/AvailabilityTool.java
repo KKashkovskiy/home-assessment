@@ -28,10 +28,10 @@ import tools.jackson.databind.annotation.JsonNaming;
 @Component
 public class AvailabilityTool {
 
-  private static final ToolResult.Failure BAD_DATE =
-      new ToolResult.Failure("BAD_DATE", "dates must be YYYY-MM-DD");
-  private static final ToolResult.Failure BAD_RANGE =
-      new ToolResult.Failure("BAD_RANGE", "date_to is before date_from");
+  private static final ToolResult.Rejected BAD_DATE =
+      new ToolResult.Rejected("BAD_DATE", "dates must be YYYY-MM-DD");
+  private static final ToolResult.Rejected BAD_RANGE =
+      new ToolResult.Rejected("BAD_RANGE", "date_to is before date_from");
 
   /**
    * "Mon 27 Jul 12:00 PM"; the zone's name follows. English, not en-AU: on JDK 25 en-AU writes

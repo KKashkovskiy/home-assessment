@@ -13,6 +13,7 @@ import com.enrola.anna.lead.LeadRepository;
 import com.enrola.anna.prompt.PromptBundle;
 import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
+import com.enrola.anna.scheduling.BookingRepository;
 import com.enrola.anna.scheduling.LeadZones;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -42,6 +43,7 @@ public class ConversationService {
   private final LeadRepository leads;
   private final ConversationRepository conversations;
   private final MessageRepository messages;
+  private final BookingRepository bookings;
   private final PromptLoader prompts;
   private final Suppressions suppressions;
   private final TurnLocks locks;
@@ -55,6 +57,7 @@ public class ConversationService {
       LeadRepository leads,
       ConversationRepository conversations,
       MessageRepository messages,
+      BookingRepository bookings,
       PromptLoader prompts,
       Suppressions suppressions,
       TurnLocks locks,
@@ -66,6 +69,7 @@ public class ConversationService {
     this.leads = leads;
     this.conversations = conversations;
     this.messages = messages;
+    this.bookings = bookings;
     this.prompts = prompts;
     this.suppressions = suppressions;
     this.locks = locks;
@@ -97,23 +101,25 @@ public class ConversationService {
   }
 
   /**
-   * The conversation as it stands: state plus transcript, with no reply. Bodies from a turn that
-   * carried health information on are hidden.
+   * The conversation as it stands: state, booking and transcript, with no reply. Bodies from a turn
+   * that carried health information on are hidden.
    */
   @Transactional(readOnly = true)
   public TurnResponse view(String conversationId) {
-    return TurnResponse.of(
-        conversations.require(conversationId),
-        null,
-        messages.transcript(conversationId),
-        clock.now());
+    return TurnResponse.of(rowsOf(conversationId), null, clock.now());
   }
 
   /** Like {@link #view}, with every body shown, health information included. */
   @Transactional(readOnly = true)
   public TurnResponse viewWithHealth(String conversationId) {
-    return TurnResponse.withHealth(
-        conversations.require(conversationId), messages.transcript(conversationId), clock.now());
+    return TurnResponse.withHealth(rowsOf(conversationId), clock.now());
+  }
+
+  private TurnResponse.Rows rowsOf(String conversationId) {
+    return new TurnResponse.Rows(
+        conversations.require(conversationId),
+        bookings.findByConversationId(conversationId).orElse(null),
+        messages.transcript(conversationId));
   }
 
   private Lead requireLead(String leadId) {
@@ -166,7 +172,8 @@ public class ConversationService {
     PromptBundle bundle = prompts.active();
     Conversation conversation = conversations.save(newConversation(lead, bundle, now));
     Message opener = storeOpener(conversation, lead, bundle, now);
-    return TurnResponse.of(conversation, opener.text(), List.of(opener), now);
+    return TurnResponse.of(
+        new TurnResponse.Rows(conversation, null, List.of(opener)), opener.text(), now);
   }
 
   /**

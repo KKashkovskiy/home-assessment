@@ -15,15 +15,17 @@ import org.springframework.stereotype.Component;
 
 /**
  * The {@link ReplyGuards} around the model's replies, with one repair. A reply that fails is asked
- * for again once, with the turn's question and a note naming what failed; only the rewrite's text
- * is used, so the decision already applied stands. A rewrite that fails too, or a repair call that
- * fails, is replaced. Two calls at most, by structure. Every reply checked leaves one GUARD event
- * per {@link ReplyCheck} with that check's notes, never the reply itself.
+ * for again once, with the turn's question and a note naming what failed, and with no tools when
+ * the decision ended the conversation; only the rewrite's text is used, so the decision already
+ * applied stands. A rewrite that fails too, or a repair call that fails, is replaced. Two calls at
+ * most, by structure. Every reply checked leaves one GUARD event per {@link ReplyCheck} with that
+ * check's notes, never the reply itself.
  */
 @Component
 class ReplyRepair {
 
   private final ReplyGuards guards;
+  private final TurnQuestions questions;
   private final AgentCall calls;
   private final GuardOutcomes outcomes;
   private final PromptLoader prompts;
@@ -32,12 +34,14 @@ class ReplyRepair {
 
   ReplyRepair(
       ReplyGuards guards,
+      TurnQuestions questions,
       AgentCall calls,
       GuardOutcomes outcomes,
       PromptLoader prompts,
       TraceLog trace,
       SmsProperties sms) {
     this.guards = guards;
+    this.questions = questions;
     this.calls = calls;
     this.outcomes = outcomes;
     this.prompts = prompts;
@@ -45,14 +49,25 @@ class ReplyRepair {
     this.sms = sms;
   }
 
-  /** What an open conversation's turn sends for the model's {@code reply}. */
-  TurnOutcome send(RunningTurn turn, String reply, AgentCall.Question question) {
+  /**
+   * What an open conversation's turn sends for the model's {@code reply}; a repair draws on the
+   * turn's {@code rounds}.
+   */
+  TurnOutcome send(
+      RunningTurn turn,
+      String reply,
+      TurnQuestions.Question question,
+      AgentCall.ToolRounds rounds) {
     ReplyGuards.Checked first = check(turn, reply, TraceOutcome.REPAIR);
     if (first.passed()) {
       return TurnOutcome.decided(first.text());
     }
+    TurnQuestions.Question again =
+        questions.repairOf(turn, question, ReplyGuards.note(first.violations()));
     AgentCall.Answer repair =
-        calls.ask(turn, calls.repairOf(turn, question, ReplyGuards.note(first.violations())));
+        turn.conversation().ended
+            ? calls.classify(turn, again, rounds)
+            : calls.ask(turn, again, rounds);
     return rewriteOrReplacement(turn, repair).withRepairCall(repair.call());
   }
 
@@ -109,8 +124,8 @@ class ReplyRepair {
   }
 
   /**
-   * The reply may name only times from the latest offer, this turn's tool calls included; there is
-   * no booking. After an end, or on the turn that ends it, the reply closes the conversation.
+   * The reply may name only times from the latest offer and the booking, this turn's tool calls
+   * included. After an end, or on the turn that ends it, the reply closes the conversation.
    */
   private ReplyContext contextFor(RunningTurn turn) {
     Conversation conversation = turn.conversation();
@@ -118,7 +133,7 @@ class ReplyRepair {
         turn.lead(),
         prompts.load(conversation.promptVersion).canary(),
         conversation.lastOfferedLabels(),
-        null,
+        questions.bookingLabel(conversation),
         conversation.goalMet,
         conversation.ended,
         sms.maxChars());

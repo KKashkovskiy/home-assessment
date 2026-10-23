@@ -120,8 +120,7 @@ class DecisionSchemaTest {
   }
 
   private static ModelResponse.Decided decided(JsonNode output) {
-    return new ModelResponse.Decided(
-        output, null, ModelResponse.Usage.ZERO, 0, "{}", "{}", List.of());
+    return new ModelResponse.Decided(output, null, ModelResponse.Usage.ZERO, 0, "{}", "{}");
   }
 
   private static JsonNode schema() {

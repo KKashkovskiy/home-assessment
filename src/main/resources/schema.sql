@@ -114,3 +114,15 @@ CREATE INDEX IF NOT EXISTS turn_cost_idx ON turn(conversation_id, cost_usd);   -
 ALTER TABLE conversation ADD COLUMN IF NOT EXISTS last_offered_slots_json CLOB;      -- [{slotId, startUtc, label}]
 ALTER TABLE conversation ADD COLUMN IF NOT EXISTS upstream_errors INT DEFAULT 0 NOT NULL;  -- tool errors in a row
 ALTER TABLE turn ADD COLUMN IF NOT EXISTS tool_calls_json CLOB;                      -- [{name, arguments_json, result_json}]
+
+-- The one advisor call per conversation, written by book_call only; no status column, a change is a handoff.
+CREATE TABLE IF NOT EXISTS booking (
+  id              VARCHAR(40) PRIMARY KEY,           -- the calendar's event id
+  conversation_id VARCHAR(40) NOT NULL REFERENCES conversation(id),
+  slot_id         VARCHAR(40) NOT NULL,
+  start_utc       TIMESTAMP WITH TIME ZONE NOT NULL,
+  local_label     VARCHAR(60) NOT NULL,              -- "Mon 27 Jul 12:00 PM AEST"
+  lead_zone_id    VARCHAR(40) NOT NULL,
+  created_at      TIMESTAMP WITH TIME ZONE NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS booking_conversation_uq ON booking(conversation_id);

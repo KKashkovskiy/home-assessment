@@ -56,7 +56,8 @@ is set with `handoff_reason` `ERROR`, nothing is sent and the conversation stays
 A whole message of STOP, STOPALL, UNSUBSCRIBE, OPTOUT, CANCEL, END or QUIT, ignoring case, punctuation and spaces,
 ends the conversation `UNSUBSCRIBED`, returns the fixed confirmation and suppresses the phone: every later start for
 it answers 409 `SUPPRESSED`, forced or not, and later messages on any of its conversations are stored without a
-reply, save the safety template below.
+reply, save the safety template below. The one exception is CANCEL alone after a booking, which means the call, not
+the messages.
 
 Every inbound passes these guards before the model sees it, and every rule about how a conversation ends and stays
 ended is code, not prompt. With a key, OpenAI's moderations endpoint screens each message but a STOP first, with its
@@ -66,12 +67,13 @@ turn; the rows after the call act on the model's decision.
 
 | Check | What happens |
 |---|---|
+| CANCEL alone after a booking, before a hard end | `BOOKING_CHANGE_HANDOFF`, `needs_human` with `RESCHEDULE`, the booking kept, no model call; once acknowledged, a repeat gets nothing, flagged `LOOP_SUPPRESSED` |
 | Whole-message STOP keyword | ends `UNSUBSCRIBED`, suppresses the phone, sends the confirmation, even after another end; a repeat is silent |
 | Moderation self-harm score at or above `anna.moderation.self-harm` | the Lifeline template once per conversation, flag `VULNERABLE`, handoff `SELF_HARM`; ends `SAFETY`, or after a hard end adds `SAFETY` to the history only |
 | Ended hard: `UNSUBSCRIBED`, `ABUSIVE`, `SAFETY`, `OFF_TOPIC_LIMIT` | stored, no model call, no reply |
 | Moderation harassment or threat score at or above its threshold | ends `ABUSIVE`, no reply, no model call |
 | No key, or spend at `anna.budgets.app-cap-usd` or `conversation-cap-usd` | no model call, `needs_human` with `ERROR`, stays open |
-| Ended soft: `BOOKED`, `DECLINED`, `MAX_TURNS`, `HANDOFF` | the model only classifies; RESCHEDULE or HANDOFF_REQUEST gets one `HANDOFF_ACK`, anything else at most one closing reply of 160 characters or fewer with no question mark, then silence flagged `LOOP_SUPPRESSED` |
+| Ended soft: `BOOKED`, `DECLINED`, `MAX_TURNS`, `HANDOFF` | the model only classifies; RESCHEDULE or HANDOFF_REQUEST gets one `HANDOFF_ACK`, or after a booking RESCHEDULE gets `BOOKING_CHANGE_HANDOFF` with the booking kept; anything else at most one closing reply of 160 characters or fewer with no question mark, then silence flagged `LOOP_SUPPRESSED` |
 | `anna.limits.max-turns` messages sent | `MAX_TURNS_CLOSE`, ends `MAX_TURNS` |
 | After the call: intent OPT_OUT, ABUSIVE or SELF_HARM | the model's reply is discarded for the outcome of the matching row above; an opt-out is suppressed as `MODEL` |
 | After the call: an objection beyond `anna.limits.objection-retries` | `DECLINED_CLOSE`, ends `DECLINED`; busy with a day named is a deferral, not counted |
@@ -80,9 +82,11 @@ turn; the rows after the call act on the model's decision.
 
 The model may end a conversation `DECLINED` or `HANDOFF`, and a request for a person or a complaint ends it
 `HANDOFF`; a fixed close or the model's own sign-off is the one closing reply. `goal_met`, `stage: BOOKED` and any
-other end reason from the model are traced as `OVERRIDE` and ignored, because only a booking meets the goal.
-`end_reason` only moves up, `UNSUBSCRIBED` over `SAFETY` over `ABUSIVE` over the rest, and every transition stays in
-`end_reason_history`; `needs_human` is sticky and `handoff_reason` is the latest. Spend is the sum of `turn.cost_usd`.
+other end reason from the model are traced as `OVERRIDE` and ignored, because only a booking meets the goal: the
+booking sets all three, and the confirmation on that turn leaves room for one closing reply. `end_reason` only moves
+up, `UNSUBSCRIBED` over `SAFETY` over `ABUSIVE` over the rest, and every transition stays in `end_reason_history`;
+STOP or abuse after a booking keeps the booking and hands off `BOOKING_REVIEW`, so a person cancels the call.
+`needs_human` is sticky and `handoff_reason` is the latest. Spend is the sum of `turn.cost_usd`.
 A lead whose last conversation ended `ABUSIVE` gets 409 `ABUSIVE` on a plain start; only `?force=true` texts them
 again. Moderation and the pre-guards write a `GUARD` trace event every turn, pass or not, the checks after the call
 write one when they act, and each turn ends with a `STATE_DIFF` event naming the fields it changed. One gap is known:
@@ -124,14 +128,32 @@ Perth lead, still AEST for a Brisbane lead once Melbourne moves to AEDT on 4 Oct
 latest result replaces the last one on the conversation, the next turn's context lists it with the slot ids, the API
 response shows its labels as `last_offered_slots`, and the `time-mention` check reads it.
 
-The OpenAI client answers the model's function calls inside the call, at most `anna.agent.max-tool-rounds` rounds of
-them, after which the call fails `TOOL_ROUNDS` and hands off; after an end the model is offered no tools. Each function
-call is a `TOOL_CALL` trace event with its arguments, result, slot count and latency, and the turn stores the calls in
-`tool_calls_json`. A bad call, or a tool that breaks, comes back to the model as a compact code (`BAD_ARGS`,
-`BAD_DATE`, `BAD_RANGE`, `TOOL_FAILED`), never a stack trace, and a second tool error in a row, across turns, sets
-`needs_human` with `ERROR`. `book_call` is offered, so the tool set matches the prompt, but answers `NOT_AVAILABLE_YET`
-and books nothing. `anna.clock.mode: FIXED` with `anna.clock.fixed-at` replays a conversation on a known day, and
-`anna.scheduling.calendar-preset: fully_booked` empties the calendar.
+The OpenAI client makes one round trip per call and knows nothing of tools beyond offering them; the agent answers the
+model's function calls round by round, at most `anna.agent.max-tool-rounds` rounds a turn, the decision call and its
+repair together. A decision call that still calls a tool after that fails `TOOL_ROUNDS` and hands off; a repair that
+does falls back like any failed repair. After an end, the repair included, the model is offered no tools. Each round is
+a `MODEL_CALL` trace event, numbered across the turn, and each function call a `TOOL_CALL` event with its arguments,
+result, slot count and latency, in the order they happened; the turn stores the calls in `tool_calls_json`, its tokens
+are the sum of its rounds' and its cost the sum of their costs. Every call gets an answer, never a stack trace. One the
+model got wrong is rejected with a compact code (`BAD_ARGS`, `BAD_DATE`, `BAD_RANGE`, `UNKNOWN_TOOL`, `UNKNOWN_SLOT`,
+`NO_PHONE`) and counts toward nothing, since the round cap bounds it; a calendar that refuses or a tool that breaks
+(`SLOT_TAKEN`, `NOT_BOOKED`, `TOOL_FAILED`) counts, and a second such failure in a row, across turns, with no answer
+between, sets `needs_human` with `ERROR`. `anna.clock.mode: FIXED` with `anna.clock.fixed-at` replays a conversation on
+a known day, and `anna.scheduling.calendar-preset: fully_booked` empties the calendar.
+
+`book_call` takes one argument, a `slot_id`, and books only an id from the latest availability result on the
+conversation; any other is `UNKNOWN_SLOT` and the model asks for availability again. The calendar checks the slot again
+at booking, because an offer goes stale between turns, and answers `NOT_BOOKED` for one no longer free;
+`calendar-preset: slot_taken` makes it answer the first booking `SLOT_TAKEN`. Both go back to the model. Name, phone and
+email come from the stored lead, never from the model, and a lead with no phone is `NO_PHONE`. A booking is a row with
+the calendar's event id, the UTC start and the lead-local label, one per conversation by a unique index, and a repeat
+`book_call` returns the booking already made. The row is the truth: it commits before its turn does, so a turn that dies
+in between leaves a booking the conversation does not show, and the next turn meets the goal before anything else runs.
+When the calendar booked but the row did not save, nobody knows whether the call is booked: the model is told not to
+retry and `needs_human` is set with `ERROR`. Every response carries the booking as `booking`, and its label is a time
+the `time-mention` check accepts. After a booking, a request to move or cancel the call sends the fixed
+`BOOKING_CHANGE_HANDOFF` once with `handoff_reason` `RESCHEDULE`, keeps the booking and never books again; a lone CANCEL
+after that is stored, flagged `LOOP_SUPPRESSED` and answered with nothing.
 
 Once a turn carries health information, message bodies from that turn on come back as `null` with
 `"redacted": "HEALTH_INFO"`, unless the GET asks with `?includeHealth=true`.
