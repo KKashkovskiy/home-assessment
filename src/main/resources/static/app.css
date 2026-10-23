@@ -402,9 +402,7 @@ a.kpi:hover .label { text-decoration: underline; }
 .active-filters:empty { display: none; }
 #banners:empty { display: none; }
 #banners { padding: var(--s2) var(--s4) 0; display: flex; flex-direction: column; gap: var(--s2); }
-.prompt-view { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; z-index: 30; }
-.prompt-view .panel { width: min(820px, 100%); max-height: 88vh; display: flex; flex-direction: column; }
-.prompt-view pre { white-space: pre-wrap; font-family: var(--sans); font-size: .9rem; line-height: 1.5; margin: 0; padding: var(--s4); overflow: auto; }
+.prompt-view pre { white-space: pre-wrap; font-family: var(--sans); font-size: .9rem; line-height: 1.5; margin: 0; }
 
 /* Server-rendered console. Rows, chips and the start button are links or form buttons, so every action
    works without JavaScript; these rules keep them looking like the prototype's, and cover the states its
@@ -446,4 +444,53 @@ button.chip[aria-pressed="true"] b { color: inherit; }
   .composer-row { flex-wrap: wrap; }
   .composer textarea { flex: 1 1 100%; }
   .composer .counter { margin-right: auto; align-self: center; }
+}
+
+/* Inspector: the states and rows the prototype's fixed data never reached, the prompt dialog, and phone width. */
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.inspector-tools .tool-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s1); flex-basis: 100%; }
+.inspector-tools:has(~ #turns > .empty) .needs-turns, #turns:has(> .empty) ~ #conv-footer { display: none; }
+.turn > summary:hover { background: var(--surface-2); }
+.turn > summary:focus-visible { outline-offset: -2px; }
+.turn[open] > summary { border-bottom: 1px dashed var(--line); margin-bottom: var(--s3); }
+.turn-body .quote { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.turn-body .quote::before { content: "\201C"; color: var(--ink-3); }
+.turn-body .quote::after { content: "\201D"; color: var(--ink-3); }
+.turn-body .raw { white-space: pre-wrap; word-break: break-word; }
+.turn-body .kv { grid-template-columns: minmax(96px, 30%) 1fr; }
+.turn-body .notice { margin: 0 0 var(--s2); }
+.turn-body .context > summary { cursor: pointer; font-size: .8rem; color: var(--ink-3); font-weight: 600; }
+.turn-body .context[open] > summary { margin-bottom: var(--s1); }
+.row-note { margin: var(--s1) 0 0; }
+.lines { white-space: pre-line; }
+.guard-list { display: grid; grid-template-columns: auto auto auto 1fr; gap: 3px var(--s2); align-items: baseline; }
+.guard-list li { display: contents; }
+.guard-list .name { font-family: var(--mono); font-size: .8rem; }
+.guard-list .action { word-break: break-word; }
+.guard-list .outcome:not(.pass, .block, .repair, .override) { color: var(--ink-3); }
+.reasoning { font-style: normal; }
+.struck { text-decoration: line-through; color: var(--ink-3); }
+.chip.kept { margin-left: var(--s2); }
+.turn-body section.error-row { border-left-color: var(--fail); }
+.conv-footer { padding: var(--s3) var(--s4); margin: 0; }
+.tool-line a { color: inherit; text-decoration: underline dotted; }
+.bubble-meta a { color: var(--accent); }
+dialog.prompt-view { padding: 0; border: 0; background: transparent; color: inherit; width: min(820px, calc(100% - 32px)); max-width: none; max-height: 88vh; margin: 6vh auto auto; overflow: visible; }
+dialog.prompt-view:not([open]) { display: none; }
+dialog.prompt-view::backdrop { background: var(--overlay); }
+.prompt-view .panel { max-height: 88vh; display: flex; flex-direction: column; }
+.prompt-view .panel > header h2 { font-size: .93rem; }
+.prompt-view form[method="dialog"] { margin: 0; }
+.prompt-body { overflow: auto; padding: var(--s3) var(--s4) var(--s4); }
+.prompt-body h3 { font-size: .86rem; color: var(--ink-2); margin: var(--s4) 0 var(--s2); }
+.prompt-body h3:first-child { margin-top: 0; }
+.prompt-body pre.raw { font-family: var(--mono); font-size: .8rem; max-height: none; }
+@media (max-width: 720px) {
+  .turn > summary .metrics { margin-left: 20px; width: 100%; flex-wrap: wrap; }
+  .turn-body { padding: 0 var(--s3) var(--s3); }
+  .turn-body .kv { grid-template-columns: 7.5em 1fr; }
+  .guard-list { grid-template-columns: auto auto 1fr; }
+  .guard-list .action { grid-column: 2 / -1; }
+  dialog.prompt-view { width: calc(100% - 16px); margin-top: var(--s3); max-height: calc(100vh - 24px); }
+  .prompt-view .panel { max-height: calc(100vh - 24px); }
 }

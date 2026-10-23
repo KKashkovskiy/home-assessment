@@ -64,6 +64,9 @@ anna:
     max-slots: 6                          # per get_availability result
     calendar-preset: normal               # normal | fully_booked | slot_taken
     state-holidays: []                    # the advisors' state, e.g. ["2026-11-03"] for VIC; national ones are built in
+  ui:
+    sse-enabled: true                     # false: the inspector has no live log; a reload still shows every turn
+    sse-timeout-min: 30                   # one live-log stream's lifetime; the browser reconnects on its own
   clock:
     mode: REAL                            # REAL | FIXED
     fixed-at: ""                          # ISO instant when FIXED, e.g. 2026-07-26T00:00:00Z

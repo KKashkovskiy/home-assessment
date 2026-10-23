@@ -5,7 +5,6 @@ import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.PriceTable;
 import com.enrola.anna.config.AgentProperties;
 import java.math.BigDecimal;
-import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
@@ -33,22 +32,29 @@ class ModelCallRecorder {
   /** What the call returned for the turn row, beside what every call has. */
   private record Output(String decisionJson, String reasoningSummary) {}
 
-  /** The MODEL_CALL event of one round: what it cost and took, and how it ended. */
-  void recordRound(RunningTurn turn, int round, ModelResponse response) {
+  /**
+   * The MODEL_CALL event of one round of {@code call}: what it cost and took, how it ended, and the
+   * reasoning summary of a round that decided, which only the inspector shows.
+   */
+  void recordRound(
+      RunningTurn turn, int round, ModelRoundPayload.Call call, ModelResponse response) {
     trace.record(
         turn,
         new TraceLog.Entry(
             TraceEventType.MODEL_CALL,
             "decide",
             TraceOutcome.INFO,
-            Map.of(
-                "model", agent.model(),
-                "effort", Objects.requireNonNullElse(agent.reasoningEffort(), "default"),
-                "round", round,
-                "tokens", response.usage(),
-                "cost_usd", cost(response.usage()),
-                "latency_ms", response.latencyMs(),
-                "status", status(response))));
+            new ModelRoundPayload(
+                agent.model(),
+                Objects.requireNonNullElse(agent.reasoningEffort(), "default"),
+                round,
+                call,
+                response.usage(),
+                cost(response.usage()),
+                response.latencyMs(),
+                status(response),
+                failure(response),
+                summary(response))));
   }
 
   /** Writes the ERROR event of a failed call and returns the columns for the turn row. */
@@ -69,22 +75,45 @@ class ModelCallRecorder {
     return prices.cost(agent.model(), usage);
   }
 
-  private static String status(ModelResponse response) {
+  private static ModelRoundPayload.Status status(ModelResponse response) {
     return switch (response) {
-      case ModelResponse.Decided _ -> "DECIDED";
-      case ModelResponse.ToolCalls _ -> "TOOL_CALLS";
-      case ModelResponse.Failed failed -> failed.code().name();
+      case ModelResponse.Decided _ -> ModelRoundPayload.Status.DECIDED;
+      case ModelResponse.ToolCalls _ -> ModelRoundPayload.Status.TOOL_CALLS;
+      case ModelResponse.Failed _ -> ModelRoundPayload.Status.FAILED;
     };
   }
 
-  private static TraceLog.Entry errorEvent(ModelResponse.Failed failed) {
+  private static ModelResponse.Failure failure(ModelResponse response) {
+    return switch (response) {
+      case ModelResponse.Failed failed -> failed.code();
+      case ModelResponse.Decided _, ModelResponse.ToolCalls _ -> null;
+    };
+  }
+
+  private static String summary(ModelResponse response) {
+    return switch (response) {
+      case ModelResponse.Decided decided -> decided.reasoningSummary();
+      case ModelResponse.ToolCalls _, ModelResponse.Failed _ -> null;
+    };
+  }
+
+  private TraceLog.Entry errorEvent(ModelResponse.Failed failed) {
     return new TraceLog.Entry(
         TraceEventType.ERROR,
         "model_call",
         TraceOutcome.INFO,
-        Map.of(
-            "code", failed.code().name(),
-            "detail", Objects.requireNonNullElse(failed.detail(), "")));
+        new ErrorPayload(failed.code().name(), failed.detail(), maxAttempts(failed.code())));
+  }
+
+  /**
+   * The client retries a transport failure, a timeout or an HTTP error, up to {@code
+   * anna.agent.max-retries} times; a response that came back is never asked for again.
+   */
+  private int maxAttempts(ModelResponse.Failure failure) {
+    return switch (failure) {
+      case TIMEOUT, HTTP_5XX, HTTP_4XX, SDK -> 1 + agent.maxRetries();
+      case INCOMPLETE, FAILED, REFUSAL, NO_OUTPUT, SCHEMA, TOOL_ROUNDS -> 1;
+    };
   }
 
   private Turn.ModelCall columns(

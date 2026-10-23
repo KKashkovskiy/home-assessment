@@ -1,6 +1,7 @@
 /* Anna console. The server renders every page and fragment; this script adds the theme toggle, the start
-   panel as a dialog, filters that apply on change and the composer's optimistic send. Every action is also
-   a plain form post, so the console works without it. */
+   panel as a dialog, filters that apply on change, the composer's optimistic send and the inspector's
+   toggles, prompt dialog and live log. Every action is also a plain form post or link, so the console works
+   without it. */
 (function () {
   'use strict';
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -151,7 +152,14 @@
       .then(({ ok, status, html }) => {
         const root = fragmentRoot(html);
         pending.forEach((el) => el.remove());
-        if (ok && root) { thread.append(...root.children); hint.textContent = root.dataset.hint; hint.dataset.kind = root.dataset.hintKind; refreshState(); return; }
+        if (ok && root) {
+          thread.append(...root.children);
+          hint.textContent = root.dataset.hint;
+          hint.dataset.kind = root.dataset.hintKind;
+          refreshState();
+          loadTurn(root.dataset.turn);
+          return;
+        }
         failed(root ? root.dataset.hint : 'Send failed with HTTP ' + status + '. Reload to see what was stored.');
       })
       .catch(() => {
@@ -161,18 +169,19 @@
       .finally(() => { setBusy(form, false); scrollToEnd(thread); box.focus(); });
   }
 
-  /* A turn changes the list row, the lead line, the state header and the spend meter: take them from a
-     fresh copy of this page. */
+  /* A turn changes the list row, the thread, the state header, the spend meter and the inspector's totals:
+     take them from a fresh copy of this page. */
   function refreshState() {
     request(location.pathname + location.search)
       .then(({ ok, html }) => {
         if (!ok) return;
         const page = new DOMParser().parseFromString(html, 'text/html');
-        ['#conv-list', '#conv-count', '.state-head', '#status-strip .meter'].forEach((sel) => {
+        ['#conv-list', '#conv-count', '#thread', '.state-head', '#status-strip .meter', '#conv-footer'].forEach((sel) => {
           const fresh = $(sel, page);
           const stale = $(sel);
           if (fresh && stale) stale.replaceWith(fresh);
         });
+        scrollToEnd($('#thread'));
       })
       .catch(() => { /* the next page load shows the fresh state */ });
   }
@@ -185,10 +194,14 @@
 
   /* A send answers with one element carrying data-hint: the turn's items, or a problem line. */
   function fragmentRoot(html) {
+    const root = parseFragment(html);
+    return root && root.dataset.hint !== undefined ? root : null;
+  }
+
+  function parseFragment(html) {
     const template = document.createElement('template');
     template.innerHTML = html.trim();
-    const root = template.content.firstElementChild;
-    return root && root.dataset.hint !== undefined ? root : null;
+    return template.content.firstElementChild;
   }
 
   function bubble(className, text) {
@@ -207,10 +220,117 @@
     if (thread) thread.scrollTop = thread.scrollHeight;
   }
 
+  /* ---------- Inspector ---------- */
+
+  /* Expand and collapse need the script, so they show only with it; the raw JSON toggle is also a form post. */
+  function initInspector() {
+    const turns = $('#turns');
+    if (!turns) return;
+    $$('#expand-all, #collapse-all').forEach((button) => { button.hidden = false; });
+    $$('#expand-all').forEach((button) => button.addEventListener('click', () => setTurnsOpen(true)));
+    $$('#collapse-all').forEach((button) => button.addEventListener('click', () => setTurnsOpen(false)));
+    $$('#raw-form').forEach((form) => form.addEventListener('submit', toggleRawJson));
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[data-turn]');
+      if (link && focusTurn(link.dataset.turn)) e.preventDefault();
+    });
+    if (turns.dataset.live === 'true') subscribeTurns();
+  }
+
+  function setTurnsOpen(open) {
+    $$('#turns .turn').forEach((turn) => { turn.open = open; });
+  }
+
+  /* The blocks toggle in place and the session keeps the choice for the next load. */
+  function toggleRawJson(e) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const on = form.elements.on.value === 'true';
+    $$('#turns .raw-json').forEach((pre) => { pre.hidden = !on; });
+    $('#raw-toggle').setAttribute('aria-pressed', String(on));
+    form.elements.on.value = String(!on);
+    request(form.action, { method: 'POST', body: new URLSearchParams({ on }) })
+      .catch(() => { /* this page still toggled; the next load shows the session's last choice */ });
+  }
+
+  /* A turn link in the thread opens that turn's card; without the script it is a plain anchor. */
+  function focusTurn(n) {
+    const card = $('#turn-' + n);
+    if (!card) return false;
+    card.open = true;
+    card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    $('summary', card).focus({ preventScroll: true });
+    return true;
+  }
+
+  /* Live log: the server sends ids only, and a 'turn' event once a turn has committed, so its card and a fresh
+     copy of the page are fetched; this tab's own send fetches them itself. Three failures in a row close the
+     log, and a reload still shows everything. The chip's words are its data attributes. */
+  function subscribeTurns() {
+    const chip = $('#live-chip');
+    const source = new EventSource($('#turns').dataset.base + '/events');
+    let failures = 0;
+    chip.hidden = false;
+    source.onopen = () => { failures = 0; chip.textContent = chip.dataset.on; };
+    source.addEventListener('turn', (e) => {
+      if ($('#composer-form[aria-busy="true"]')) return;
+      loadTurn(JSON.parse(e.data).turn).then((shown) => { if (shown) refreshState(); });
+    });
+    source.onerror = () => {
+      failures += 1;
+      if (failures < 3 && source.readyState !== EventSource.CLOSED) { chip.textContent = chip.dataset.reconnecting; return; }
+      source.close();
+      chip.textContent = chip.dataset.off;
+      chip.classList.replace('ghost', 'warn');
+    };
+  }
+
+  /* Puts turn n's card in place, open, the others closed. */
+  function loadTurn(n) {
+    return request($('#turns').dataset.base + '/turns/' + n).then(({ ok, html }) => {
+      const card = ok ? parseFragment(html) : null;
+      if (!card) return false;
+      setTurnsOpen(false);
+      const stale = $('#turn-' + n);
+      if (stale) { stale.replaceWith(card); return true; }
+      const empty = $('#turns > .empty');
+      if (empty) empty.remove();
+      $('#turns').append(card);
+      return true;
+    }).catch(() => false);
+  }
+
+  /* ---------- Prompt dialog ---------- */
+
+  /* The prompt opens in the page's modal dialog from its server-rendered fragment; without the script the link
+     shows the fragment alone. Close, Escape or a click on the backdrop closes it, and focus goes back to the link. */
+  function initPromptDialog() {
+    const dialog = $('#prompt-view');
+    if (!dialog) return;
+    let opener = null;
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[data-dialog]');
+      if (!link) return;
+      e.preventDefault();
+      opener = link;
+      request(link.href).then(({ ok, html }) => {
+        const content = ok ? parseFragment(html) : null;
+        if (!content) { location.assign(link.href); return; }
+        dialog.replaceChildren(content);
+        $('#prompt-view-close', dialog).hidden = false;
+        dialog.showModal();
+      }).catch(() => location.assign(link.href));
+    });
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+    dialog.addEventListener('close', () => { dialog.replaceChildren(); if (opener) opener.focus(); });
+  }
+
   initTheme();
   trackChromeHeight();
   initCopyButtons();
   initFilters();
   initStartPanel();
   initComposer();
+  initInspector();
+  initPromptDialog();
 })();

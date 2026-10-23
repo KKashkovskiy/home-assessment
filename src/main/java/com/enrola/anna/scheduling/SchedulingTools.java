@@ -16,8 +16,8 @@ import tools.jackson.databind.json.JsonMapper;
  * The model's function calls, by the names in {@code tools.json}: get_availability runs {@link
  * AvailabilityTool} and book_call {@link BookCallTool}. Arguments that are not the declared JSON
  * are BAD_ARGS, and a tool that breaks is TOOL_FAILED, so a call always gets an answer and the turn
- * goes on. {@link #modelJson} renders any result as the compact JSON the model reads, and {@link
- * #summary} reads that JSON back as one line for the console.
+ * goes on. {@link #modelJson} renders any result as the compact JSON the model reads; {@link
+ * #summary}, {@link #slots} and {@link #hint} read that JSON back for the console.
  */
 @Component
 public class SchedulingTools {
@@ -76,7 +76,7 @@ public class SchedulingTools {
               new SlotsJson(
                   slots.timezone(),
                   slots.slots().stream()
-                      .map(slot -> new SlotJson(slot.slotId(), slot.label()))
+                      .map(slot -> new OfferedSlot(slot.slotId(), slot.label()))
                       .toList(),
                   slots.note());
           case ToolResult.Booked booked ->
@@ -105,6 +105,26 @@ public class SchedulingTools {
     };
   }
 
+  /** The slots an answer {@link #modelJson} wrote offered; none for a booking or an error. */
+  public static List<OfferedSlot> slots(String modelJson) {
+    return switch (JSON.readValue(modelJson, Answer.class)) {
+      case SlotsJson slots -> slots.slots();
+      case BookedJson _, FailureJson _ -> List.of();
+    };
+  }
+
+  /** The hint an error answer gave the model, as "call get_availability again"; else null. */
+  public static String hint(String modelJson) {
+    return switch (JSON.readValue(modelJson, Answer.class)) {
+      case FailureJson failure -> failure.hint();
+      case SlotsJson _, BookedJson _ -> null;
+    };
+  }
+
+  /** A slot as an answer offered it: the id the model books with and the lead-local label. */
+  @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+  public record OfferedSlot(String slotId, String localLabel) {}
+
   /** The arguments as {@code type}, or empty when they are not that JSON or are {@code null}. */
   private static <T> Optional<T> args(String argumentsJson, Class<T> type) {
     try {
@@ -123,11 +143,8 @@ public class SchedulingTools {
   })
   private sealed interface Answer permits SlotsJson, BookedJson, FailureJson {}
 
-  private record SlotsJson(String timezone, List<SlotJson> slots, ToolResult.Note note)
+  private record SlotsJson(String timezone, List<OfferedSlot> slots, ToolResult.Note note)
       implements Answer {}
-
-  @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-  private record SlotJson(String slotId, String localLabel) {}
 
   @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
   private record BookedJson(String status, String bookingId, String label) implements Answer {}

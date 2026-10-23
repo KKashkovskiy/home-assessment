@@ -23,10 +23,10 @@ import org.springframework.stereotype.Component;
 /**
  * The steps of one claimed turn, in order: the prompt version the conversation pinned is loaded, a
  * phone that opted out leaves the conversation unsubscribed, moderation screens the inbound, the
- * {@link PreGuards} pick one outcome, the outcome runs, and a STATE_DIFF event records what the
- * turn changed. Moderation and the pre-guards write a GUARD event every turn, pass or not. A STOP
- * is never screened, so it cannot wait on moderation. Without a key there is no moderation
- * endpoint, so every verdict is unavailable and the trace shows the gap.
+ * {@link PreGuards} pick one outcome, and the outcome runs. Moderation and the pre-guards write a
+ * GUARD event every turn, pass or not. A STOP is never screened, so it cannot wait on moderation.
+ * Without a key there is no moderation endpoint, so every verdict is unavailable and the trace
+ * shows the gap.
  */
 @Component
 class TurnPipeline {
@@ -93,13 +93,6 @@ class TurnPipeline {
     TurnOutcome outcome = route(turn, decide(turn, screen(turn)));
     countSent(conversation, outcome, before);
     anchorHealthInfo(turn);
-    trace.record(
-        turn,
-        new TraceLog.Entry(
-            TraceEventType.STATE_DIFF,
-            "state",
-            TraceOutcome.INFO,
-            before.changesTo(StateSnapshot.of(conversation))));
     return outcome;
   }
 
@@ -120,15 +113,8 @@ class TurnPipeline {
               TraceEventType.ERROR,
               "prompt-load",
               TraceOutcome.BLOCK,
-              Map.of(
-                  "code",
-                  "PROMPT",
-                  "version",
-                  conversation.promptVersion,
-                  "detail",
-                  e.getMessage(),
-                  "templates_from",
-                  active)));
+              new ErrorPayload(
+                  "PROMPT", e.getMessage() + "; fixed templates from " + active, null)));
       return prompts.bundle(active);
     }
   }

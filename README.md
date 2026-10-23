@@ -133,8 +133,9 @@ The OpenAI client makes one round trip per call and knows nothing of tools beyon
 model's function calls round by round, at most `anna.agent.max-tool-rounds` rounds a turn, the decision call and its
 repair together. A decision call that still calls a tool after that fails `TOOL_ROUNDS` and hands off; a repair that
 does falls back like any failed repair. After an end, the repair included, the model is offered no tools. Each round is
-a `MODEL_CALL` trace event, numbered across the turn, and each function call a `TOOL_CALL` event with its arguments,
-result, slot count and latency, in the order they happened; the turn stores the calls in `tool_calls_json`, its tokens
+a `MODEL_CALL` trace event, numbered across the turn and marked as the decision's or the repair's, and each function
+call a `TOOL_CALL` event with its arguments, result, slot count, how the calendar's free starts were filtered down to
+the slots, and latency, in the order they happened; the turn stores the calls in `tool_calls_json`, its tokens
 are the sum of its rounds' and its cost the sum of their costs. Every call gets an answer, never a stack trace. One the
 model got wrong is rejected with a compact code (`BAD_ARGS`, `BAD_DATE`, `BAD_RANGE`, `UNKNOWN_TOOL`, `UNKNOWN_SLOT`,
 `NO_PHONE`) and counts toward nothing, since the round cap bounds it; a calendar that refuses or a tool that breaks
@@ -201,6 +202,22 @@ appear, and once a conversation carries health information its summary, cover no
 turn on are hidden. The mask is on unless the session turned it off. Every action is a form post, so the page works
 without JavaScript. The console has no login, so its protection against other sites is a strict same-site session
 cookie, a 403 for any page post that does not come from the console's own origin, and a refusal to be framed.
+
+Under the state header the inspector explains every turn from its stored rows, nothing recomputed: the time, model
+latency, tokens, cost and a status in words; the inbound and its provider message id; the context block the model was
+sent; the guards before the model call and after it, each with its verdict and what its trace event recorded; every
+model round, numbered across the turn and marked as the decision's or the repair's, with its tokens, cost, latency and
+reasoning summary, and between them the checks that sent a reply back; each tool call with its arguments, answer, how
+the free starts were filtered and the slots it offered; the decision as labelled fields, the reply struck through when
+the lead got something else and a field code overrode saying what code kept, with its raw JSON behind a toggle the
+session remembers and the turn's stored request and response one link away; and the state diff, where a value the
+model asked for and code overrode is struck through beside the one kept. Only the latest turn opens on load, and the
+thread's turn links open the others. A turn's prompt view shows the instructions and context its request carried,
+exactly as sent, so activating a newer version changes nothing there. The PII mask covers all of it, raw JSON
+included. Each trace payload is a record its writer and the inspector share, and an event this build cannot read shows
+as a gap rather than breaking the page. New turns arrive over Server-Sent Events that carry only the turn number and
+the event's type and name, sent once the turn has committed, and the page then fetches the turn and a fresh copy of
+itself; `anna.ui.sse-enabled: false` turns this live log off, and a reload still shows every turn.
 
 ## What Anna does
 

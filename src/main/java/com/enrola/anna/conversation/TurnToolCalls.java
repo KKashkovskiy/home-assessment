@@ -5,7 +5,6 @@ import com.enrola.anna.scheduling.SchedulingTools;
 import com.enrola.anna.scheduling.ToolContext;
 import com.enrola.anna.scheduling.ToolResult;
 import java.time.ZoneId;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +15,7 @@ import org.springframework.stereotype.Component;
  * hands off with ERROR, and a calendar or tool failure adds to a streak that an answer resets and
  * whose second failure hands off with ERROR. A call refused as the model's own mistake goes back to
  * it and leaves the streak as it was; the tool rounds bound those. Every call leaves a TOOL_CALL
- * event with what the model sent and read.
+ * event with what the model sent and read and, for availability, how the slots were filtered.
  */
 @Component
 class TurnToolCalls {
@@ -43,14 +42,11 @@ class TurnToolCalls {
             TraceEventType.TOOL_CALL,
             name,
             outcomeOf(result),
-            Map.of(
-                "args",
+            new ToolCallPayload(
                 argumentsJson,
-                "result",
                 answer,
-                "slot_count",
                 slotCount(result),
-                "latency_ms",
+                filteringOf(result),
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start))));
     return answer;
   }
@@ -91,6 +87,17 @@ class TurnToolCalls {
       case ToolResult.Slots _, ToolResult.Booked _ -> TraceOutcome.PASS;
       case ToolResult.Failure _, ToolResult.Rejected _, ToolResult.BookingUnknown _ ->
           TraceOutcome.BLOCK;
+    };
+  }
+
+  private static ToolResult.Filtering filteringOf(ToolResult result) {
+    return switch (result) {
+      case ToolResult.Slots slots -> slots.filtering();
+      case ToolResult.Booked _,
+          ToolResult.Failure _,
+          ToolResult.Rejected _,
+          ToolResult.BookingUnknown _ ->
+          null;
     };
   }
 

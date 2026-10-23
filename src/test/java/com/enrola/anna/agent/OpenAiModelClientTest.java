@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.config.AgentProperties;
 import com.openai.client.OpenAIClient;
+import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.ObjectMappers;
 import com.openai.core.http.Headers;
 import com.openai.errors.BadRequestException;
@@ -38,6 +39,8 @@ import tools.jackson.databind.json.JsonMapper;
 class OpenAiModelClientTest {
 
   static final JsonMapper JSON = JsonMapper.builder().build();
+
+  static final String FAKE_KEY = "sk-test-not-a-real-key-4f2a";
 
   static final List<JsonNode> TOOLS =
       List.copyOf(
@@ -120,6 +123,42 @@ class OpenAiModelClientTest {
             EasyInputMessage.Role.USER,
             EasyInputMessage.Role.USER);
     assertThat(items.get(1).content().asTextInput()).isEqualTo("save money");
+  }
+
+  /** The inspector reads the instructions and the context item back from the stored request. */
+  @Test
+  void recordedRequestReadsBackAsThePromptItSent() {
+    openAi.answer(response(DECIDED));
+
+    ModelResponse response = openAi.client().call(request(List.of()));
+
+    assertThat(OpenAiModelClient.sentPrompt(response.rawRequestJson()))
+        .isEqualTo(new OpenAiModelClient.SentPrompt("You are Anna.", "### Context for this turn"));
+  }
+
+  /**
+   * The real client with a key, against a port nothing listens on: the call fails, and the request
+   * it recorded carries neither the key nor an Authorization header.
+   */
+  @Test
+  void recordedRequestHoldsNoKey() {
+    OpenAiModelClient client =
+        new OpenAiModelClient(
+            OpenAIOkHttpClient.builder()
+                .apiKey(FAKE_KEY)
+                .baseUrl("http://127.0.0.1:1")
+                .maxRetries(0)
+                .timeout(Duration.ofSeconds(2))
+                .build());
+
+    ModelResponse response = client.call(request(List.of()));
+
+    assertThat(response).isInstanceOf(ModelResponse.Failed.class);
+    assertThat(response.rawRequestJson())
+        .contains("\"instructions\"")
+        .doesNotContain(FAKE_KEY)
+        .doesNotContainIgnoringCase("authorization")
+        .doesNotContainIgnoringCase("bearer");
   }
 
   @Test

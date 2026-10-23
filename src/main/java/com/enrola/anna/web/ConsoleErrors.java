@@ -46,7 +46,7 @@ public class ConsoleErrors {
   /** Exception handlers skip the advice's model attributes, so the shell is added here. */
   private ModelAndView errorPage(HttpStatus status, Notice notice, HttpSession session) {
     ConsolePage page =
-        pages.page(ConversationFilter.NONE, null, PiiMask.enabled(session)).withNotice(notice);
+        pages.page(ConversationFilter.NONE, PiiMask.enabled(session)).withNotice(notice);
     return new ModelAndView(
         ConversationsController.PAGE, Map.of("shell", shells.shell(session), "page", page), status);
   }

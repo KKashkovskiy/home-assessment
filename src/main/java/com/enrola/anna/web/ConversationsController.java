@@ -1,5 +1,6 @@
 package com.enrola.anna.web;
 
+import com.enrola.anna.config.UiProperties;
 import com.enrola.anna.conversation.BusyException;
 import com.enrola.anna.conversation.ConflictException;
 import com.enrola.anna.conversation.ConversationService;
@@ -61,19 +62,25 @@ public class ConversationsController {
   private final LeadService leads;
   private final InboundTurns inboundTurns;
   private final ConsoleViews views;
+  private final TraceView traces;
   private final ConsolePages pages;
+  private final UiProperties ui;
 
   public ConversationsController(
       ConversationService conversations,
       LeadService leads,
       InboundTurns inboundTurns,
       ConsoleViews views,
-      ConsolePages pages) {
+      TraceView traces,
+      ConsolePages pages,
+      UiProperties ui) {
     this.conversations = conversations;
     this.leads = leads;
     this.inboundTurns = inboundTurns;
     this.views = views;
+    this.traces = traces;
     this.pages = pages;
+    this.ui = ui;
   }
 
   @GetMapping("/")
@@ -91,7 +98,7 @@ public class ConversationsController {
       Model model) {
     ConsolePage page =
         pages
-            .page(filter, null, PiiMask.enabled(session))
+            .page(filter, PiiMask.enabled(session))
             .withStart(start ? ConsolePage.StartPanel.OPEN : ConsolePage.StartPanel.CLOSED)
             .withNotice(Notice.fromCode(error));
     model.addAttribute("page", page);
@@ -106,9 +113,12 @@ public class ConversationsController {
       HttpSession session,
       Model model) {
     boolean mask = PiiMask.enabled(session);
-    ConsolePage page =
-        pages.page(filter, views.build(id, mask), mask).withNotice(Notice.fromCode(error));
-    model.addAttribute("page", page);
+    ConsolePage.Open open =
+        new ConsolePage.Open(
+            views.build(id, mask),
+            new InspectorView(
+                traces.turns(id, mask), ShellController.rawJsonShown(session), ui.sseEnabled()));
+    model.addAttribute("page", pages.page(filter, open, mask).withNotice(Notice.fromCode(error)));
     return PAGE;
   }
 
@@ -119,7 +129,7 @@ public class ConversationsController {
     if (!errors.isEmpty()) {
       ConsolePage page =
           pages
-              .page(ConversationFilter.NONE, null, PiiMask.enabled(session))
+              .page(ConversationFilter.NONE, PiiMask.enabled(session))
               .withStart(new ConsolePage.StartPanel(form, errors, true));
       model.addAttribute("page", page);
       return PAGE;
@@ -157,9 +167,9 @@ public class ConversationsController {
   }
 
   /**
-   * The composer's script: the turn's thread items as a fragment, its root carrying the composer's
-   * next hint; or a problem line with 400 for an empty or oversized message and 409 while another
-   * turn runs.
+   * The composer's script: the turn's thread items as a fragment, its root carrying the turn number
+   * and the composer's next hint; or a problem line with 400 for an empty or oversized message and
+   * 409 while another turn runs.
    */
   @PostMapping(path = LIST + "/{id}/send", headers = "X-Requested-With")
   public ModelAndView sendFromComposer(
@@ -172,9 +182,10 @@ public class ConversationsController {
     try {
       TurnResponse turn = inboundTurns.handle(id, form.message(), null);
       ConsoleView view = views.build(id, PiiMask.enabled(session));
+      int turnNo = lastInboundTurn(turn);
       return new ModelAndView(
           "fragments/turn :: turn",
-          Map.of("items", view.turn(lastInboundTurn(turn)), "view", view));
+          Map.of("items", view.turn(turnNo), "view", view, "turnNo", turnNo));
     } catch (BusyException _) {
       return problem(
           HttpStatus.CONFLICT,

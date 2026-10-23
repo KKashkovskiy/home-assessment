@@ -21,8 +21,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -31,23 +29,10 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * The Conversations page with the model and moderation scripted: list, start, send, reset. Pages
  * are checked by their structure and the codes they carry, not by their wording.
  */
-@Import(ConversationsControllerTest.ScriptedModel.class)
+@Import(ConsoleFixture.Scripted.class)
 class ConversationsControllerTest extends ConsoleFixture {
 
   static final String QUESTION = "Fair enough. Hospital, extras or both?";
-
-  @TestConfiguration
-  static class ScriptedModel {
-    @Bean
-    ScriptedModelClient scriptedModel() {
-      return new ScriptedModelClient();
-    }
-
-    @Bean
-    ScriptedModerationClient scriptedModeration() {
-      return new ScriptedModerationClient();
-    }
-  }
 
   @Autowired ScriptedModelClient model;
   @Autowired ScriptedModerationClient moderation;
@@ -294,8 +279,19 @@ class ConversationsControllerTest extends ConsoleFixture {
       assertThat(fragment)
           .containsOnlyOnce("class=\"bubble lead\"")
           .containsOnlyOnce("class=\"bubble agent\"")
-          .contains(QUESTION, ">LLM<", "data-hint-kind=\"READY\"")
+          .contains(QUESTION, ">LLM<", "data-turn=\"1\"", "data-hint-kind=\"READY\"")
           .doesNotContain("<html");
+    }
+
+    @Test
+    void threadLinksEachTurnToItsInspectorCard() throws Exception {
+      String id = start("lauren");
+      model.decide(Decisions.engaged().reply(QUESTION).build());
+      turns.handle(id, "hi", null);
+
+      String page = body(mvc.perform(get("/conversations/" + id)).andExpect(status().isOk()));
+
+      assertThat(page).contains("href=\"#turn-1\" data-turn=\"1\"", "id=\"turn-1\"");
     }
 
     @Test

@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- One turn as the composer's script receives it: the items join #thread, data-hint replaces #composer-hint. -->
-<div th:fragment="turn" class="turn-items" th:with="hint=${@fmt.hint(view)}" th:data-hint="${hint}" th:data-hint-kind="${view.hint()}">
+<!-- One turn as the composer's script receives it: the items join #thread, data-hint replaces #composer-hint and
+     data-turn names the inspector card to fetch. -->
+<div th:fragment="turn" class="turn-items" th:with="hint=${@fmt.hint(view)}" th:data-turn="${turnNo}" th:data-hint="${hint}" th:data-hint-kind="${view.hint()}">
   <th:block th:each="item : ${items}" th:with="fragment=${item.fragment()}"><th:block th:replace="~{fragments/turn :: __${fragment}__(${item})}"/></th:block>
 </div>
 
@@ -13,7 +14,7 @@
   <div th:class="'bubble ' + (${item.lead()} ? 'lead' : 'agent')"><span class="visually-hidden" th:text="${item.lead()} ? 'Lead: ' : 'Anna: '"></span><th:block th:text="${item.text}"/></div>
   <div class="bubble-meta lead" th:if="${item.lead()}">
     <span th:text="${item.at}">00:00</span>
-    <span th:text="'turn ' + ${item.turnNo}">turn 1</span>
+    <a th:href="'#turn-' + ${item.turnNo}" th:data-turn="${item.turnNo}" th:title="'Open turn ' + ${item.turnNo} + ' in the inspector'" th:text="'turn ' + ${item.turnNo}">turn 1</a>
   </div>
   <div class="bubble-meta agent" th:unless="${item.lead()}">
     <span th:class="${item.near} ? 'num near' : 'num'" th:title="${item.near} ? 'Over the target length the prompt asks for' : 'Characters of the 320 limit'" th:text="${item.chars} + '/' + ${item.maxChars} + (${item.near} ? ' near limit' : '')">0/320</span>
@@ -23,7 +24,7 @@
   </div>
 </th:block>
 
-<div th:fragment="toolChip(item)" class="tool-line"><span aria-hidden="true">⚙</span> <span th:text="${item.name} + ': ' + ${item.summary}">tool</span></div>
+<div th:fragment="toolChip(item)" class="tool-line"><span aria-hidden="true">⚙</span> <a th:href="'#turn-' + ${item.turnNo}" th:data-turn="${item.turnNo}" title="Open this turn in the inspector" th:text="${item.name} + ': ' + ${item.summary}">tool</a></div>
 
 <div th:fragment="systemLine(item)" class="system-line" th:data-reason="${item.reason}" th:text="${@fmt.systemLine(item)}">no reply sent</div>
 </body>

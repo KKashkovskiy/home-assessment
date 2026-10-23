@@ -40,7 +40,7 @@ class DecisionApplier {
     Conversation conversation = turn.conversation();
     conversation.stage = stageOf(turn, decision.stage());
     if (decision.goalMet() && !conversation.goalMet) {
-      override(turn, "goal_met", Map.of("model", true, "code", false));
+      override(turn, "goal_met", new OverridePayload("true", "false"));
     }
     decision.flags().forEach(conversation::addFlag);
     conversation.extractedJson = merged(conversation.extractedJson, decision.extracted());
@@ -57,7 +57,7 @@ class DecisionApplier {
       return Stage.BOOKED;
     }
     if (claimed == Stage.BOOKED) {
-      override(turn, "stage", Map.of("model", Stage.BOOKED, "code", Stage.OFFER_TIMES));
+      override(turn, "stage", new OverridePayload(Stage.BOOKED.name(), Stage.OFFER_TIMES.name()));
       return Stage.OFFER_TIMES;
     }
     return claimed;
@@ -105,7 +105,7 @@ class DecisionApplier {
   private void overrideUnlessCurrent(RunningTurn turn, EndReason claimed) {
     EndReason current = turn.conversation().endReason;
     if (claimed != current) {
-      override(turn, "end_reason", Map.of("model", claimed, "code", current));
+      override(turn, "end_reason", new OverridePayload(claimed.name(), current.name()));
     }
   }
 
@@ -126,8 +126,7 @@ class DecisionApplier {
     return !value.isNull() && !(value.isString() && value.stringValue().equals("UNKNOWN"));
   }
 
-  /** {@code modelAndCode} holds what the model said and what code kept, for the inspector. */
-  private void override(RunningTurn turn, String field, Map<String, ?> modelAndCode) {
+  private void override(RunningTurn turn, String field, OverridePayload modelAndCode) {
     trace.record(turn, TraceLog.Entry.guard(field, TraceOutcome.OVERRIDE, modelAndCode));
   }
 }

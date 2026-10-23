@@ -1,9 +1,169 @@
 <!doctype html>
 <html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
 <body>
-<th:block th:fragment="pane(view)">
-  <div class="inspector-tools"><h2>Turns</h2></div>
-  <div id="turns"><p class="empty small">Per-turn details (guards, model calls, tools, the decision) are not part of this build.</p></div>
+<!-- The inspector pane: its tools, one details card per turn and the conversation's footer. Everything is read
+     from the turn and trace_event rows through TraceView; nothing here reads JSON. The live chip's words for each
+     state live in its data attributes, which the script reads. While there is no turn, the stylesheet hides the
+     tools that need one and the footer, so a turn the live log appends brings them back. -->
+<th:block th:fragment="pane(view, inspector)" th:with="conversation=${view.conversation}">
+  <div class="inspector-tools">
+    <h2>Turns</h2>
+    <span id="live-chip" class="chip ghost" role="status" th:hidden="${inspector.live}" th:with="off='live log off, reload to see new turns'"
+          data-on="live log: on" data-reconnecting="live log: reconnecting" th:data-off="${off}"
+          title="New turns arrive over Server-Sent Events; without them, reload the page to see new turns"
+          th:text="${inspector.live} ? 'live log: connecting' : ${off}">live log: connecting</span>
+    <div class="tool-actions">
+      <a class="btn quiet sm" th:href="@{/conversations/{id}/prompt(id=${conversation.id})}" data-dialog title="The prompt version this conversation pinned when it started">View prompt</a>
+      <button id="expand-all" class="btn quiet sm needs-turns" type="button" hidden>Expand all</button>
+      <button id="collapse-all" class="btn quiet sm needs-turns" type="button" hidden>Collapse all</button>
+      <form id="raw-form" class="inline-form" method="post" th:action="@{/ui/raw-json}">
+        <input type="hidden" name="on" th:value="${!inspector.rawOpen}">
+        <button id="raw-toggle" class="btn sm needs-turns" type="submit" th:aria-pressed="${inspector.rawOpen}" title="Show the decision JSON under each turn; the setting lasts for this browser session">Raw JSON</button>
+      </form>
+    </div>
+  </div>
+  <div id="turns" aria-live="polite" th:data-base="@{/conversations/{id}(id=${conversation.id})}" th:data-live="${inspector.live}">
+    <p class="empty" th:if="${inspector.empty()}">No turns yet. Send a message as the lead to see the agent's guards, model calls, tools and decision.</p>
+    <th:block th:each="turn : ${inspector.turns}"><details th:replace="~{:: turn(${turn}, ${inspector.opensOnLoad(turn)}, ${inspector.rawOpen})}"></details></th:block>
+  </div>
+  <p id="conv-footer" class="small muted conv-footer" th:text="|prompt ${conversation.promptVersion}, ${conversation.model} ${conversation.reasoningEffort}, cost ${@fmt.cost(inspector.cost())} (price table), model time ${@fmt.latency(inspector.modelTimeMs())}, ${@fmt.count(inspector.modelCalls(), 'model call')}, ${@fmt.count(inspector.repairs(), 'repair')}|">footer</p>
 </th:block>
+
+<!-- One turn. Rows with a #number are trace events, numbered in the order the pipeline wrote them. -->
+<details th:fragment="turn(turn, open, rawOpen)" class="turn" th:id="'turn-' + ${turn.n}" th:open="${open}">
+  <summary>
+    <span class="title" th:text="'Turn ' + ${turn.n}">Turn 1</span>
+    <span th:class="${@fmt.turnStatusClass(turn.status)}" th:text="${@fmt.turnStatus(turn.status)}">✓ ok</span>
+    <span class="metrics"><span th:text="${@fmt.time(turn.at)}">10:00:00</span><th:block th:if="${turn.calledModel()}"><span th:text="${@fmt.latency(turn.latencyMs)}">2.4 s</span><span th:text="${@fmt.tokens(turn.tokens)}">6,400 tok</span><span th:text="${@fmt.cost(turn.cost)}">$0.0119</span></th:block></span>
+  </summary>
+  <div class="turn-body">
+    <section>
+      <h4>Inbound</h4>
+      <p th:class="${turn.inboundHidden()} ? 'muted' : 'quote'" th:text="${turn.inbound} ?: 'no inbound stored'">inbound</p>
+      <p class="small muted row-note" th:text="'provider message id: ' + (${turn.providerMessageId} ?: 'none, sent from the console')">provider message id</p>
+    </section>
+    <section th:if="${turn.calledModel()}">
+      <details class="context">
+        <summary>Context sent with the prompt</summary>
+        <pre class="raw mono" th:if="${turn.context != null}" th:text="${turn.context}">context</pre>
+        <p class="muted small row-note" th:if="${turn.context == null}">no context item in the stored request</p>
+      </details>
+      <p class="small row-note"><a th:href="@{/conversations/{id}/prompt(id=${turn.conversationId}, turn=${turn.n})}" data-dialog th:text="'View prompt ' + ${turn.promptVersion} + ' as sent'">View prompt</a></p>
+    </section>
+    <section>
+      <h4>Pre-guards</h4>
+      <th:block th:replace="~{:: guards(${turn.preGuards})}"/>
+    </section>
+    <th:block th:each="step : ${turn.steps}" th:with="fragment=${step.fragment()}"><th:block th:replace="~{:: __${fragment}__(${step})}"/></th:block>
+    <th:block th:if="${turn.rawDecision != null}"><section th:replace="~{:: decision(${turn}, ${rawOpen})}"></section></th:block>
+    <section th:if="${turn.calledModel()}">
+      <h4>Post-guards</h4>
+      <th:block th:replace="~{:: guards(${turn.postGuards})}"/>
+    </section>
+    <section>
+      <h4>State changes</h4>
+      <th:block th:replace="~{:: diff(${turn})}"/>
+    </section>
+  </div>
+</details>
+
+<th:block th:fragment="guards(rows)">
+  <p class="muted small row-note" th:if="${#lists.isEmpty(rows)}">none</p>
+  <ul class="guard-list" th:unless="${#lists.isEmpty(rows)}">
+    <li th:each="guard : ${rows}"><span class="seq muted" th:text="'#' + ${guard.seq}">#1</span><span th:class="${@fmt.outcomeClass(guard.outcome)}" th:text="${@fmt.outcome(guard.outcome)}">✓ pass</span><span class="name" th:text="${guard.name}">name</span><span class="action" th:text="${guard.detail}">detail</span></li>
+  </ul>
+</th:block>
+
+<section th:fragment="checks(checks)">
+  <h4>Guards on the reply before the repair</h4>
+  <th:block th:replace="~{:: guards(${checks.rows})}"/>
+</section>
+
+<section th:fragment="model(round)">
+  <h4><span class="seq muted" th:text="'#' + ${round.seq}">#3</span> <th:block th:text="${@fmt.call(round)}">Model call</th:block> <span class="chip ghost" th:text="'round ' + ${round.round} + ', ' + ${round.model} + ' ' + ${round.effort}">round 1, gpt-5.1 low</span> <span th:class="${@fmt.roundClass(round)}" th:text="${@fmt.round(round)}">✓ decided</span></h4>
+  <dl class="kv">
+    <dt>Tokens</dt>
+    <dd class="num" th:if="${round.usageReturned()}" th:text="|in ${round.tokens.in()} (cached ${round.tokens.cached()}), out ${round.tokens.out()}, reasoning ${round.tokens.reasoning()}|">tokens</dd>
+    <dd class="muted" th:unless="${round.usageReturned()}">no usage returned</dd>
+    <dt>Cost, latency</dt><dd class="num" th:text="${@fmt.cost(round.cost)} + ' (price table), ' + ${@fmt.latency(round.latencyMs)}">cost</dd>
+    <th:block th:if="${round.decided()}"><dt>Reasoning summary</dt><dd class="reasoning"><th:block th:text="${round.summary} != null ? ${@fmt.reasoning(round.summary)} : 'none returned'">summary</th:block> <span class="muted">(model-generated, never sent to the lead)</span></dd></th:block>
+  </dl>
+</section>
+
+<section th:fragment="tool(tool)">
+  <h4><span class="seq muted" th:text="'#' + ${tool.seq}">#4</span> Tool <span class="chip ghost" th:text="${tool.name}">get_availability</span> <span class="muted" th:text="${@fmt.latency(tool.latencyMs)}">3 ms</span> <span th:class="${@fmt.toolClass(tool)}" th:text="${@fmt.tool(tool)}">✓ answered</span></h4>
+  <dl class="kv">
+    <dt>Arguments</dt><dd class="mono lines" th:text="${tool.arguments}">arguments</dd>
+    <dt>Result</dt><dd><th:block th:text="${tool.result}">result</th:block><span class="muted" th:if="${tool.hint != null}" th:text="': ' + ${tool.hint}">: hint</span></dd>
+    <th:block th:if="${tool.filtering != null}"><dt>Filtering</dt><dd th:text="${@fmt.filtering(tool.filtering)}">filtering</dd></th:block>
+  </dl>
+  <div class="table-wrap" th:unless="${#lists.isEmpty(tool.slots)}">
+    <table class="slot-table">
+      <thead><tr><th scope="col">Slot id</th><th scope="col">Label (lead zone)</th></tr></thead>
+      <tbody><tr th:each="slot : ${tool.slots}"><td class="mono" th:text="${slot.slotId}">id</td><td th:text="${slot.localLabel}">label</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section th:fragment="error(error)" class="error-row">
+  <h4><span class="seq muted" th:if="${error.seq != null}" th:text="'#' + ${error.seq}">#5</span> Error <span class="chip fail" th:text="'✕ ' + ${error.code}">✕ TIMEOUT</span></h4>
+  <p class="small row-note" th:text="${error.note} ?: 'no detail'">note</p>
+  <p class="small muted row-note" th:if="${error.maxAttempts != null}" th:text="'up to ' + ${@fmt.count(error.maxAttempts, 'attempt')}">up to 3 attempts</p>
+</section>
+
+<!-- Labelled fields; the stored JSON stays in the pre, hidden unless the session shows raw JSON or this build
+     can no longer read the decision. A field code overrode says what code kept. -->
+<section th:fragment="decision(turn, rawOpen)" th:with="decision=${turn.decision}">
+  <h4>Decision</h4>
+  <dl class="kv" th:if="${decision != null}">
+    <dt>Intent</dt><dd th:text="${@fmt.words(decision.intent)}">ENGAGED</dd>
+    <dt>Stage</dt><dd><th:block th:text="${@fmt.stage(decision.stage)}">Engage</th:block><th:block th:replace="~{:: kept(${turn.codeKept('stage')})}"/></dd>
+    <dt>Objection</dt><dd><th:block th:if="${decision.objected()}" th:text="${@fmt.words(decision.objection)}">PRICE</th:block><span class="muted" th:unless="${decision.objected()}">none</span></dd>
+    <dt>Flags</dt><dd><span class="muted" th:if="${#lists.isEmpty(decision.flags)}">none</span><th:block th:each="flag : ${decision.flags}"><span th:replace="~{fragments/parts :: flag(${flag})}"></span> </th:block></dd>
+    <dt>Extracted</dt><dd th:text="${decision.extracted}">goal unknown, cover unknown</dd>
+    <dt>Summary</dt><dd th:text="${decision.summary} ?: 'none'">summary</dd>
+    <dt>Send reply</dt><dd th:text="${@fmt.yesNo(decision.sendReply)}">yes</dd>
+    <dt>Goal met</dt><dd><th:block th:text="${@fmt.yesNo(decision.goalMet)}">no</th:block><th:block th:replace="~{:: kept(${turn.codeKept('goal_met')})}"/></dd>
+    <dt>Unsubscribed</dt><dd th:text="${@fmt.yesNo(decision.unsubscribed)}">no</dd>
+    <dt>Ended</dt><dd><th:block th:text="${@fmt.yesNo(decision.ended)}">no</th:block><th:block th:if="${decision.ended}" th:text="', ' + ${decision.endReason}"/><th:block th:replace="~{:: kept(${turn.codeKept('end_reason')})}"/></dd>
+    <dt>Needs human</dt><dd><th:block th:text="${@fmt.yesNo(decision.needsHuman)}">no</th:block><th:block th:if="${decision.needsHuman}" th:text="', ' + ${decision.handoff}"/></dd>
+    <dt>Reply</dt><dd><span class="muted" th:unless="${decision.sendReply}">none</span><th:block th:if="${decision.sendReply}"><s class="struck" th:if="${decision.replyStruck()}" th:text="${decision.reply}">reply</s><th:block th:unless="${decision.replyStruck()}" th:text="${decision.reply}">reply</th:block> <span class="muted" th:text="${@fmt.replyFate(decision.replyFate)}"></span></th:block></dd>
+  </dl>
+  <p class="small notice warn" th:if="${turn.decisionUnreadable()}">This build no longer reads the stored decision; its JSON is shown as stored.</p>
+  <pre class="raw mono" th:if="${turn.decisionUnreadable()}" th:text="${turn.rawDecision}">{}</pre>
+  <pre class="raw-json raw mono" th:unless="${turn.decisionUnreadable()}" th:hidden="${!rawOpen}" th:text="${turn.rawDecision}">{}</pre>
+  <p class="small row-note"><a th:href="@{/conversations/{id}/turns/{n}/raw(id=${turn.conversationId}, n=${turn.n})}">Raw request and response JSON</a> <span class="muted">(as stored with the turn, masked like this page)</span></p>
+</section>
+
+<span th:fragment="kept(value)" th:if="${value != null}" class="chip warn kept" th:text="'code kept ' + ${value}" title="The model asked for something else; code owns this field">code kept</span>
+
+<!-- What a field became; where code overrode the model, what the model asked for follows, struck through. -->
+<th:block th:fragment="diff(turn)">
+  <p class="muted small row-note" th:if="${#lists.isEmpty(turn.diff)}">no changes</p>
+  <div class="table-wrap" th:unless="${#lists.isEmpty(turn.diff)}">
+    <table class="slot-table">
+      <thead><tr><th scope="col">Field</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+      <tbody><tr th:each="row : ${turn.diff}"><td class="mono" th:text="${row.field}">field</td><td class="muted" th:text="${row.before}">before</td><td><th:block th:text="${row.after}">after</th:block><th:block th:if="${row.modelSaid != null}"> <span class="visually-hidden">, the model said </span><s class="struck" title="The model asked for this; code kept the value before it" th:text="${row.modelSaid}">said</s></th:block></td></tr></tbody>
+    </table>
+  </div>
+</th:block>
+
+<!-- The prompt dialog's content. The script opens it in the page's dialog; without the script the link shows this
+     alone. -->
+<div th:fragment="prompt" class="panel">
+  <header>
+    <h2 id="prompt-view-title" th:text="${prompt.sent()} ? |Prompt ${prompt.version} as sent on turn ${prompt.turnNo}| : |Prompt ${prompt.version}, as pinned|">Prompt v1</h2>
+    <form method="dialog"><button id="prompt-view-close" class="btn sm" hidden>Close</button></form>
+  </header>
+  <div class="prompt-body">
+    <th:block th:if="${prompt.context != null}">
+      <h3>Context sent with the prompt</h3>
+      <pre class="raw mono" th:text="${prompt.context}">context</pre>
+    </th:block>
+    <h3 th:text="${prompt.sent()} ? 'Instructions' : 'Prompt as stored, placeholders unfilled'">Instructions</h3>
+    <pre th:if="${prompt.instructions != null}" th:text="${prompt.instructions}">prompt</pre>
+    <p class="notice warn small" th:if="${prompt.instructions == null}" th:text="|Version ${prompt.version} is no longer stored.|">gone</p>
+  </div>
+</div>
 </body>
 </html>

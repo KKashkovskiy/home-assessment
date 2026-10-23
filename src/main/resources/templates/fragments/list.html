@@ -25,7 +25,7 @@
   <ul id="conv-list" class="conv-list">
     <li th:if="${#lists.isEmpty(page.rows)}" class="empty" th:text="${filter.isEmpty()} ? 'No conversations yet. Start one to play the lead.' : 'No conversations match these filters. Remove a filter above.'">No conversations.</li>
     <li th:each="row : ${page.rows}">
-      <a class="conv-row" th:href="${filter.url('/conversations/' + row.id)}" th:aria-current="${page.selected != null and page.selected.conversation.id == row.id} ? 'true'">
+      <a class="conv-row" th:href="${filter.url('/conversations/' + row.id)}" th:aria-current="${page.opened(row.id)} ? 'true'">
         <div class="top"><span class="name"><th:block th:text="${row.givenName}">Lead</th:block> <span class="muted small" th:if="${row.leadState != null}" th:text="${row.leadState}">VIC</span></span><span class="when" th:text="${@fmt.when(row.updatedAt)}">now</span></div>
         <div class="meta">
           <span th:class="'chip ' + ${@fmt.statusClass(row.status)}"><span aria-hidden="true" th:text="${@fmt.statusIcon(row.status)}">◌</span> <th:block th:text="${@fmt.words(row.status)}">ACTIVE</th:block></span>

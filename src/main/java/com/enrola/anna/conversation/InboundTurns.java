@@ -3,6 +3,7 @@ package com.enrola.anna.conversation;
 import com.enrola.anna.AppClock;
 import com.enrola.anna.scheduling.BookingRepository;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,8 +17,9 @@ import tools.jackson.databind.json.JsonMapper;
  * One inbound SMS to one turn, serialised per conversation and idempotent on the provider message
  * id. A turn is three transactions, never one: the claim of its turn number commits before any
  * work; the work, the model call included, runs outside a transaction; and the finish writes the
- * reply, the conversation and the turn row together. Each is REQUIRES_NEW, so none joins a caller's
- * transaction.
+ * reply, the conversation, the turn row and the STATE_DIFF event of what the turn changed together,
+ * so a turn that dies before it leaves no diff of changes never made. Each is REQUIRES_NEW, so none
+ * joins a caller's transaction.
  */
 @Service
 public class InboundTurns {
@@ -30,6 +32,7 @@ public class InboundTurns {
   private final BookingRepository bookings;
   private final TurnLocks locks;
   private final TurnPipeline pipeline;
+  private final TraceLog trace;
   private final TransactionTemplate tx;
   private final JsonMapper json;
   private final AppClock clock;
@@ -41,6 +44,7 @@ public class InboundTurns {
       BookingRepository bookings,
       TurnLocks locks,
       TurnPipeline pipeline,
+      TraceLog trace,
       PlatformTransactionManager transactions,
       JsonMapper json,
       AppClock clock) {
@@ -50,6 +54,7 @@ public class InboundTurns {
     this.bookings = bookings;
     this.locks = locks;
     this.pipeline = pipeline;
+    this.trace = trace;
     this.tx = new TransactionTemplate(transactions);
     this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     this.json = json;
@@ -110,8 +115,18 @@ public class InboundTurns {
 
   private TurnResponse run(Conversation conversation, Message inbound) {
     Instant now = clock.now();
+    StateSnapshot before = StateSnapshot.of(conversation);
     TurnOutcome outcome = pipeline.run(conversation, inbound, now);
-    return tx.execute(_ -> persistTurn(conversation, inbound, outcome, now));
+    Map<String, StateChange> changes = before.changesTo(StateSnapshot.of(conversation));
+    return tx.execute(
+        _ -> {
+          TurnResponse response = persistTurn(conversation, inbound, outcome, now);
+          trace.record(
+              conversation.id,
+              inbound.turnNo(),
+              new TraceLog.Entry(TraceEventType.STATE_DIFF, "state", TraceOutcome.INFO, changes));
+          return response;
+        });
   }
 
   /** A writer that bypassed the lock fails here on the conversation's version. */

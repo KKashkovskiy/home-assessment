@@ -71,6 +71,17 @@ class AgentCall {
             turn.prompt(), questions.transcriptOf(question), question.context(), rounds));
   }
 
+  /**
+   * The one repair of a reply the guards rejected, its rounds traced as the repair's: with the
+   * tools {@code rounds} has left, or none when the decision ended the conversation.
+   */
+  Answer repair(RunningTurn turn, TurnQuestions.Question question, ToolRounds rounds) {
+    rounds.startRepair();
+    return turn.conversation().ended
+        ? classify(turn, question, rounds)
+        : ask(turn, question, rounds);
+  }
+
   private Answer answerOf(RunningTurn turn, AgentService.TurnResult result) {
     return switch (result.last()) {
       case ModelResponse.Decided decided -> decisionOf(turn, result, decided);
@@ -97,18 +108,24 @@ class AgentCall {
 
   /**
    * A turn's side of its calls' tool loops: each round is traced as it ends, numbered across the
-   * turn so a repair's rounds follow the decision's, rounds are granted while any are left, and
-   * {@link TurnToolCalls} answers the calls. The decision call and its repair share one.
+   * turn so a repair's rounds follow the decision's and marked with the call it belongs to, rounds
+   * are granted while any are left, and {@link TurnToolCalls} answers the calls. The decision call
+   * and its repair share one.
    */
   final class ToolRounds implements ToolLoopCallbacks {
 
     private final RunningTurn turn;
     private int toolRoundsLeft;
     private int roundsEnded;
+    private ModelRoundPayload.Call call = ModelRoundPayload.Call.DECIDE;
 
     private ToolRounds(RunningTurn turn, int toolRounds) {
       this.turn = turn;
       this.toolRoundsLeft = toolRounds;
+    }
+
+    private void startRepair() {
+      call = ModelRoundPayload.Call.REPAIR;
     }
 
     private void endToolRounds() {
@@ -118,7 +135,7 @@ class AgentCall {
     @Override
     public void roundEnded(ModelResponse response) {
       roundsEnded++;
-      modelCalls.recordRound(turn, roundsEnded, response);
+      modelCalls.recordRound(turn, roundsEnded, call, response);
     }
 
     @Override

@@ -24,8 +24,13 @@ public final class Decisions {
 
   /** {@code decision} as a successful round's output, the way the client returns it. */
   public static ModelResponse.Decided decided(Decision decision) {
+    return decided(decision, null);
+  }
+
+  /** Likewise, with the reasoning summary the model returned beside it. */
+  public static ModelResponse.Decided decided(Decision decision, String reasoningSummary) {
     return new ModelResponse.Decided(
-        ModelResponse.Decided.JSON.valueToTree(decision), null, USAGE, 5, "{}", "{}");
+        ModelResponse.Decided.JSON.valueToTree(decision), reasoningSummary, USAGE, 5, "{}", "{}");
   }
 
   public static ModelResponse.Failed failed(ModelResponse.Failure code) {

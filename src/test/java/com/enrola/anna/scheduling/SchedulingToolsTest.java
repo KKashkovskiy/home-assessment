@@ -166,29 +166,52 @@ class SchedulingToolsTest {
     assertThat(answer.get("hint").stringValue()).doesNotContain("Exception");
   }
 
-  /** Each answer the model reads comes back as the console's one line. */
+  /** Each answer the model reads comes back as the console's line, slots and hint. */
   @ParameterizedTest(name = "{1}")
   @MethodSource("answers")
-  void summaryReadsBackEachAnswer(ToolResult result, String summary) {
-    assertThat(SchedulingTools.summary(SchedulingTools.modelJson(result))).isEqualTo(summary);
+  void consoleReadsBackEachAnswer(ToolResult result, String summary, int slots, String hint) {
+    String answer = SchedulingTools.modelJson(result);
+
+    assertThat(SchedulingTools.summary(answer)).isEqualTo(summary);
+    assertThat(SchedulingTools.slots(answer)).hasSize(slots);
+    assertThat(SchedulingTools.hint(answer)).isEqualTo(hint);
+  }
+
+  @Test
+  void offeredSlotsKeepTheirIdsAndLabels() {
+    String answer =
+        SchedulingTools.modelJson(
+            new ToolResult.Slots("AEST", List.of(NOON), null, ToolResult.Filtering.NONE));
+
+    assertThat(SchedulingTools.slots(answer))
+        .containsExactly(
+            new SchedulingTools.OfferedSlot(NOON.slotId(), "Mon 27 Jul 12:00 PM AEST"));
   }
 
   static Stream<Arguments> answers() {
-    Slot noon = new Slot("s1", Instant.parse("2026-07-27T02:00:00Z"), "Mon 27 Jul 12:00 PM AEST");
+    ToolResult.Filtering none = ToolResult.Filtering.NONE;
     return Stream.of(
-        Arguments.of(new ToolResult.Slots("AEST", List.of(noon), null), "1 slot"),
+        Arguments.of(new ToolResult.Slots("AEST", List.of(NOON), null, none), "1 slot", 1, null),
         Arguments.of(
-            new ToolResult.Slots("AEST", List.of(noon, noon), ToolResult.Note.CLAMPED_TO_HORIZON),
-            "2 slots, CLAMPED_TO_HORIZON"),
+            new ToolResult.Slots(
+                "AEST", List.of(NOON, NOON), ToolResult.Note.CLAMPED_TO_HORIZON, none),
+            "2 slots, CLAMPED_TO_HORIZON",
+            2,
+            null),
         Arguments.of(
-            new ToolResult.Slots("AEST", List.of(), ToolResult.Note.NO_SLOTS_IN_WINDOW),
-            "0 slots, NO_SLOTS_IN_WINDOW"),
+            new ToolResult.Slots("AEST", List.of(), ToolResult.Note.NO_SLOTS_IN_WINDOW, none),
+            "0 slots, NO_SLOTS_IN_WINDOW",
+            0,
+            null),
         Arguments.of(
             new ToolResult.Booked("cal-1", "Mon 27 Jul 12:00 PM AEST"),
-            "booked Mon 27 Jul 12:00 PM AEST"),
-        Arguments.of(new ToolResult.Failure("SLOT_TAKEN", "taken"), "SLOT_TAKEN"),
-        Arguments.of(new ToolResult.Rejected("UNKNOWN_SLOT", "ask again"), "UNKNOWN_SLOT"),
-        Arguments.of(new ToolResult.BookingUnknown("check"), "UNKNOWN_BOOKING"));
+            "booked Mon 27 Jul 12:00 PM AEST",
+            0,
+            null),
+        Arguments.of(new ToolResult.Failure("SLOT_TAKEN", "taken"), "SLOT_TAKEN", 0, "taken"),
+        Arguments.of(
+            new ToolResult.Rejected("UNKNOWN_SLOT", "ask again"), "UNKNOWN_SLOT", 0, "ask again"),
+        Arguments.of(new ToolResult.BookingUnknown("check"), "UNKNOWN_BOOKING", 0, "check"));
   }
 
   /** A tool that breaks still answers, so the turn goes on; the cause stays in the log. */

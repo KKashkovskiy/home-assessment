@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * Assembles the {@link ConsolePage}: the list for a filter with its summaries masked when the mask
  * is on, the total it is out of, and the quick replies. The open conversation comes from {@link
- * ConsoleViews}.
+ * ConsoleViews} and its inspector from {@link TraceView}.
  */
 @Component
 public class ConsolePages {
@@ -22,13 +22,18 @@ public class ConsolePages {
     this.quickReplies = quickReplies;
   }
 
-  /** The page with the start panel closed and no notice. */
-  public ConsolePage page(ConversationFilter filter, ConsoleView selected, boolean mask) {
+  /** The page with no conversation open, the start panel closed and no notice. */
+  public ConsolePage page(ConversationFilter filter, boolean mask) {
+    return page(filter, null, mask);
+  }
+
+  /** The page with {@code open} beside the list, or none when it is null. */
+  public ConsolePage page(ConversationFilter filter, ConsolePage.Open open, boolean mask) {
     return new ConsolePage(
         filter,
         rows(filter, mask),
         conversations.count(),
-        selected,
+        open,
         quickReplies.load(),
         ConsolePage.StartPanel.CLOSED,
         null);

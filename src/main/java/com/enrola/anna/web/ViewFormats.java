@@ -6,9 +6,15 @@ import com.enrola.anna.agent.Stage;
 import com.enrola.anna.config.SchedulingProperties;
 import com.enrola.anna.conversation.ConversationStatus;
 import com.enrola.anna.conversation.Source;
+import com.enrola.anna.conversation.TraceOutcome;
+import com.enrola.anna.conversation.TurnStatus;
 import com.enrola.anna.scheduling.LeadZones;
+import com.enrola.anna.scheduling.ToolResult;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
@@ -24,6 +30,7 @@ public class ViewFormats {
 
   private static final DateTimeFormatter WHEN =
       DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH);
+  private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
   private static final List<String> PROVIDERS = List.of("Bupa", "HBF", "Medibank", "nib", "HCF");
 
   private final ZoneId advisorZone;
@@ -190,6 +197,132 @@ public class ViewFormats {
           case MODEL_SILENT -> "the agent chose silence after the end";
           case HANDOFF -> "handed to a human (" + line.handoffReason() + ")";
         };
+  }
+
+  /** "$0.0119": a model call's cost to the hundredth of a cent, as the price table gives it. */
+  public String cost(BigDecimal usd) {
+    return "$" + usd.setScale(4, RoundingMode.HALF_UP).toPlainString();
+  }
+
+  /** "812 ms" under a second, "2.4 s" from there. */
+  public String latency(long ms) {
+    return ms < 1000 ? ms + " ms" : String.format(Locale.ENGLISH, "%.1f s", ms / 1000.0);
+  }
+
+  /** "6,400 tok". */
+  public String tokens(int tokens) {
+    return String.format(Locale.ENGLISH, "%,d tok", tokens);
+  }
+
+  public String turnStatusClass(TurnStatus status) {
+    return switch (status) {
+      case OK -> "chip pass";
+      case REPAIRED, FALLBACK -> "chip warn";
+      case ERROR -> "chip fail";
+      case NO_REPLY -> "chip";
+    };
+  }
+
+  public String turnStatus(TurnStatus status) {
+    return switch (status) {
+      case OK -> "✓ ok";
+      case NO_REPLY -> "∅ no reply";
+      case REPAIRED -> "↻ repaired";
+      case FALLBACK -> "⚠ fallback";
+      case ERROR -> "✕ error";
+    };
+  }
+
+  /** A guard's verdict as the guard list colours it; INFO is plain. */
+  public String outcomeClass(TraceOutcome outcome) {
+    return switch (outcome) {
+      case PASS -> "outcome pass";
+      case BLOCK -> "outcome block";
+      case OVERRIDE -> "outcome override";
+      case REPAIR -> "outcome repair";
+      case INFO -> "outcome";
+    };
+  }
+
+  public String outcome(TraceOutcome outcome) {
+    return switch (outcome) {
+      case PASS -> "✓ pass";
+      case BLOCK -> "✕ block";
+      case OVERRIDE -> "↻ override";
+      case REPAIR -> "↻ repair";
+      case INFO -> "· info";
+    };
+  }
+
+  /** The decision call's rounds, or the repair's. */
+  public String call(TurnView.ModelRow round) {
+    return switch (round.call()) {
+      case DECIDE -> "Model call";
+      case REPAIR -> "Repair call";
+    };
+  }
+
+  /** A model round decided, asked for tools, or failed with the code it names. */
+  public String roundClass(TurnView.ModelRow round) {
+    return switch (round.status()) {
+      case DECIDED -> "chip pass";
+      case TOOL_CALLS -> "chip ghost";
+      case FAILED -> "chip fail";
+    };
+  }
+
+  public String round(TurnView.ModelRow round) {
+    return switch (round.status()) {
+      case DECIDED -> "✓ decided";
+      case TOOL_CALLS -> "⚙ tool calls";
+      case FAILED -> "✕ " + round.failure();
+    };
+  }
+
+  /** The model's reasoning summary as plain text: its markdown bold markers go. */
+  public String reasoning(String summary) {
+    return summary.replace("**", "");
+  }
+
+  public String toolClass(TurnView.ToolRow tool) {
+    return tool.answered() ? "chip pass" : "chip warn";
+  }
+
+  /** An answer, or the code of the error the tool or calendar gave. */
+  public String tool(TurnView.ToolRow tool) {
+    return tool.answered() ? "✓ answered" : "⚠ " + tool.result();
+  }
+
+  /** How an availability answer's free starts came down to the slots it offered, in a line. */
+  public String filtering(ToolResult.Filtering filtering) {
+    return filtering.free()
+        + " free in the window; "
+        + filtering.outsidePartOfDay()
+        + " outside the part of day, "
+        + filtering.outsideLeadHours()
+        + " outside the lead's calling hours, "
+        + filtering.overCap()
+        + " over the cap";
+  }
+
+  /** "20:24:05" on the clock {@code at} carries, the lead's for a turn. */
+  public String time(ZonedDateTime at) {
+    return at.format(TIME);
+  }
+
+  /** "1 repair", "2 repairs". */
+  public String count(long count, String noun) {
+    return count + " " + noun + (count == 1 ? "" : "s");
+  }
+
+  /** Beside a struck reply: what the lead got instead. */
+  public String replyFate(TurnView.ReplyFate fate) {
+    return switch (fate) {
+      case SENT -> "";
+      case REWRITTEN -> "rewritten by the repair call";
+      case REPLACED -> "replaced by a fixed template";
+      case NOT_SENT -> "not sent";
+    };
   }
 
   /** "26 Jul 10:00" in the advisors' zone, for the list's activity column. */

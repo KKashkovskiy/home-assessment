@@ -1,10 +1,13 @@
 package com.enrola.anna.conversation;
 
+import java.util.List;
 import org.springframework.data.jdbc.repository.query.Query;
 import org.springframework.data.repository.CrudRepository;
 
 /** Trace event rows, unique by conversation, turn number and sequence. */
 public interface TraceEventRepository extends CrudRepository<TraceEvent, String> {
+
+  List<TraceEvent> findByConversationIdOrderByTurnNoAscSeqAsc(String conversationId);
 
   /** The turn's highest sequence number so far; 0 before its first event. */
   @Query(

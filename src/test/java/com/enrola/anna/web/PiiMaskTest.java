@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.mock.web.MockHttpSession;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /** The mask keeps enough to recognise a record and nothing that reaches the person. */
 class PiiMaskTest {
@@ -52,6 +54,25 @@ class PiiMaskTest {
   }
 
   @Test
+  void maskJsonMasksEveryStringAndKeepsTheShape() {
+    JsonMapper json = JsonMapper.builder().build();
+    JsonNode raw =
+        json.readTree(
+            """
+            {"input": [{"role": "user", "content": "call 0412 345 678 on 2026-07-27"}],
+             "store": false, "max_output_tokens": 1200}
+            """);
+
+    assertThat(PiiMask.maskJson(raw))
+        .isEqualTo(
+            json.readTree(
+                """
+                {"input": [{"role": "user", "content": "call 041• ••• 678 on 2026-07-27"}],
+                 "store": false, "max_output_tokens": 1200}
+                """));
+  }
+
+  @Test
   void nameIsNotMasked() {
     Lead lauren =
         new Lead(
@@ -71,6 +92,34 @@ class PiiMaskTest {
     assertThat(masked.givenName()).isEqualTo("Lauren");
     assertThat(masked.phone()).isEqualTo("+61••••••001");
     assertThat(masked.email()).isEqualTo("l***@example.com");
+  }
+
+  /** A custom lead's form takes the name and premium as typed, so a phone there is masked too. */
+  @Test
+  void phoneTypedIntoTheNameOrPremiumIsMasked() {
+    Lead typed =
+        new Lead(
+            "custom",
+            "Pat 0412 345 678",
+            "+61400000009",
+            null,
+            null,
+            null,
+            "call pat@example.com",
+            null,
+            null,
+            Instant.EPOCH);
+
+    Lead masked = PiiMask.apply(typed);
+
+    assertThat(masked.givenName()).isEqualTo("Pat 041• ••• 678");
+    assertThat(masked.currentPremium()).isEqualTo("call ***@***");
+  }
+
+  @Test
+  void isoDatesAreNoPhones() {
+    assertThat(PiiMask.maskText("date_from = 2026-07-27, call 0412 345 678"))
+        .isEqualTo("date_from = 2026-07-27, call 041• ••• 678");
   }
 
   @Test

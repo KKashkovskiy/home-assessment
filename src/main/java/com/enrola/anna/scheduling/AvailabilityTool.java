@@ -106,28 +106,42 @@ public class AvailabilityTool {
 
   /**
    * Slots starting from {@code first} to {@code last}, cut at the horizon. The note says when the
-   * window lies beyond the horizon, was cut at it, or holds nothing free.
+   * window lies beyond the horizon, was cut at it, or holds nothing free; the filtering counts say
+   * what each step left out.
    */
   private ToolResult.Slots offer(Instant first, Instant last, PartOfDay part, ZoneId leadZone) {
     Instant now = clock.now();
     Instant horizon = now.plus(Duration.ofDays(props.horizonDays()));
     String timezone = LeadZones.abbreviation(leadZone, now);
     if (first.isAfter(horizon)) {
-      return new ToolResult.Slots(timezone, List.of(), ToolResult.Note.BEYOND_HORIZON);
+      return new ToolResult.Slots(
+          timezone, List.of(), ToolResult.Note.BEYOND_HORIZON, ToolResult.Filtering.NONE);
     }
     boolean clamped = last.isAfter(horizon);
+    List<Instant> free = calendar.freeStarts(first, clamped ? horizon : last);
+    List<Instant> inPart =
+        free.stream().filter(start -> part.contains(start.atZone(leadZone).toLocalTime())).toList();
+    List<Instant> callable =
+        inPart.stream().filter(start -> withinLeadHours(start.atZone(leadZone))).toList();
     List<Slot> slots =
-        calendar.freeStarts(first, clamped ? horizon : last).stream()
-            .filter(start -> part.contains(start.atZone(leadZone).toLocalTime()))
-            .filter(start -> withinLeadHours(start.atZone(leadZone)))
+        callable.stream()
             .limit(props.maxSlots())
             .map(start -> new Slot(Slot.idFor(start), start, label(start, leadZone)))
             .toList();
+    ToolResult.Filtering filtering =
+        new ToolResult.Filtering(
+            free.size(),
+            free.size() - inPart.size(),
+            inPart.size() - callable.size(),
+            callable.size() - slots.size());
+    return new ToolResult.Slots(timezone, slots, note(slots, clamped), filtering);
+  }
+
+  private static ToolResult.Note note(List<Slot> slots, boolean clamped) {
     if (slots.isEmpty()) {
-      return new ToolResult.Slots(timezone, slots, ToolResult.Note.NO_SLOTS_IN_WINDOW);
+      return ToolResult.Note.NO_SLOTS_IN_WINDOW;
     }
-    return new ToolResult.Slots(
-        timezone, slots, clamped ? ToolResult.Note.CLAMPED_TO_HORIZON : null);
+    return clamped ? ToolResult.Note.CLAMPED_TO_HORIZON : null;
   }
 
   /** The whole call within the weekday calling hours on the lead's clock. */

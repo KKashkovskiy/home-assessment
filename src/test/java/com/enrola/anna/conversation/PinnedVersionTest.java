@@ -178,7 +178,9 @@ class PinnedVersionTest {
             laurenOnV1);
     assertThat(error).containsEntry("NAME", "prompt-load").containsEntry("OUTCOME", "BLOCK");
     assertThat(error.get("PAYLOAD_JSON").toString())
-        .contains("\"code\":\"PROMPT\"", "\"detail\":\"" + detail + "\"");
+        .contains(
+            "\"code\":\"PROMPT\"",
+            "\"detail\":\"" + detail + "; fixed templates from " + prompts.activeId() + "\"");
   }
 
   /** v1 with one line added to the prompt, saved as the next version; returns its id. */

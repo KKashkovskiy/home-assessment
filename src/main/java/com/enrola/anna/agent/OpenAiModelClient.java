@@ -58,6 +58,24 @@ public final class OpenAiModelClient implements ModelClient {
     this.client = client;
   }
 
+  /**
+   * What a recorded request told the model: the instructions, and the context, which is the last
+   * user item, after the transcript. Either is null when the request carried none.
+   */
+  public record SentPrompt(String instructions, String context) {}
+
+  /** Reads {@link ModelResponse#rawRequestJson()} back as the prompt it sent. */
+  public static SentPrompt sentPrompt(String rawRequestJson) {
+    JsonNode request = JSON.readTree(rawRequestJson);
+    String context = null;
+    for (JsonNode item : request.path("input")) {
+      if (item.path("role").asString("").equals("user")) {
+        context = item.path("content").asString(null);
+      }
+    }
+    return new SentPrompt(request.path("instructions").asString(null), context);
+  }
+
   @Override
   public ModelResponse call(ModelRequest request) {
     long start = System.nanoTime();

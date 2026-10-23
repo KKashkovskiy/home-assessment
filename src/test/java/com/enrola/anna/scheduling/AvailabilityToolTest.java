@@ -30,6 +30,7 @@ class AvailabilityToolTest {
           SchedulingFixtures.defaults(),
           new FakeCalendar(clock, SchedulingFixtures.defaults()));
 
+  /** Monday's grid runs 9:00 to 19:30 in Melbourne: 22 free starts, 16 of them over the cap. */
   @Test
   void capsAtSix() {
     ToolResult.Slots result = slots(MONDAY, MONDAY, PartOfDay.ANY, MELBOURNE);
@@ -38,6 +39,19 @@ class AvailabilityToolTest {
     assertThat(result.note()).isNull();
     assertThat(result.slots()).hasSize(6);
     assertThat(result.slots().getFirst().label()).isEqualTo("Mon 27 Jul 9:00 AM AEST");
+    assertThat(result.filtering()).isEqualTo(new ToolResult.Filtering(22, 0, 0, 16));
+  }
+
+  /**
+   * Monday's 22 starts run 7:00 to 17:30 on John's clock: his morning keeps 6 of them, and on any
+   * part of the day his own calling hours drop the 4 before 9:00, leaving 18 for a cap of 6.
+   */
+  @Test
+  void filteringCountsWhatEachStepLeftOut() {
+    assertThat(slots(MONDAY, MONDAY, PartOfDay.MORNING, PERTH).filtering())
+        .isEqualTo(new ToolResult.Filtering(22, 16, 0, 0));
+    assertThat(slots(MONDAY, MONDAY, PartOfDay.ANY, PERTH).filtering())
+        .isEqualTo(new ToolResult.Filtering(22, 0, 4, 12));
   }
 
   @Test

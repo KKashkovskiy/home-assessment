@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page('Conversations', 'conversations', ~{:: main})}">
 <body>
-  <main id="main" class="console" tabindex="-1" th:with="view=${page.selected}">
+  <main id="main" class="console" tabindex="-1" th:with="view=${page.open?.view}">
     <aside th:replace="~{fragments/list :: pane(${page})}"></aside>
 
     <section class="panel pane-chat" aria-label="Chat">
@@ -45,12 +45,13 @@
     <aside class="panel pane-inspector" aria-label="State and inspector">
       <div class="scroll" th:if="${view != null}">
         <div th:replace="~{fragments/state :: head(${view})}"></div>
-        <th:block th:replace="~{fragments/inspector :: pane(${view})}"/>
+        <th:block th:replace="~{fragments/inspector :: pane(${view}, ${page.open.inspector})}"/>
       </div>
       <p class="empty" th:if="${view == null}">The open conversation's stage, badges, counters, facts and booking show here.</p>
     </aside>
 
     <div th:replace="~{fragments/start :: panel(${page.start})}"></div>
+    <dialog id="prompt-view" class="prompt-view" aria-labelledby="prompt-view-title"></dialog>
   </main>
 </body>
 </html>

@@ -60,10 +60,7 @@ class ReplyRepair {
     }
     TurnQuestions.Question again =
         questions.repairOf(turn, question, ReplyGuards.note(first.violations()));
-    AgentCall.Answer repair =
-        turn.conversation().ended
-            ? calls.classify(turn, again, rounds)
-            : calls.ask(turn, again, rounds);
+    AgentCall.Answer repair = calls.repair(turn, again, rounds);
     return rewriteOrReplacement(turn, repair).withRepairCall(repair.call());
   }
 

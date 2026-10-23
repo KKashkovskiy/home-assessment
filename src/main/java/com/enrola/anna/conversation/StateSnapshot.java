@@ -10,9 +10,6 @@ import java.util.Objects;
  */
 record StateSnapshot(Map<String, Object> fields) {
 
-  /** One field's value before and after the turn. */
-  record Change(Object from, Object to) {}
-
   static StateSnapshot of(Conversation conversation) {
     Map<String, Object> fields = new LinkedHashMap<>();
     fields.put("status", conversation.status);
@@ -38,13 +35,13 @@ record StateSnapshot(Map<String, Object> fields) {
   }
 
   /** The fields that differ in {@code after}, in snapshot order; empty when none do. */
-  Map<String, Change> changesTo(StateSnapshot after) {
-    Map<String, Change> changes = new LinkedHashMap<>();
+  Map<String, StateChange> changesTo(StateSnapshot after) {
+    Map<String, StateChange> changes = new LinkedHashMap<>();
     fields.forEach(
         (field, from) -> {
           Object to = after.fields.get(field);
           if (!Objects.equals(from, to)) {
-            changes.put(field, new Change(from, to));
+            changes.put(field, new StateChange(from, to));
           }
         });
     return changes;

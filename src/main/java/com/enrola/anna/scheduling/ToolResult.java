@@ -7,8 +7,21 @@ public sealed interface ToolResult {
 
   /**
    * Up to {@code max-slots} lead-labelled slots; {@code note} is null when there is nothing to say.
+   * {@code filtering} says how the calendar's free starts came down to them, for the trace only.
    */
-  record Slots(String timezone, List<Slot> slots, Note note) implements ToolResult {}
+  record Slots(String timezone, List<Slot> slots, Note note, Filtering filtering)
+      implements ToolResult {}
+
+  /**
+   * How the calendar's free starts in the window came down to the slots offered: {@code free} of
+   * them, less those outside the lead's part of day, those outside the lead's own calling hours,
+   * and those over the {@code max-slots} cap.
+   */
+  record Filtering(int free, int outsidePartOfDay, int outsideLeadHours, int overCap) {
+
+    /** Nothing was asked of the calendar: the window lay past the horizon. */
+    static final Filtering NONE = new Filtering(0, 0, 0, 0);
+  }
 
   /** The booked call: the calendar's event id and the lead-local label of its start. */
   record Booked(String bookingId, String label) implements ToolResult {}
