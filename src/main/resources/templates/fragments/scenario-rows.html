@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- One row per scenario file. The tick and the Run button belong to the run form, so a ticked row joins its
+     Scenarios field and Run sends this scenario alone with the form's settings. A file that does not load shows its
+     first problem and cannot run. -->
+<tbody th:fragment="rows(list)">
+  <tr th:each="row : ${list.rows}" th:id="'row-' + ${row.id}" th:classappend="${row.loads()} ? '' : 'broken'">
+    <td><input type="checkbox" form="run-form" name="scenarios" th:value="${row.id}" th:aria-label="'Select ' + ${row.id}" th:disabled="${!row.loads()}"></td>
+    <td><a class="mono" th:href="@{/evals(edit=${row.id})} + '#editor-panel'" data-open="editor-panel" th:text="${row.id}">turn-stop-keyword</a></td>
+    <td><span class="chip ghost" th:text="${row.kind}">turn</span></td>
+    <td><span class="tag" th:if="${row.priority() != ''}" th:text="${row.priority()}">p0</span></td>
+    <td th:if="${row.loads()}" th:text="${row.title}">STOP mid-conversation is handled by code</td>
+    <td th:unless="${row.loads()}"><span class="chip warn">does not load</span> <span class="small muted problem" th:text="${row.problems[0]}">expect: property reply_match is not defined</span></td>
+    <td><div class="tags"><span class="tag" th:each="tag : ${row.tags}" th:text="${tag}">core</span></div></td>
+    <td><span th:class="${@fmt.resultClass(list.lastResult(row))}" th:text="${@fmt.result(list.lastResult(row))}">✓ PASS</span></td>
+    <td><button class="btn sm" type="submit" form="run-form" name="scenario" th:value="${row.id}" th:disabled="${!row.loads()}" th:aria-label="'Run ' + ${row.id}">Run</button></td>
+  </tr>
+</tbody>
+</body>
+</html>

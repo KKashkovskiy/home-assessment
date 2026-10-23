@@ -2,6 +2,7 @@ package com.enrola.anna.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.Set;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -12,20 +13,31 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * The console has no login, so this is its cross-site protection. A page POST is refused with 403
  * unless it comes from the console itself: a browser that sends {@code Sec-Fetch-Site} must say
  * same-origin, or none for a typed URL; one that sends only {@code Origin} must name this host; a
- * request with neither is a client like curl, not a browser on another site. No page may be framed,
- * so another site cannot dress a console button up as its own. With the strict same-site session
- * cookie, another site can neither send as the lead nor turn the PII mask off. The platform API is
- * not covered: the platform calls it without a browser.
+ * request with neither is a client like curl, not a browser on another site. A request must name
+ * the console by a local host, so a page whose own name an attacker points at 127.0.0.1 (DNS
+ * rebinding) is refused too, reads included. No page may be framed, so another site cannot dress a
+ * console button up as its own. With the strict same-site session cookie, another site can neither
+ * send as the lead nor turn the PII mask off. The platform API is not covered: the platform calls
+ * it without a browser.
  */
 @Configuration
 public class CrossSiteGuard implements HandlerInterceptor, WebMvcConfigurer {
+
+  /** The names the console answers to; any other is a page reaching it by DNS rebinding. */
+  private static final Set<String> LOCAL_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]", "::1");
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
     registry
         .addInterceptor(this)
         .addPathPatterns(
-            "/", "/conversations/**", "/ui/**", "/configuration/**", "/analytics/**", "/evals");
+            "/",
+            "/conversations/**",
+            "/ui/**",
+            "/configuration/**",
+            "/analytics/**",
+            "/evals",
+            "/evals/**");
   }
 
   @Override
@@ -33,7 +45,8 @@ public class CrossSiteGuard implements HandlerInterceptor, WebMvcConfigurer {
       HttpServletRequest request, HttpServletResponse response, Object handler) {
     response.setHeader("X-Frame-Options", "DENY");
     response.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
-    if ("GET".equals(request.getMethod()) || fromThisOrigin(request)) {
+    if (LOCAL_HOSTS.contains(request.getServerName())
+        && ("GET".equals(request.getMethod()) || fromThisOrigin(request))) {
       return true;
     }
     response.setStatus(HttpStatus.FORBIDDEN.value());

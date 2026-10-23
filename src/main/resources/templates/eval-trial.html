@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page(${trial.scenarioId} + ' #' + ${trial.trialNo}, 'evals', ~{:: main})}">
+<body>
+  <!-- One trial's page as the harness wrote it: the setup, the transcript turn by turn with each turn's checks, the
+       end state and the judges' answers; above it, the trial's result and a link to its first failing turn. -->
+  <main id="main" class="page stack" tabindex="-1">
+    <nav class="small" aria-label="Back"><a th:href="@{/evals(run=${trial.runId})} + '#report-panel'" th:text="'← Report ' + ${trial.runId}">← Report</a></nav>
+    <section class="panel" aria-labelledby="trial-title">
+      <header>
+        <h1 id="trial-title" class="mono" th:text="${trial.scenarioId} + ' #' + ${trial.trialNo}">turn-stop-keyword #1</h1>
+        <th:block th:if="${trial.trial != null}">
+          <span th:class="${@fmt.resultClass(trial.trial.status)}" th:text="${@fmt.result(trial.trial.status)}">✓ PASS</span>
+          <a class="btn sm" th:if="${trial.traceUrl() != null}" th:href="${trial.traceUrl()}" th:text="'Inspect turn ' + ${trial.trial.firstFailingTurn()} + ', the first that failed'">Inspect turn 3</a>
+        </th:block>
+      </header>
+      <div class="panel-body markdown" th:utext="${trial.html}">rendered page</div>
+    </section>
+  </main>
+</body>
+</html>

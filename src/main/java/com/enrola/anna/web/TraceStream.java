@@ -6,10 +6,7 @@ import com.enrola.anna.conversation.TraceEvent;
 import com.enrola.anna.conversation.TraceEventType;
 import com.enrola.anna.conversation.TracePublisher;
 import jakarta.validation.constraints.Pattern;
-import java.io.IOException;
 import java.time.Duration;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -36,7 +33,7 @@ public class TraceStream implements SmartLifecycle {
   private final TracePublisher publisher;
   private final ConversationRepository conversations;
   private final UiProperties ui;
-  private final Set<SseEmitter> open = ConcurrentHashMap.newKeySet();
+  private final SseSubscribers open = new SseSubscribers();
   private volatile boolean running;
 
   public TraceStream(
@@ -58,17 +55,8 @@ public class TraceStream implements SmartLifecycle {
       return ResponseEntity.notFound().build();
     }
     SseEmitter emitter = new SseEmitter(Duration.ofMinutes(ui.sseTimeoutMin()).toMillis());
-    Runnable unsubscribe = publisher.subscribe(id, event -> forward(emitter, event));
-    Runnable release =
-        () -> {
-          unsubscribe.run();
-          open.remove(emitter);
-        };
-    emitter.onCompletion(release);
-    emitter.onTimeout(release);
-    emitter.onError(_ -> release.run());
-    open.add(emitter);
-    send(
+    open.register(emitter, publisher.subscribe(id, event -> forward(emitter, event)));
+    open.send(
         emitter, SseEmitter.event().comment("live log")); // sends the headers: the tab is connected
     return ResponseEntity.ok(emitter);
   }
@@ -91,7 +79,7 @@ public class TraceStream implements SmartLifecycle {
   @Override
   public void stop() {
     running = false;
-    open.forEach(SseEmitter::complete);
+    open.completeAll();
   }
 
   @Override
@@ -102,20 +90,11 @@ public class TraceStream implements SmartLifecycle {
   /** What a tab hears of a trace row: where it belongs and what it is, never what it says. */
   private record LiveEvent(int turn, TraceEventType type, String name) {}
 
-  private static void forward(SseEmitter emitter, TraceEvent event) {
-    send(
+  private void forward(SseEmitter emitter, TraceEvent event) {
+    open.send(
         emitter,
         SseEmitter.event()
             .name(event.type() == TraceEventType.STATE_DIFF ? "turn" : "event")
             .data(new LiveEvent(event.turnNo(), event.type(), event.name())));
-  }
-
-  /** A tab that went away fails the write; completing with the error releases its listener. */
-  private static void send(SseEmitter emitter, SseEmitter.SseEventBuilder event) {
-    try {
-      emitter.send(event);
-    } catch (IOException e) {
-      emitter.completeWithError(e);
-    }
   }
 }

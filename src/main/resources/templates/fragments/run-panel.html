@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- The run going, or the last one this app started: what it was asked, its progress, the lines worth reading
+     (progress, warnings, errors) and, folded, the child process's full output. While it runs the script appends to
+     both over Server-Sent Events; without the script a reload shows the lines so far. Once it ends, its outcome, read
+     from what it wrote, and its report. -->
+<section th:fragment="panel(run)" id="run-panel" class="panel" aria-labelledby="run-title" tabindex="-1" th:hidden="${run == null}"
+         th:data-running="${run != null and run.running()}" th:data-run="${run?.state?.id}">
+  <th:block th:if="${run != null}">
+    <header>
+      <h2 id="run-title"><th:block th:text="${run.running()} ? 'Running' : 'Last run'">Running</th:block> <span class="mono small" th:text="${run.state.id}">2026-10-24T01-02-03Z</span></h2>
+      <span th:unless="${run.running()}" th:class="${@fmt.outcomeClass(run.outcome)}" th:text="${@fmt.outcome(run.outcome)}">✓ green</span>
+      <form th:if="${run.running()}" class="inline-form" method="post" th:action="@{/evals/runs/current/cancel}" data-swap="run-form-panel run-panel">
+        <button id="run-cancel" class="btn sm danger" type="submit">Cancel</button>
+      </form>
+      <a th:unless="${run.running()}" class="btn sm" th:href="@{/evals(run=${run.state.id})} + '#report-panel'" data-open="report-panel">Open report</a>
+    </header>
+    <div class="panel-body progress">
+      <p id="run-meta" class="small muted" th:text="${@fmt.runRequest(run.state.request)}">tag core, offline stand-in, judges none, 1 trial each</p>
+      <div class="bar" th:classappend="${run.indeterminate()} ? 'indeterminate'" role="progressbar" aria-labelledby="run-status" aria-valuemin="0" aria-valuemax="100" th:aria-valuenow="${run.indeterminate()} ? null : ${run.percent()}"><div id="run-fill" th:style="'width:' + ${run.percent()} + '%'"></div></div>
+      <p id="run-status" class="small" role="status" th:text="${run.running()} ? ${@fmt.progress(run)} : ${@fmt.outcomeLine(run.outcome)}">Trials 3 of 40</p>
+      <pre id="run-notes" class="log" tabindex="0" aria-label="Progress, warnings and errors of the run" th:text="${run.notes()}">[eval] 1/40 turn-abuse-ends PASS</pre>
+      <details class="full-output">
+        <summary class="small">Full output</summary>
+        <pre id="run-log" class="log" tabindex="0" aria-label="Full output of the run" th:text="${run.log()}">all lines</pre>
+      </details>
+    </div>
+  </th:block>
+</section>
+</body>
+</html>

@@ -1,8 +1,8 @@
 /* Anna console. The server renders every page and fragment; this script adds the theme toggle, the status strip's
    test controls posting on change, the start panel as a dialog, filters that apply on change, the composer's
-   optimistic send, the inspector's toggles, prompt dialog and live log, Monaco over the prompt editor's form, and
-   the analytics charts over their tables. Every action is also a plain form post or link, so the console works
-   without it. */
+   optimistic send, the inspector's toggles, prompt dialog and live log, Monaco over the prompt editor's form, the
+   analytics charts over their tables, and on the Evals page parts swapped in place and a run's live log. Every
+   action is also a plain form post or link, so the console works without it. */
 (function () {
   'use strict';
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -37,9 +37,14 @@
     measure();
   }
 
-  /* The status strip's test controls post as a select changes, so their buttons are only for pages without the script. */
+  /* A select marked data-autosubmit posts its form as it changes, so the buttons beside them are only for pages
+     without the script. Listening on the document covers selects a swap brings in later. */
   function initAutosubmit() {
-    $$('[data-autosubmit]').forEach((select) => select.addEventListener('change', () => select.form.requestSubmit()));
+    document.addEventListener('change', (e) => { if (e.target.matches('[data-autosubmit]')) e.target.form.requestSubmit(); });
+    hideAutosubmitButtons();
+  }
+
+  function hideAutosubmitButtons() {
     $$('[data-autosubmit-button]').forEach((button) => { button.hidden = true; });
   }
 
@@ -636,6 +641,203 @@
       });
   }
 
+  /* ---------- Evals ---------- */
+
+  /* A form marked data-swap, or a link marked data-open, fetches the page it would load and swaps in the parts it
+     names, so editing a scenario, filtering the list or opening a report leaves the rest of the page as it is. When
+     the fetch fails the form posts, or the link opens, as it would without the script. The run panel follows a run
+     over Server-Sent Events and, once it ends, takes the run's panel, report, past runs and results from the page. */
+  function initEvals() {
+    if (!$('.evals-page')) return;
+    document.addEventListener('submit', (e) => {
+      const form = e.target.closest('form[data-swap]');
+      if (!form) return;
+      e.preventDefault();
+      submitAndSwap(form, e.submitter);
+    });
+    document.addEventListener('click', (e) => {
+      const field = e.target.closest('a[href^="#field-"]');
+      if (field) focusField(e, field);
+      const link = e.target.closest('a[data-open]');
+      if (!link || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      swapFrom(link.href, {}, [link.dataset.open])
+        .then(() => showPanel(link.dataset.open))
+        .catch(() => location.assign(link.href));
+    });
+    document.addEventListener('change', onEvalsChange);
+    document.addEventListener('themechange', () => { if (window.monaco) window.monaco.editor.setTheme(monacoTheme()); });
+    enhanceEvals();
+    followRun();
+  }
+
+  /* A problem's link takes the focus to its field's control, not only the scroll. */
+  function focusField(e, link) {
+    const field = document.getElementById(link.getAttribute('href').slice(1));
+    const control = field && $('input:not([type=hidden]), select, textarea', field);
+    if (!control) return;
+    e.preventDefault();
+    field.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    control.focus({ preventScroll: true });
+  }
+
+  /* The form's answer is a page: its parts replace these, and a notice in them takes the focus. */
+  function submitAndSwap(form, submitter) {
+    const action = (submitter && submitter.getAttribute('formaction')) || form.action;
+    const fields = new URLSearchParams(new FormData(form, submitter));
+    const ids = form.dataset.swap.split(' ');
+    const get = form.method.toLowerCase() === 'get';
+    const url = get ? action + '?' + fields : action;
+    swapFrom(url, get ? {} : { method: 'POST', body: fields }, ids)
+      .then(() => {
+        if (get) history.replaceState(null, '', url);
+        const notice = ids.map((id) => $('#' + id + ' [id$="-notice"]')).find(Boolean);
+        if (notice) notice.focus();
+        else if (form.id === 'run-form') showPanel('run-panel');
+        followRun();
+      })
+      .catch(() => (get ? location.assign(url) : form.submit()));
+  }
+
+  function swapFrom(url, options, ids) {
+    return request(url, options).then(({ body }) => {
+      const page = new DOMParser().parseFromString(body, 'text/html');
+      if (!page.querySelector('.evals-page')) throw new Error('not the evals page');
+      ids.forEach((id) => {
+        const fresh = page.getElementById(id);
+        const stale = document.getElementById(id);
+        if (fresh && stale) stale.replaceWith(fresh);
+      });
+      enhanceEvals();
+    });
+  }
+
+  /* The panel an action filled comes into view and takes the focus, so the action is seen to have worked. */
+  function showPanel(id) {
+    const panel = document.getElementById(id);
+    if (!panel || panel.hidden) return;
+    panel.tabIndex = -1;
+    panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    panel.focus({ preventScroll: true });
+  }
+
+  /* What a swap brings in gets the script's touches: Monaco over a shown YAML or file, the select-all box. */
+  function enhanceEvals() {
+    mountCodeEditors();
+    hideAutosubmitButtons();
+    $$('#run-panel .log').forEach((log) => { log.scrollTop = log.scrollHeight; });
+    const all = $('#select-all');
+    if (all) all.hidden = false;
+    countSelected();
+  }
+
+  function onEvalsChange(e) {
+    const target = e.target;
+    if (target.id === 'e-kind') showKind(target.value);
+    if (target.name === 'history.speaker') $('.slots', target.closest('.hrow')).hidden = target.value !== 'agent';
+    if (target.id === 'select-all') {
+      $$('#scenario-table input[name="scenarios"]:not(:disabled)').forEach((box) => { box.checked = target.checked; });
+    }
+    if (target.matches('#scenario-table input[name="scenarios"], #select-all')) countSelected();
+  }
+
+  function showKind(kind) {
+    $('#fs-turn').hidden = kind !== 'turn';
+    $('#fs-story').hidden = kind !== 'story';
+    $('#fs-story-expect').hidden = kind !== 'story';
+  }
+
+  function countSelected() {
+    const button = $('#run-selected');
+    if (!button) return;
+    const ticked = $$('#scenario-table input[name="scenarios"]:checked').length;
+    button.disabled = ticked === 0;
+    button.textContent = ticked ? 'Run selected (' + ticked + ')' : 'Run selected';
+  }
+
+  /* One Monaco editor over each shown textarea that asks for one, writing every edit back into it so the form posts
+     what the editor holds. Editors whose box a swap removed are disposed first. Without the CDN the textarea stays. */
+  let codeEditors = [];
+  let monacoLoading = null;
+
+  function mountCodeEditors() {
+    codeEditors = codeEditors.filter((mounted) => {
+      if (mounted.box.isConnected) return true;
+      mounted.editor.getModel().dispose();
+      mounted.editor.dispose();
+      return false;
+    });
+    $$('.code-editor[data-for]').forEach((box) => {
+      const area = document.getElementById(box.dataset.for);
+      if (!area || box.dataset.mounted || area.closest('[hidden]')) return;
+      box.dataset.mounted = 'true';
+      withMonaco((monaco) => {
+        if (!box.isConnected) return;
+        const editor = monaco.editor.create(box, Object.assign({
+          value: area.value, language: area.dataset.language, ariaLabel: area.labels[0] ? area.labels[0].textContent : ''
+        }, editorOptions()));
+        editor.onDidChangeModelContent(() => { area.value = editor.getValue(); });
+        box.hidden = false;
+        area.hidden = true;
+        codeEditors.push({ box, editor });
+      });
+    });
+  }
+
+  function withMonaco(onReady) {
+    if (!monacoLoading) monacoLoading = new Promise((resolve, reject) => loadMonaco(resolve, reject));
+    monacoLoading.then(onReady).catch(() => { /* the textareas stay, and still save */ });
+  }
+
+  /* The server replays the run's kept lines when the stream opens, so the log starts over then; a 204, once the run
+     ended or with the live log off, closes the stream, and the page's parts are fetched as when it finishes. */
+  let liveRun = null;
+
+  function followRun() {
+    const panel = $('#run-panel');
+    if (!panel || panel.dataset.running !== 'true' || liveRun) return;
+    const runId = panel.dataset.run;
+    liveRun = new EventSource('/evals/runs/current/events');
+    liveRun.onopen = () => { $$('#run-panel .log').forEach((log) => { log.textContent = ''; }); };
+    liveRun.addEventListener('line', (e) => appendLine('#run-log', e.data));
+    liveRun.addEventListener('note', (e) => appendLine('#run-notes', e.data));
+    liveRun.addEventListener('progress', (e) => showProgress(JSON.parse(e.data)));
+    liveRun.addEventListener('finished', () => runEnded(runId));
+    liveRun.onerror = () => { if (liveRun && liveRun.readyState === EventSource.CLOSED) runEnded(runId); };
+  }
+
+  function appendLine(selector, line) {
+    const log = $(selector);
+    if (!log) return;
+    const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
+    log.append((log.firstChild ? '\n' : '') + line);
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  }
+
+  function showProgress(progress) {
+    const percent = progress.total ? Math.round(progress.done * 100 / progress.total) : 0;
+    const fill = $('#run-fill');
+    if (fill) fill.style.width = percent + '%';
+    const bar = $('#run-panel .bar');
+    if (bar && progress.done > 0) {
+      bar.classList.remove('indeterminate');
+      bar.setAttribute('aria-valuenow', String(percent));
+    }
+    const status = $('#run-status');
+    const done = (progress.phase === 'judge' ? 'Judge questions ' : 'Trials ') + progress.done + ' of ' + progress.total;
+    if (status) status.textContent = progress.done === progress.total ? done + ': writing the report…' : done;
+  }
+
+  function runEnded(runId) {
+    if (liveRun) liveRun.close();
+    liveRun = null;
+    const query = new URLSearchParams(location.search);
+    ['edit', 'create', 'file'].forEach((name) => query.delete(name));
+    query.set('run', runId);
+    swapFrom('/evals?' + query, {}, ['run-panel', 'report-panel', 'runs-panel', 'scenarios-panel'])
+      .catch(() => { const status = $('#run-status'); if (status) status.textContent = 'The run ended. Reload to see its report.'; });
+  }
+
   initTheme();
   initAutosubmit();
   trackChromeHeight();
@@ -647,4 +849,5 @@
   initPromptDialog();
   initConfiguration();
   initAnalytics();
+  initEvals();
 })();

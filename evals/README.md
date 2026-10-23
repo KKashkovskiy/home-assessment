@@ -24,6 +24,9 @@ evals/run.sh --tag core --judges none           # the gates only, no judge calls
 
 **A prompt or model change needs a green core run (`--tag core`, exit code 0) before it is committed.**
 
+The console's Evals tab runs the same command with the same flags, edits these files with the same checks, and
+renders the reports; the top-level README describes it.
+
 The run id is the UTC time. Output lands in `evals/runs/<id>/`, which git ignores: `report.md` (header with the
 statistics, the gates, coverage by tag, one row per scenario with its trials, cost), one page per trial
 (`<scenario>.md`, then `<scenario>.2.md` and on) with the transcript, every check with its gate and evidence and the

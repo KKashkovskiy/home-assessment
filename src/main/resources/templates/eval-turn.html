@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page('Turn ' + ${trace.turnNo} + ', eval run', 'evals', ~{:: main})}">
+<body>
+  <!-- A turn of an eval run's conversation, read only from that run's own database, as the inspector shows a turn. -->
+  <main id="main" class="page stack" tabindex="-1">
+    <nav class="small" aria-label="Back"><a th:href="@{/evals(run=${trace.runId})} + '#report-panel'" th:text="'← Report ' + ${trace.runId}">← Report</a></nav>
+    <section class="panel pane-inspector eval-trace" aria-labelledby="trace-title">
+      <header>
+        <h1 id="trace-title">Eval trace</h1>
+        <span class="small muted mono" th:text="${trace.conversationId}">c-1</span>
+        <span class="chip ghost">read-only, from the run's own database</span>
+      </header>
+      <div class="panel-body failed-here" th:unless="${#lists.isEmpty(trace.failedHere())}">
+        <p class="notice fail small" data-notice="FAILED_HERE"><th:block th:text="'Failed on this turn: ' + ${#strings.listJoin(trace.failedHere(), ', ')} + '.'">Failed on this turn: unsubscribed.</th:block> <a th:href="${trace.trialUrl()}" th:text="'Trial ' + ${trace.trial.label()}">Trial</a></p>
+      </div>
+      <p class="notice warn panel-body" th:if="${trace.turn == null}" data-notice="TRACE_UNAVAILABLE">Trace unavailable for this run: its database is missing, still open by the run, or written by a schema this build does not read.</p>
+      <th:block th:if="${trace.turn != null}" th:with="fromRunDatabase=true">
+        <details th:replace="~{fragments/inspector :: turn(${trace.turn}, true, ${rawOpen})}"></details>
+      </th:block>
+    </section>
+  </main>
+</body>
+</html>

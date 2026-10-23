@@ -101,7 +101,7 @@ class ScenarioLoaderTest {
 
     assertThatThrownBy(() -> loader.load(file))
         .isInstanceOf(ScenarioException.class)
-        .hasMessageStartingWith("turn-bad-regex.yaml: reply_not_matches has a bad regex");
+        .hasMessageStartingWith("turn-bad-regex.yaml: expect.reply_not_matches has a bad regex");
   }
 
   @Test

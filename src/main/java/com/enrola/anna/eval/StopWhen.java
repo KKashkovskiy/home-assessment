@@ -1,19 +1,18 @@
 package com.enrola.anna.eval;
 
-import com.enrola.anna.conversation.Conversation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * A story's {@code stop_when}: one condition per entry, and any one stops the story. An entry is a
- * state ({@code goal_met}, {@code ended}, {@code unsubscribed}, {@code needs_human}), a cap ({@code
- * N lead messages have been sent} or {@code N turns}), {@code the agent stops replying}, or {@code
- * the agent says it will leave it there or says goodbye}; anything else is a scenario error. A list
- * without a cap gets {@link #DEFAULT_CAP}, so no story talks forever.
+ * A story's {@code stop_when} grammar: one condition per entry, and any one stops the story. An
+ * entry is a state ({@code goal_met}, {@code ended}, {@code unsubscribed}, {@code needs_human}), a
+ * cap ({@code N lead messages have been sent} or {@code N turns}), {@code the agent stops
+ * replying}, or {@code the agent says it will leave it there or says goodbye}; anything else is a
+ * scenario error. A list without a cap gets {@link #DEFAULT_CAP}, so no story talks forever. The
+ * harness decides when each holds.
  */
 final class StopWhen {
 
@@ -22,11 +21,8 @@ final class StopWhen {
   private static final Pattern CAP =
       Pattern.compile("^(\\d+) (lead messages have been sent|turns)$");
 
-  /** One entry, judged after each turn. */
+  /** One entry. */
   sealed interface Condition permits State, Cap, Silence, Goodbye {
-
-    /** Whether it holds given the conversation, the lead messages sent and the last reply. */
-    boolean holds(Conversation conversation, int leadMessages, String lastReply);
 
     /** The entry in a stop reason: {@code goal_met}, {@code message cap}. */
     String describe();
@@ -40,16 +36,6 @@ final class StopWhen {
     NEEDS_HUMAN;
 
     @Override
-    public boolean holds(Conversation conversation, int leadMessages, String lastReply) {
-      return switch (this) {
-        case GOAL_MET -> conversation.goalMet;
-        case ENDED -> conversation.ended;
-        case UNSUBSCRIBED -> conversation.unsubscribed;
-        case NEEDS_HUMAN -> conversation.needsHuman;
-      };
-    }
-
-    @Override
     public String describe() {
       return name().toLowerCase(Locale.ROOT);
     }
@@ -57,11 +43,6 @@ final class StopWhen {
 
   /** So many lead messages sent. */
   record Cap(int leadMessages) implements Condition {
-
-    @Override
-    public boolean holds(Conversation conversation, int sent, String lastReply) {
-      return sent >= leadMessages;
-    }
 
     @Override
     public String describe() {
@@ -73,11 +54,6 @@ final class StopWhen {
   record Silence() implements Condition {
 
     @Override
-    public boolean holds(Conversation conversation, int leadMessages, String lastReply) {
-      return lastReply == null;
-    }
-
-    @Override
     public String describe() {
       return "silence";
     }
@@ -85,14 +61,6 @@ final class StopWhen {
 
   /** The last reply signs off. */
   record Goodbye() implements Condition {
-
-    private static final Pattern SIGN_OFF =
-        Pattern.compile("(?i)\\b(leave it there|all the best|take care|bye)\\b");
-
-    @Override
-    public boolean holds(Conversation conversation, int leadMessages, String lastReply) {
-      return lastReply != null && SIGN_OFF.matcher(lastReply).find();
-    }
 
     @Override
     public String describe() {
@@ -138,13 +106,5 @@ final class StopWhen {
       case "the agent says it will leave it there or says goodbye" -> new Goodbye();
       default -> throw new ScenarioException("unknown stop_when: " + entry);
     };
-  }
-
-  /** The first condition that holds after a turn, if any. */
-  static Optional<Condition> firstMet(
-      List<Condition> conditions, Conversation conversation, int leadMessages, String lastReply) {
-    return conditions.stream()
-        .filter(condition -> condition.holds(conversation, leadMessages, lastReply))
-        .findFirst();
   }
 }

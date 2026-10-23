@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- A run's report: how it ended and its gates, from its eval_run row and exit-code file; the trials that failed, each
+     with its first failing turn and a link to that turn in the run's own database; then report.md as the harness
+     wrote it, its scenario links opening each trial's page. -->
+<section th:fragment="report(report)" id="report-panel" class="panel" aria-labelledby="report-title" th:hidden="${report == null}">
+  <th:block th:if="${report != null}" th:with="row=${report.row}">
+    <header>
+      <h2 id="report-title">Report <span class="mono small" th:text="${report.runId}">2026-10-23T16-36-12Z</span></h2>
+      <div class="report-chips">
+        <span th:class="${@fmt.outcomeClass(report.outcome)}" th:text="${@fmt.outcome(report.outcome)}">✓ green</span>
+        <th:block th:if="${row != null}">
+          <span th:class="${@fmt.gateClass(row.hard())}" th:text="${@fmt.gate(row.hard(), 'hard')}">✓ hard</span>
+          <span th:class="${@fmt.gateClass(row.global())}" th:text="${@fmt.gate(row.global(), 'global')}">✓ global</span>
+          <span th:class="${@fmt.gateClass(row.validity())}" th:text="${@fmt.gate(row.validity(), 'validity')}">✓ validity</span>
+          <span class="chip ghost" th:if="${row.passK != null}" th:text="${@fmt.passK(row.passK)}">pass^k 100%</span>
+          <span class="chip ghost" th:if="${row.wilsonLow != null}" th:text="${@fmt.wilson(row)}">95% CI 21% to 100%</span>
+          <span class="small muted" th:text="${@fmt.cost(row.costUsd)} + (${row.judgeModel != null} ? ' + judges ' + ${@fmt.cost(row.judgeCostUsd)} : '') + ', ' + ${@fmt.runDuration(row)}">$0.0342 + judges $0.0114, 1m 30s</span>
+        </th:block>
+      </div>
+      <a class="btn quiet sm" th:href="@{/evals}">Close</a>
+    </header>
+    <div class="panel-body stack">
+      <p class="small muted" th:if="${row == null}">No eval_run row for this run: a dry run writes none, and a run that crashed or could not reach the app database has none; its report says which.</p>
+      <p class="notice warn small" th:if="${report.trialsUnread}" data-notice="TRIALS_UNREAD">This run's trials.jsonl does not read as this build's lines, so its failed trials are not listed; its report below still is.</p>
+      <div class="table-wrap" th:unless="${#lists.isEmpty(report.failures)}">
+        <table class="failures">
+          <caption>Trials that failed, each with its first failing turn</caption>
+          <thead><tr><th scope="col">Trial</th><th scope="col">Result</th><th scope="col">Failed checks</th><th scope="col">First failing turn</th></tr></thead>
+          <tbody>
+            <tr th:each="trial : ${report.failures}">
+              <td><a class="mono" th:href="${report.trialUrl(trial)}" th:text="${trial.label()}">turn-x#1</a></td>
+              <td><span th:class="${@fmt.resultClass(trial.status)}" th:text="${@fmt.result(trial.status)}">✕ FAIL</span></td>
+              <td class="mono small" th:text="${#strings.listJoin(trial.failedChecks(), ', ')}">reply_matches</td>
+              <td><a th:if="${report.traceUrl(trial) != null}" th:href="${report.traceUrl(trial)}" th:text="'turn ' + ${trial.firstFailingTurn()} + ', inspect'">turn 3, inspect</a><span class="muted small" th:if="${report.traceUrl(trial) == null}">not about one turn</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="markdown" th:if="${report.html != null}" th:utext="${report.html}">rendered report.md</div>
+      <p class="notice warn small" th:if="${report.html == null}">This run's folder has no report.md: it was deleted, or the run crashed before writing it.</p>
+    </div>
+  </th:block>
+</section>
+</body>
+</html>

@@ -1,7 +1,8 @@
 # The prompt's hard rules as regexes, applied by DenyList to every model reply and read by the eval harness.
 # Each rule: a list of Java regexes (case-insensitive, applied per sentence; any one breaks the rule), why it
-# exists, and examples. DenyListTest runs every example, fails a rule with fewer than two of each, and fails a
-# pattern that no match example exercises, so nothing ships untested.
+# exists, and examples. DenyList.selfTest runs every example, fails a rule with fewer than two of each, and fails a
+# pattern that no match example exercises; the tests run it on this file and the Evals page before it saves one, so
+# nothing ships untested.
 # A match does not count when a negation sits before it in its clause (after the last comma, semicolon or "but"):
 # "I can't promise you'll save" passes, "I can't promise anything, but you'll save hundreds" fails. "No doubt",
 # "no question" and "no worries" are not negations.

@@ -5,6 +5,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
@@ -16,9 +17,10 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  * Loads every YAML file under {@code evals/rubrics/} and fails loudly on a malformed one, so a bad
  * file never silently drops a question: its name must be {@code J-<ID>.yaml}, its id must equal
  * that name, its question must end with a question mark, and it needs a scope, a severity, at least
- * one tag and at least one pass and one fail example.
+ * one tag and at least one pass and one fail example. The Evals page checks a rubric it saves with
+ * the same rules.
  */
-final class RubricLoader {
+public final class RubricLoader {
 
   static final Path RUBRICS = Path.of("evals/rubrics");
 
@@ -43,15 +45,32 @@ final class RubricLoader {
     }
   }
 
-  private static Rubric one(Path file) {
-    String name = file.getFileName().toString();
-    if (!name.matches("J-[A-Z-]+\\.ya?ml")) {
-      throw new IllegalStateException(file + ": a rubric file is named J-<ID>.yaml");
+  /** Why {@code yaml} would not load as the rubric file {@code fileName}; empty when it would. */
+  public static Optional<String> problem(String fileName, String yaml) {
+    try {
+      parse(fileName, yaml);
+      return Optional.empty();
+    } catch (IllegalStateException e) {
+      return Optional.of(e.getMessage());
     }
-    Rubric rubric = read(file);
+  }
+
+  private static Rubric one(Path file) {
+    try {
+      return parse(file.getFileName().toString(), Files.readString(file));
+    } catch (IOException e) {
+      throw new UncheckedIOException("cannot read " + file, e);
+    }
+  }
+
+  private static Rubric parse(String name, String yaml) {
+    if (!name.matches("J-[A-Z-]+\\.ya?ml")) {
+      throw new IllegalStateException(name + ": a rubric file is named J-<ID>.yaml");
+    }
+    Rubric rubric = read(name, yaml);
     String stem = name.replaceAll("\\.ya?ml$", "");
     if (!stem.equals(rubric.id())) {
-      throw new IllegalStateException(file + ": id " + rubric.id() + " != file name");
+      throw new IllegalStateException(name + ": id " + rubric.id() + " != file name");
     }
     if (rubric.question() == null || !rubric.question().strip().endsWith("?")) {
       throw new IllegalStateException(rubric.id() + ": question must end with ?");
@@ -72,13 +91,15 @@ final class RubricLoader {
     }
   }
 
-  private static Rubric read(Path file) {
+  private static Rubric read(String name, String yaml) {
     try {
-      return YAML.readValue(Files.readString(file), Rubric.class);
-    } catch (IOException e) {
-      throw new UncheckedIOException("cannot read " + file, e);
+      Rubric rubric = YAML.readValue(yaml, Rubric.class);
+      if (rubric == null) {
+        throw new IllegalStateException(name + ": the file is empty");
+      }
+      return rubric;
     } catch (JacksonException e) {
-      throw new IllegalStateException(file + ": " + e.getOriginalMessage(), e);
+      throw new IllegalStateException(name + ": " + e.getOriginalMessage(), e);
     }
   }
 }

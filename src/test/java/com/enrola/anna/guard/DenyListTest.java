@@ -5,43 +5,54 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import com.enrola.anna.lead.Lead;
 import java.time.Instant;
-import java.util.List;
-import java.util.function.Predicate;
-import java.util.regex.Pattern;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
-import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 /**
- * The YAML is the test data: every example of every rule runs as its own test, a rule with fewer
- * than two examples of each kind fails by name, and so does a pattern no match example exercises.
+ * The YAML is the test data: the shipped file passes the self-test the Evals page runs before it
+ * saves one, which decides every example of every rule and fails a rule with fewer than two
+ * examples of each kind or a pattern no match example exercises.
  */
 class DenyListTest {
 
   static final DenyList BUNDLED = DenyList.bundled();
   static final Lead LAUREN = lead("Bupa");
-  static final Lead JANE = lead(null);
 
-  @TestFactory
-  Stream<DynamicTest> everyExampleBehaves() {
-    return BUNDLED.rules().stream().flatMap(DenyListTest::examplesOf);
+  /** One rule over two patterns, its examples right; each case below breaks one line. */
+  static final String FIT =
+      """
+      negation: '\\bnot\\b'
+      rules:
+        - id: cheap
+          patterns: ['\\bcheap', '\\bbargain']
+          why: w
+          match: ["it is cheap", "a bargain"]
+          no_match: ["it is not cheap", "fair price"]
+      """;
+
+  @Test
+  void shippedFilePassesItsSelfTest() {
+    assertThat(DenyList.selfTest(DenyList.bundledText())).isEmpty();
   }
 
-  @TestFactory
-  Stream<DynamicTest> everyPatternHasAMatchExample() {
-    return BUNDLED.rules().stream()
-        .flatMap(
-            rule ->
-                IntStream.range(0, rule.patterns().size())
-                    .mapToObj(
-                        index ->
-                            DynamicTest.dynamicTest(
-                                rule.id() + " pattern " + (index + 1) + " has a match example",
-                                () -> assertThat(rule.match()).anyMatch(found(rule, index)))));
+  @Test
+  void fitFilePassesTheSelfTest() {
+    assertThat(DenyList.selfTest(FIT)).isEmpty();
+  }
+
+  @ParameterizedTest(name = "{2}")
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "'match: [\"it is cheap\", \"a bargain\"]'      | 'match: [\"it is cheap\", \"a bargain\", \"fine\"]' | cheap does not match its example: fine",
+        "'no_match: [\"it is not cheap\", \"fair price\"]' | 'no_match: [\"it is not cheap\", \"so cheap\"]'   | cheap matches its no_match: so cheap",
+        "'match: [\"it is cheap\", \"a bargain\"]'      | 'match: [\"it is cheap\", \"so cheap\"]'          | cheap pattern 2 has no match example",
+        "'no_match: [\"it is not cheap\", \"fair price\"]' | 'no_match: [\"fair price\"]'                      | cheap needs at least two match and two no_match examples",
+        "'why: w'                                            | ''                                                 | does not load: cheap has no why",
+      })
+  void selfTestNamesWhatIsWrong(String line, String broken, String problem) {
+    assertThat(DenyList.selfTest(FIT.replace(line, broken))).containsExactly(problem);
   }
 
   @Test
@@ -72,41 +83,6 @@ class DenyListTest {
     assertThatIllegalStateException()
         .isThrownBy(() -> DenyList.parse(yaml))
         .withMessageContaining(message);
-  }
-
-  private static Stream<DynamicTest> examplesOf(DenyList.Rule rule) {
-    Lead lead = rule.noProviderOnly() ? JANE : LAUREN;
-    DynamicTest counted =
-        DynamicTest.dynamicTest(
-            rule.id() + " has two examples of each kind",
-            () -> {
-              assertThat(rule.match()).hasSizeGreaterThanOrEqualTo(2);
-              assertThat(rule.noMatch()).hasSizeGreaterThanOrEqualTo(2);
-            });
-    Stream<DynamicTest> matches =
-        rule.match().stream()
-            .map(
-                sentence ->
-                    DynamicTest.dynamicTest(
-                        rule.id() + " matches: " + sentence,
-                        () -> assertThat(brokenRules(sentence, lead)).contains(rule.id())));
-    Stream<DynamicTest> misses =
-        rule.noMatch().stream()
-            .map(
-                sentence ->
-                    DynamicTest.dynamicTest(
-                        rule.id() + " passes: " + sentence,
-                        () -> assertThat(brokenRules(sentence, lead)).doesNotContain(rule.id())));
-    return Stream.concat(Stream.of(counted), Stream.concat(matches, misses));
-  }
-
-  private static Predicate<String> found(DenyList.Rule rule, int index) {
-    Pattern pattern = rule.patterns().get(index);
-    return sentence -> pattern.matcher(sentence).find();
-  }
-
-  private static List<String> brokenRules(String sentence, Lead lead) {
-    return BUNDLED.brokenRules(sentence, lead).stream().map(DenyList.Rule::id).toList();
   }
 
   private static Lead lead(String provider) {

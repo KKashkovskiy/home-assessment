@@ -74,17 +74,15 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- The eval harness (src/test/java/com/enrola/anna/eval): scenario YAML and the JSON schema it must fit. -->
+    <!-- Scenario YAML and the JSON schema it must fit: the eval harness loads it, the Evals page validates a save. -->
     <dependency>
       <groupId>tools.jackson.dataformat</groupId>
       <artifactId>jackson-dataformat-yaml</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.networknt</groupId>
       <artifactId>json-schema-validator</artifactId>
       <version>${json-schema-validator.version}</version>
-      <scope>test</scope>
     </dependency>
   </dependencies>
 

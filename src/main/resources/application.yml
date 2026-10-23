@@ -11,6 +11,7 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE  # one wire convention for every request and response body
 server:
+  address: 127.0.0.1                      # a local console: no login, so it listens on loopback only
   servlet:
     session:
       tracking-modes: cookie              # the PII mask toggle lives in the session; never a jsessionid in a URL
@@ -19,6 +20,8 @@ server:
 anna:
   app-version: "@project.version@"       # filtered in from the pom at build time; stamped on each conversation
   data-dir: data                          # settings.json and quick-replies.txt, the overrides the console saves
+  evals-dir: evals                        # the harness's scenarios, rubrics, prompts and runs; the Evals page edits and
+                                          # runs them, starting ./mvnw from its parent as evals/run.sh does
   # The persona, agent, prices, sms, limits, budgets, moderation, scheduling and clock groups are defaults: the
   # Configuration page saves overrides to data/settings.json, which win from then on and at every boot. The timeouts,
   # retries and the strict model check are read once at boot and need a restart.

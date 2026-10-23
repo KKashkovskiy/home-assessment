@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- The scenario editor: one form whose fields are named by the YAML path they edit, beside the YAML itself. The
+     view buttons, Duplicate and a history row's Add and Remove post the form to the editor, which writes nothing and
+     answers with the editor in the view asked for; Save posts it to be validated as the harness loads it and written.
+     source says which view holds the edits: the fields go over the text they were filled from, the YAML goes as
+     typed. The script mounts Monaco over the YAML and swaps the answer in; without it each is a page load. -->
+<section th:fragment="editor(editor)" id="editor-panel" class="panel" aria-labelledby="editor-title" th:hidden="${editor == null}">
+  <th:block th:if="${editor != null}">
+    <header>
+      <h2 id="editor-title" th:text="${editor.isNew()} ? 'New scenario' : 'Scenario ' + ${editor.original}">Scenario turn-stop-keyword</h2>
+      <div class="segmented" role="group" aria-label="View">
+        <button type="submit" form="scenario-form" th:formaction="@{/evals/scenarios/editor}" name="view" value="form" th:aria-pressed="${!editor.yamlView()}">Form</button>
+        <button type="submit" form="scenario-form" th:formaction="@{/evals/scenarios/editor}" name="view" value="yaml" th:aria-pressed="${editor.yamlView()}">YAML</button>
+      </div>
+      <button class="btn sm" type="submit" form="scenario-form" th:formaction="@{/evals/scenarios/editor}" name="duplicate" value="copy" th:unless="${editor.isNew()}">Duplicate</button>
+      <a class="btn quiet sm" th:href="@{/evals}">Close</a>
+    </header>
+    <form id="scenario-form" class="panel-body" method="post" th:action="@{/evals/scenarios}" data-swap="editor-panel scenarios-panel" novalidate>
+      <input type="hidden" name="original" th:value="${editor.original}">
+      <input type="hidden" name="source" th:value="${editor.view.value()}">
+      <div id="scenario-notice" th:if="${editor.notice != null}" tabindex="-1">
+        <div th:class="${@fmt.noticeClass(editor.notice)}" role="alert" th:data-notice="${editor.notice.code}">
+          <p class="notice-title" th:text="${editor.notice.text}">Not saved, nothing written.</p>
+          <ul class="problems" th:unless="${#lists.isEmpty(editor.problems)}">
+            <li th:each="problem : ${editor.problems}" th:with="field=${editor.fieldFor(problem)}"><a th:if="${field != null}" th:href="'#field-' + ${field}" th:text="${problem}">message: required</a><th:block th:if="${field == null}" th:text="${problem}">problem</th:block></li>
+          </ul>
+        </div>
+      </div>
+      <div class="inline-fields editor-id">
+        <div class="field" id="field-id" th:classappend="${editor.invalid('id')} ? 'invalid'"><label for="e-id">Id, the file name</label><input th:aria-invalid="${editor.invalid('id')} ? 'true'" id="e-id" name="id" type="text" th:value="${editor.id()}" required pattern="(turn|story)-[a-z0-9-]+" maxlength="36" spellcheck="false"><span class="hint" th:text="'Saves to evals/scenarios/' + ${editor.id()} + '.yaml. Must equal the id in the file.'">Saves to evals/scenarios/x.yaml.</span></div>
+        <div class="field" id="field-kind" th:unless="${editor.yamlView()}"><label for="e-kind">Kind</label><select id="e-kind" name="kind"><option value="turn" th:selected="${!editor.story()}">turn: one model call</option><option value="story" th:selected="${editor.story()}">story: simulated lead</option></select></div>
+      </div>
+
+      <div class="settings-grid" th:hidden="${editor.yamlView()}">
+        <fieldset><legend>Scenario</legend>
+          <div class="field" id="field-title" th:classappend="${editor.invalid('title')} ? 'invalid'"><label for="e-title">Title</label><input th:aria-invalid="${editor.invalid('title')} ? 'true'" id="e-title" name="title" type="text" th:value="${editor.value('title')}" required></div>
+          <div class="field" id="field-tags" th:classappend="${editor.invalid('tags')} ? 'invalid'"><label for="e-tags">Tags</label><input th:aria-invalid="${editor.invalid('tags')} ? 'true'" id="e-tags" name="tags" type="text" th:value="${editor.value('tags')}" placeholder="core, scheduling, p0"><span class="hint">Comma-separated; p0 or p1 sets the priority, core puts it under the global gate.</span></div>
+          <div class="inline-fields">
+            <div class="field" id="field-lead" th:classappend="${editor.invalid('lead')} ? 'invalid'"><label for="e-lead">Lead</label><select th:aria-invalid="${editor.invalid('lead')} ? 'true'" id="e-lead" name="lead"><option th:each="lead : ${editor.leads()}" th:value="${lead}" th:text="${lead}" th:selected="${lead == editor.value('lead')}">lauren</option><option value="inline" th:if="${editor.inlineLead()}" selected>inline record (edit in YAML)</option></select></div>
+            <div class="field" id="field-calendar" th:classappend="${editor.invalid('calendar')} ? 'invalid'"><label for="e-calendar">Calendar preset</label><select th:aria-invalid="${editor.invalid('calendar')} ? 'true'" id="e-calendar" name="calendar"><option th:each="preset : ${@fmt.calendarPresets()}" th:value="${preset.value()}" th:text="${@fmt.presetName(preset)}" th:selected="${preset.value() == editor.value('calendar')}">normal</option></select></div>
+          </div>
+          <div class="field" id="field-clock" th:classappend="${editor.invalid('clock')} ? 'invalid'"><label for="e-clock">Clock (fixed now, with its offset)</label><input th:aria-invalid="${editor.invalid('clock')} ? 'true'" id="e-clock" name="clock" type="text" th:value="${editor.value('clock')}" placeholder="2026-07-26T10:00:00+10:00" spellcheck="false"></div>
+          <div class="field" id="field-judge" th:classappend="${editor.invalid('judge')} ? 'invalid'"><label for="e-judge">Judge questions (advisory, one yes or no question a line)</label><textarea th:aria-invalid="${editor.invalid('judge')} ? 'true'" id="e-judge" name="judge" rows="2" th:text="${editor.value('judge')}"></textarea></div>
+        </fieldset>
+
+        <fieldset id="fs-turn" th:hidden="${editor.story()}"><legend>Turn under test</legend>
+          <div class="field" id="field-seed"><span class="label">Seed state (defaults: zero, none, active)</span>
+            <div class="inline-fields">
+              <div class="field" id="field-seed.objections_used"><label for="seed-obj">objections_used</label><input id="seed-obj" name="seed.objections_used" type="number" min="0" th:value="${editor.value('seed.objections_used')}"></div>
+              <div class="field" id="field-seed.off_topic_streak"><label for="seed-ot">off_topic_streak</label><input id="seed-ot" name="seed.off_topic_streak" type="number" min="0" th:value="${editor.value('seed.off_topic_streak')}"></div>
+              <div class="field" id="field-seed.booking"><label for="seed-booking">booking (slot label)</label><input id="seed-booking" name="seed.booking" type="text" th:value="${editor.value('seed.booking')}" placeholder="Mon 27 Jul 12:00 PM AEST"></div>
+              <div class="field" id="field-seed.ended"><label for="seed-ended">ended (end reason)</label><select id="seed-ended" name="seed.ended"><option value="">active</option><option th:each="reason : ${@fmt.endReasons()}" th:value="${reason}" th:text="${reason}" th:selected="${reason.name() == editor.value('seed.ended')}">BOOKED</option></select></div>
+            </div>
+          </div>
+          <div class="field" id="field-history"><span class="label" id="history-label">History: the opener first, then agent and lead lines; an agent line may carry the slot labels it offered</span>
+            <div id="history-rows" class="history-rows" role="group" aria-labelledby="history-label">
+              <div class="hrow" th:each="row, i : ${editor.history}">
+                <select name="history.speaker" th:aria-label="'Line ' + ${i.count} + ' speaker'"><option value="agent" th:selected="${row.speaker == 'agent'}">agent</option><option value="lead" th:selected="${row.speaker == 'lead'}">lead</option></select>
+                <div class="stack tight">
+                  <textarea name="history.text" rows="2" th:text="${row.text}" th:aria-label="'Line ' + ${i.count} + ' text'"></textarea>
+                  <input class="slots" type="text" name="history.offered_slots" th:value="${row.offeredSlots}" th:hidden="${row.speaker == 'lead'}" th:aria-label="'Line ' + ${i.count} + ' offered slots, comma-separated'" placeholder="offered_slots: labels the preset produces, comma-separated">
+                </div>
+                <button class="btn sm" type="submit" th:formaction="@{/evals/scenarios/editor}" name="history.remove" th:value="${i.index}" th:aria-label="'Remove line ' + ${i.count}">Remove</button>
+              </div>
+            </div>
+            <button class="btn sm add-line" type="submit" th:formaction="@{/evals/scenarios/editor}" name="history.add" value="line">Add line</button>
+          </div>
+          <div class="field" id="field-message" th:classappend="${editor.invalid('message')} ? 'invalid'"><label for="e-message">message: the lead message under test</label><textarea th:aria-invalid="${editor.invalid('message')} ? 'true'" id="e-message" name="message" rows="2" th:text="${editor.value('message')}" required></textarea></div>
+        </fieldset>
+
+        <fieldset id="fs-story" th:hidden="${!editor.story()}"><legend>Simulated lead</legend>
+          <div class="field" id="field-persona" th:classappend="${editor.invalid('persona')} ? 'invalid'"><label for="e-persona">persona: instructions for the simulated lead, scripted for known moments</label><textarea th:aria-invalid="${editor.invalid('persona')} ? 'true'" id="e-persona" name="persona" rows="5" th:text="${editor.value('persona')}" required></textarea><span class="hint">A persona break marks the trial INVALID, not FAIL.</span></div>
+          <div class="field" id="field-stop_when" th:classappend="${editor.invalid('stop_when')} ? 'invalid'"><label for="e-stop">stop_when, one condition a line</label><textarea th:aria-invalid="${editor.invalid('stop_when')} ? 'true'" id="e-stop" name="stop_when" rows="3" th:text="${editor.value('stop_when')}" placeholder="goal_met&#10;8 lead messages have been sent"></textarea><span class="hint">goal_met, ended, unsubscribed, needs_human, N turns, the agent stops replying; a list without a cap gets 10.</span></div>
+        </fieldset>
+
+        <fieldset id="field-expect"><legend>expect</legend>
+          <div class="inline-fields">
+            <div class="field" id="field-expect.lead_intent"><label for="x-intent">lead_intent</label><select id="x-intent" name="expect.lead_intent"><option value="">any</option><option th:each="v : ${@fmt.leadIntents()}" th:value="${v}" th:text="${v}" th:selected="${v.name() == editor.value('expect.lead_intent')}">ENGAGED</option></select></div>
+            <div class="field" id="field-expect.stage"><label for="x-stage">stage</label><select id="x-stage" name="expect.stage"><option value="">any</option><option th:each="v : ${@fmt.stages()}" th:value="${v}" th:text="${v}" th:selected="${v.name() == editor.value('expect.stage')}">OFFER_TIMES</option></select></div>
+            <div class="field" id="field-expect.end_reason"><label for="x-end">end_reason</label><select id="x-end" name="expect.end_reason"><option value="">any</option><option th:each="v : ${@fmt.endReasons()}" th:value="${v}" th:text="${v}" th:selected="${v.name() == editor.value('expect.end_reason')}">NONE</option></select></div>
+            <div class="field" id="field-expect.handoff_reason"><label for="x-handoff">handoff_reason</label><select id="x-handoff" name="expect.handoff_reason"><option value="">any</option><option th:each="v : ${@fmt.handoffReasons()}" th:value="${v}" th:text="${v}" th:selected="${v.name() == editor.value('expect.handoff_reason')}">RESCHEDULE</option></select></div>
+          </div>
+          <div class="inline-fields">
+            <div class="field" id="field-expect.flags"><label for="x-flags">flags: every listed flag present</label><input id="x-flags" name="expect.flags" type="text" th:value="${editor.value('expect.flags')}" placeholder="AI_DISCLOSURE_ASKED"></div>
+            <div class="field" id="field-expect.tool_called"><label for="x-tool">tool_called: the exact set, [] for none</label><input id="x-tool" name="expect.tool_called" type="text" th:value="${editor.value('expect.tool_called')}" placeholder="get_availability, book_call"></div>
+          </div>
+          <div class="inline-fields">
+            <div class="field" th:each="flag : ${ {'goal_met', 'unsubscribed', 'conversation_ended', 'needs_human', 'model_called', 'reply_sent', 'ends_with_question'} }" th:with="path='expect.' + ${flag}" th:id="'field-' + ${path}">
+              <label th:for="'x-' + ${flag}" th:text="${flag}">goal_met</label>
+              <select th:id="'x-' + ${flag}" th:name="${path}"><option value="">any</option><option value="true" th:selected="${editor.value(path) == 'true'}">true</option><option value="false" th:selected="${editor.value(path) == 'false'}">false</option></select>
+            </div>
+          </div>
+          <div class="field" id="field-expect.reply_matches"><label for="x-match">reply_matches: a regex a line, found in the reply; (?i) ignores case</label><textarea id="x-match" name="expect.reply_matches" rows="2" class="mono" th:text="${editor.value('expect.reply_matches')}" spellcheck="false"></textarea></div>
+          <div class="field" id="field-expect.reply_not_matches"><label for="x-nomatch">reply_not_matches: a regex a line</label><textarea id="x-nomatch" name="expect.reply_not_matches" rows="2" class="mono" th:text="${editor.value('expect.reply_not_matches')}" spellcheck="false"></textarea></div>
+          <span class="hint">On every reply without being listed: at most 320 characters, no canary, no phone or email, no link off comparato.au, nothing the deny-list forbids.</span>
+        </fieldset>
+
+        <fieldset id="fs-story-expect" th:hidden="${!editor.story()}"><legend>expect, story only</legend>
+          <div class="inline-fields">
+            <div class="field" id="field-expect.booking_count"><label for="x-bc">booking_count</label><input id="x-bc" name="expect.booking_count" type="number" min="0" th:value="${editor.value('expect.booking_count')}"></div>
+            <div class="field" id="field-expect.retries_max"><label for="x-rm">retries_max</label><input id="x-rm" name="expect.retries_max" type="number" min="0" th:value="${editor.value('expect.retries_max')}"></div>
+            <div class="field" id="field-expect.replies_after_goal_max"><label for="x-rag">replies_after_goal_max</label><input id="x-rag" name="expect.replies_after_goal_max" type="number" min="0" th:value="${editor.value('expect.replies_after_goal_max')}"></div>
+            <div class="field" id="field-expect.replies_after_end_max"><label for="x-rae">replies_after_end_max</label><input id="x-rae" name="expect.replies_after_end_max" type="number" min="0" th:value="${editor.value('expect.replies_after_end_max')}"></div>
+          </div>
+          <div class="field" id="field-expect.transcript_matches"><label for="x-tm">transcript_matches: a regex a line, each found in some reply</label><textarea id="x-tm" name="expect.transcript_matches" rows="2" class="mono" th:text="${editor.value('expect.transcript_matches')}" spellcheck="false"></textarea></div>
+          <div class="field" id="field-expect.every_reply"><span class="label">every_reply: rules on each of Anna's replies</span>
+            <div class="inline-fields">
+              <div class="field" id="field-expect.every_reply.max_chars"><label for="er-max">max_chars</label><input id="er-max" name="expect.every_reply.max_chars" type="number" min="1" max="320" th:value="${editor.value('expect.every_reply.max_chars')}"></div>
+              <div class="field" id="field-expect.every_reply.reply_not_matches"><label for="er-nm">reply_not_matches, a regex a line</label><textarea id="er-nm" name="expect.every_reply.reply_not_matches" rows="2" class="mono" th:text="${editor.value('expect.every_reply.reply_not_matches')}" spellcheck="false"></textarea></div>
+            </div>
+            <label class="toggle" id="field-expect.every_reply.one_question_max"><input name="expect.every_reply.one_question_max" type="checkbox" value="true" th:checked="${editor.value('expect.every_reply.one_question_max') == 'true'}"> one_question_max</label>
+            <label class="toggle" id="field-expect.every_reply.ends_with_question_until_goal"><input name="expect.every_reply.ends_with_question_until_goal" type="checkbox" value="true" th:checked="${editor.value('expect.every_reply.ends_with_question_until_goal') == 'true'}"> ends_with_question_until_goal</label>
+          </div>
+        </fieldset>
+      </div>
+
+      <div id="yaml-view" class="stack" th:hidden="${!editor.yamlView()}">
+        <div class="editor code-editor" data-for="scenario-yaml" hidden></div>
+        <label class="visually-hidden" for="scenario-yaml">Scenario YAML</label>
+        <!-- The newline after the opening tag is the parser's to drop, so the text's own first newline survives. -->
+        <textarea id="scenario-yaml" name="yaml" rows="24" class="editor-fallback" spellcheck="false" data-language="yaml">
+[[${editor.yaml}]]</textarea>
+        <p class="small muted">Everything the form has no field for lives here: an inline lead, <code>config</code> with a story's <code>offline_lines</code>, <code>turn_status</code>. A save from this view writes the text as typed, comments included. A save from the form that changed a field writes the file afresh: comments go, and the first such save normalises its format.</p>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn primary" type="submit">Save scenario</button>
+        <button class="btn" type="submit" form="run-form" name="scenario" th:value="${editor.original}" th:if="${editor.runnable()}" title="Runs the saved file with the run form's settings">Run this scenario</button>
+        <span class="small muted" th:unless="${editor.runnable()}">Save it to run it.</span>
+      </div>
+    </form>
+  </th:block>
+</section>
+</body>
+</html>

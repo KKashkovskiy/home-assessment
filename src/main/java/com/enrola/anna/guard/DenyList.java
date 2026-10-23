@@ -4,6 +4,8 @@ import com.enrola.anna.lead.Lead;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -11,6 +13,7 @@ import java.util.regex.Pattern;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.error.YAMLException;
 
 /**
  * The prompt's hard rules as regexes, from {@code guards/deny-list.yaml}, applied per sentence. A
@@ -24,6 +27,14 @@ public final class DenyList {
   private static final int FLAGS = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
   private static final Pattern SENTENCE = Pattern.compile("[^.?!]+[.?!]?");
   private static final String PROVIDER_NONE = "provider_none";
+
+  /** The leads a rule's examples are decided for: one with a fund, one without. */
+  private static final Lead WITH_FUND =
+      new Lead(
+          "lead", "Lauren", "+61400000001", null, "VIC", "Bupa", null, null, null, Instant.EPOCH);
+
+  private static final Lead NO_FUND =
+      new Lead("lead", "Jane", "+61400000003", null, "VIC", null, null, null, null, Instant.EPOCH);
 
   /** One rule; {@code noProviderOnly} applies it only to a lead with no current fund. */
   record Rule(
@@ -44,14 +55,61 @@ public final class DenyList {
 
   /** The list shipped in the jar. A missing or malformed file throws, so the app cannot boot. */
   public static DenyList bundled() {
+    return parse(bundledText());
+  }
+
+  /** The shipped file's text. */
+  static String bundledText() {
     try (InputStream in = DenyList.class.getResourceAsStream(RESOURCE)) {
       if (in == null) {
         throw new IllegalStateException(RESOURCE + " is missing");
       }
-      return parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException e) {
       throw new IllegalStateException(RESOURCE + " is unreadable", e);
     }
+  }
+
+  /**
+   * Why {@code yaml} is not fit to ship: it does not load, a rule has fewer than two examples of a
+   * kind, an example the rule does not decide as the file says, or a pattern no match example
+   * exercises. Empty when it is fit; the Evals page refuses a save otherwise, and the tests run it
+   * on the shipped file.
+   */
+  public static List<String> selfTest(String yaml) {
+    DenyList list;
+    try {
+      list = parse(yaml);
+    } catch (YAMLException | IllegalArgumentException | IllegalStateException e) {
+      return List.of("does not load: " + e.getMessage());
+    }
+    return list.rules.stream().flatMap(rule -> list.examplesProblems(rule).stream()).toList();
+  }
+
+  private List<String> examplesProblems(Rule rule) {
+    Lead lead = rule.noProviderOnly() ? NO_FUND : WITH_FUND;
+    List<String> problems = new ArrayList<>();
+    if (rule.match().size() < 2 || rule.noMatch().size() < 2) {
+      problems.add(rule.id() + " needs at least two match and two no_match examples");
+    }
+    rule.match().stream()
+        .filter(sentence -> !breaksRule(rule, sentence, lead))
+        .forEach(sentence -> problems.add(rule.id() + " does not match its example: " + sentence));
+    rule.noMatch().stream()
+        .filter(sentence -> breaksRule(rule, sentence, lead))
+        .forEach(sentence -> problems.add(rule.id() + " matches its no_match: " + sentence));
+    for (int index = 0; index < rule.patterns().size(); index++) {
+      Pattern pattern = rule.patterns().get(index);
+      if (rule.match().stream().noneMatch(sentence -> pattern.matcher(sentence).find())) {
+        problems.add(rule.id() + " pattern " + (index + 1) + " has no match example");
+      }
+    }
+    return problems;
+  }
+
+  /** Whether {@code rule} is among the rules {@code sentence} breaks. */
+  private boolean breaksRule(Rule rule, String sentence, Lead lead) {
+    return brokenRules(sentence, lead).stream().anyMatch(broken -> broken.id().equals(rule.id()));
   }
 
   /** A list from YAML in the shipped file's shape; throws on a missing field or a bad pattern. */

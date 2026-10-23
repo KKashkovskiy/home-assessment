@@ -186,7 +186,7 @@ The schema is a set of Flyway migrations under `src/main/resources/db/migration/
 tables and columns it lacks.
 
 The console is one server-rendered page over the services the API calls, with the markup and stylesheet of the
-clickable prototype; Evals is a tab with no page in this build. The left pane lists
+clickable prototype; the Evals tab, described after the eval suite below, is its fourth page. The left pane lists
 conversations, newest activity first, with six filters carried as GET parameters and combined with AND, each shown as
 a chip that removes it, and a search over name, id and summary. The middle pane is the SMS thread: the lead on the
 left, Anna on the right with a `n/320` count and a chip naming what wrote the reply (`TEMPLATE`, `LLM`, `FIXED`, or
@@ -205,7 +205,9 @@ which works on the server: phone numbers and emails are masked wherever they
 appear, and once a conversation carries health information its summary, cover note and message bodies from that
 turn on are hidden. The mask is on unless the session turned it off. Every action is a form post, so the page works
 without JavaScript. The console has no login, so its protection against other sites is a strict same-site session
-cookie, a 403 for any page post that does not come from the console's own origin, and a refusal to be framed.
+cookie, a 403 for any page post that does not come from the console's own origin, and a refusal to be framed. It
+listens on 127.0.0.1 only and answers only to a host of `localhost` or `127.0.0.1`, so a site that points its own
+name at your machine (DNS rebinding) cannot read it either.
 
 Under the state header the inspector explains every turn from its stored rows, nothing recomputed: the time, model
 latency, tokens, cost and a status in words; the inbound and its provider message id; the context block the model was
@@ -288,6 +290,22 @@ trials) set the exit code. On a keyed run LLM judges then answer one yes-or-no q
 with a quote that must appear verbatim in the transcript; they are reported beside the gates, never gating. A keyed
 run spends its own key and cap, never the app's key unless `EVAL_ALLOW_SHARED_KEY=true`. **A prompt or model change
 needs a green core run (`evals/run.sh --tag core`, exit code 0) before it is committed.** Kinds, fields, flags, gates and presets are in [`evals/README.md`](evals/README.md).
+
+The Evals tab runs the same suite from the console. Its form takes every `run.sh` flag, with four presets
+(`core-offline`, `core-key`, `full-judges`, `stories-k3`) and a dry run that writes the plan and its estimate; a run
+starts `./mvnw` in a child process with the properties `run.sh` passes for those flags, one run at a time, and its
+output streams into the page over Server-Sent Events until it ends or is cancelled, which also ends the processes it
+started. Each value is held to a narrow shape and passed as one argument, never through a shell. How a run ended is
+read from what it wrote, the gates' `exit-code` file and its `eval_run` row, never from Maven's exit, which is only 0
+or 1. The scenario list filters by search, kind and tag, and runs one scenario from its row or the ticked ones with the
+form's settings. The editor shows a scenario as a form whose fields are named by the YAML keys they set, or as the YAML
+itself under Monaco; it starts one from a skeleton or a copy, saves only what loads as the harness loads it, to
+`evals/scenarios/<id>.yaml` and nowhere else, never over another scenario; a save from the YAML view keeps the text as
+typed, one from the form writes the file afresh, without its comments. The judge rubrics, the judge and simulator prompts and the deny-list edit the
+same way, each checked as its loader reads it, the deny-list's examples all still deciding as written; the harness
+settings are the runtime settings above. Past runs list their verdict, gates, cost and time; a report renders
+`report.md` and each trial's page, and a failed trial links to its first failing turn, read in the inspector's layout
+from that run's own database, opened read-only, never the app's. The PII mask covers the reports too.
 
 ## What Anna does
 

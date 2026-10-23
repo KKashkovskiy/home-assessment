@@ -23,9 +23,10 @@ import tools.jackson.databind.annotation.JsonDeserialize;
  * One eval scenario file, as {@code evals/README.md} documents it; YAML fields are snake_case. A
  * {@link Turn} is the primary unit: a seeded transcript, one lead message, one turn's expectations.
  * A {@link Story} hands a hidden persona to a simulated lead and runs the whole conversation
- * against end-state expectations.
+ * against end-state expectations. It lives in main because the Evals page validates a save with the
+ * harness's own {@link ScenarioLoader}.
  */
-sealed interface Scenario permits Scenario.Turn, Scenario.Story {
+public sealed interface Scenario permits Scenario.Turn, Scenario.Story {
 
   String id();
 

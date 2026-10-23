@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page('Evals', 'evals', ~{:: main})}">
+<body>
+  <!-- Every part of this page is server-rendered and every action is a form post or a link, so the page works without
+       the script. With it, a form marked data-swap posts with fetch and the parts it names are swapped in from the
+       page that comes back; the run panel follows a run over Server-Sent Events. -->
+  <main id="main" class="page stack evals-page" tabindex="-1">
+    <div class="page-head"><h1>Evals</h1><span class="small muted">Turn scenarios make one model call each and are the primary unit. Story scenarios let a simulated lead run the whole conversation. Deterministic code checks gate the result; judge questions are advisory until calibrated. A run here is the run <code>evals/run.sh</code> makes with the same flags.</span></div>
+
+    <section class="panel" aria-labelledby="run-form-title" id="run-form-panel" th:with="f=${evals.runForm}">
+      <header><h2 id="run-form-title">Run</h2>
+        <form class="row small" method="get" th:action="@{/evals}" id="preset-form" data-swap="run-form-panel">
+          <label for="run-preset">Preset</label>
+          <select id="run-preset" name="preset" class="auto-width" data-autosubmit>
+            <option value="" th:if="${f.preset == ''}" selected>as posted</option>
+            <option th:each="p : ${f.presets()}" th:value="${p.key}" th:text="${p.key}" th:selected="${p.key == f.preset}">core-offline</option>
+          </select>
+          <button class="btn sm" type="submit" data-autosubmit-button>Load</button>
+        </form>
+        <span class="small muted" th:text="${f.evalKey} ? 'Eval key set. Keyed runs spend it, never the app key, up to the budget.' : 'No eval key in this app\'s environment: a keyed run skips every trial and still writes its report.'">Eval key set.</span>
+      </header>
+      <form id="run-form" class="panel-body" method="post" th:action="@{/evals/runs}" data-swap="run-form-panel run-panel">
+        <div id="run-form-notice" th:if="${f.notice != null}" tabindex="-1"><div th:replace="~{fragments/parts :: notice(${f.notice})}"></div></div>
+        <div class="inline-fields">
+          <div class="field wide"><label for="r-scenarios">Scenarios (--scenario)</label><input id="r-scenarios" name="scenarios" type="text" th:value="${f.scenarioIds()}" placeholder="turn-stop-keyword, story-troll" spellcheck="false"><span class="hint">Comma-separated ids. They win over the filters, and rows ticked below join them.</span></div>
+          <div class="field"><label for="r-filter">Id glob (--filter)</label><input id="r-filter" name="filter" type="text" th:value="${f.values.filter}" placeholder="turn-abuse-*" spellcheck="false"></div>
+          <div class="field"><label for="r-tag">Tag (--tag)</label><select id="r-tag" name="tag"><option value="">any</option><option th:each="t : ${f.tags}" th:value="${t}" th:text="${t}" th:selected="${t == f.values.tag}">core</option></select></div>
+          <div class="field"><label for="r-kind">Kind (--kind)</label><select id="r-kind" name="kind"><option value="">any</option><option value="turn" th:selected="${f.values.kind == 'turn'}">turn</option><option value="story" th:selected="${f.values.kind == 'story'}">story</option></select></div>
+          <div class="field"><label for="r-priority">Priority (--priority)</label><select id="r-priority" name="priority"><option value="">any</option><option value="p0" th:selected="${f.values.priority == 'p0'}">p0</option><option value="p1" th:selected="${f.values.priority == 'p1'}">p1</option></select></div>
+        </div>
+        <div class="inline-fields">
+          <div class="field"><label for="r-model">Model (--offline)</label><select id="r-model" name="offline"><option value="true" th:selected="${f.values.offline}">offline stand-in ($0, no key)</option><option value="false" th:selected="${!f.values.offline}" th:text="${f.model} + ' on the eval key'">gpt-5.1 on the eval key</option></select><span class="hint">The stand-in proves the harness, not the prompt.</span></div>
+          <div class="field"><label for="r-k">Trials per scenario (--trials)</label><input id="r-k" name="trials" type="number" min="1" max="20" th:value="${f.values.trials}" required><span class="hint">The report gives pass^k and a Wilson 95% interval.</span></div>
+          <div class="field"><label for="r-judges">Judges (--judges)</label><select id="r-judges" name="judges"><option value="advisory" th:selected="${f.values.judges == 'advisory'}">advisory</option><option value="none" th:selected="${f.values.judges == 'none'}">none</option></select><span class="hint">Asked on keyed runs only, after the gates; never gating.</span></div>
+          <div class="field"><label for="r-budget">Budget cap, $ (--budget)</label><input id="r-budget" name="budgetUsd" type="number" step="0.01" min="0.01" max="100" th:value="${@fmt.dollars(f.values.budgetUsd)}" th:placeholder="${@fmt.dollars(f.evalCap)} + ' from the settings'"><span class="hint">An estimate over it is refused before any call.</span></div>
+          <div class="field"><label for="r-validity">Validity threshold (--validity-threshold)</label><input id="r-validity" name="validityThreshold" type="number" step="0.05" min="0" max="1" th:value="${f.values.validityThreshold}" required><span class="hint">The share of INVALID trials the gate allows.</span></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="submit" name="dryRun" value="true">Dry run (plan and cost)</button>
+          <button id="run-form-btn" class="btn primary" type="submit">Run</button>
+          <span class="small muted">One run at a time, in its own database under <code>evals/runs/</code>.</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="scen-title" id="scenarios-panel" th:with="list=${evals.scenarios}">
+      <header><h2 id="scen-title">Scenarios <span id="scen-count" class="muted small" th:text="${#lists.size(list.rows)} + ' of ' + ${list.total}">48 of 52</span></h2>
+        <form id="scenario-filter" class="row filter-row" method="get" th:action="@{/evals}" role="search" data-swap="scenarios-panel">
+          <label class="visually-hidden" for="scen-search">Search scenarios</label>
+          <input id="scen-search" name="q" type="search" placeholder="Search id, title, tag" th:value="${list.q}">
+          <label class="row small" for="scen-kind">Kind <select id="scen-kind" name="kind" class="auto-width" data-autosubmit><option value="">any</option><option value="turn" th:selected="${list.kind == 'turn'}">turn</option><option value="story" th:selected="${list.kind == 'story'}">story</option></select></label>
+          <label class="row small" for="scen-tag">Tag <select id="scen-tag" name="tag" class="auto-width" data-autosubmit><option value="">any</option><option th:each="t : ${list.tags}" th:value="${t}" th:text="${t}" th:selected="${t == list.tag}">core</option></select></label>
+          <button class="btn sm" type="submit">Filter</button>
+        </form>
+        <button id="run-selected" form="run-form" class="btn primary sm" type="submit" title="Runs the ticked scenarios with the run form's settings">Run selected</button>
+        <a class="btn sm" th:href="@{/evals(create='turn')} + '#editor-panel'" data-open="editor-panel">New turn</a>
+        <a class="btn sm" th:href="@{/evals(create='story')} + '#editor-panel'" data-open="editor-panel">New story</a>
+      </header>
+      <div class="table-wrap" th:unless="${#lists.isEmpty(list.rows)}"><table id="scenario-table" class="scenario-table">
+        <thead><tr><th scope="col"><input id="select-all" type="checkbox" aria-label="Select every scenario shown" hidden></th><th scope="col">Id</th><th scope="col">Kind</th><th scope="col">Priority</th><th scope="col">Title</th><th scope="col">Tags</th><th scope="col">Last result</th><th scope="col"><span class="visually-hidden">Run</span></th></tr></thead>
+        <tbody th:replace="~{fragments/scenario-rows :: rows(${list})}"></tbody>
+      </table></div>
+      <p class="empty" th:if="${#lists.isEmpty(list.rows)}">No scenario matches this filter. <a th:href="@{/evals}">Show all</a></p>
+    </section>
+
+    <section th:replace="~{fragments/run-panel :: panel(${evals.run})}"></section>
+
+    <section th:replace="~{fragments/report :: report(${evals.report})}"></section>
+
+    <section th:replace="~{fragments/scenario-editor :: editor(${evals.editor})}"></section>
+
+    <section class="panel" aria-labelledby="runs-title" id="runs-panel">
+      <header><h2 id="runs-title">Past runs</h2><span class="small muted">From the CLI and this page alike; each wrote <code>evals/runs/&lt;id&gt;/report.md</code>, and its gates set the exit code.</span></header>
+      <div class="table-wrap" th:unless="${#lists.isEmpty(evals.runs)}"><table id="runs-table">
+        <thead><tr><th scope="col">Run</th><th scope="col">Started</th><th scope="col">Prompt</th><th scope="col">Model</th><th scope="col" class="num">Trials passed</th><th scope="col">Verdict</th><th scope="col">Gates</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Time</th></tr></thead>
+        <tbody th:replace="~{fragments/runs-rows :: rows(${evals.runs})}"></tbody>
+      </table></div>
+      <p class="empty" th:if="${#lists.isEmpty(evals.runs)}">No runs recorded yet. Start one above, or run <code>evals/run.sh --offline</code>; both land here.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="harness-title" id="harness-panel" th:with="h=${evals.harness}">
+      <header><h2 id="harness-title">Harness files</h2>
+        <form class="row small" method="get" th:action="@{/evals}" data-swap="harness-panel">
+          <label for="harness-file">File</label>
+          <select id="harness-file" name="file" class="auto-width" data-autosubmit><option th:each="n : ${h.names}" th:value="${n}" th:text="${n}" th:selected="${n == h.name}">rubrics/J-SMS-STYLE.yaml</option></select>
+          <button class="btn sm" type="submit" data-autosubmit-button>Open</button>
+        </form>
+      </header>
+      <form id="harness-form" class="panel-body stack" method="post" th:action="@{/evals/files}" data-swap="harness-panel">
+        <input type="hidden" name="name" th:value="${h.name}">
+        <div id="harness-notice" th:if="${h.notice != null}" tabindex="-1"><div th:replace="~{fragments/parts :: notice(${h.notice})}"></div></div>
+        <p class="small muted">Judge rubrics, the judge and simulator prompts, and the deny-list the guards and the harness share. The harness settings, its eval cap, model and prices, are runtime settings: <a th:href="@{/configuration} + '#settings-form'">Configuration</a>.</p>
+        <div class="editor code-editor" data-for="harness-text" hidden></div>
+        <label class="visually-hidden" for="harness-text" th:text="'Contents of ' + ${h.name}">File contents</label>
+        <!-- The newline after the opening tag is the parser's to drop, so the file's own first newline survives. -->
+        <textarea id="harness-text" name="text" rows="18" class="editor-fallback" spellcheck="false" th:data-language="${h.language()}">
+[[${h.text}]]</textarea>
+        <div class="row"><button class="btn primary sm" type="submit">Save</button><span class="small muted" th:text="${h.hint()}">checked</span></div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

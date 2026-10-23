@@ -137,7 +137,7 @@ final class StoryRunner {
         if (cut.isPresent()) {
           return cut;
         }
-        hit = StopWhen.firstMet(stop, current, leadMessages, lastReply);
+        hit = StopConditions.firstMet(stop, current, leadMessages, lastReply);
       }
       stopReason = hit.get().describe() + " after " + leadMessages + " lead messages";
       return Optional.empty();

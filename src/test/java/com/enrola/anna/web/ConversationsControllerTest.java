@@ -453,7 +453,7 @@ class ConversationsControllerTest extends ConsoleFixture {
       assertThat(count("select count(*) from suppression")).isZero();
 
       mvc.perform(
-              stop(id).header("Origin", "http://console.example").header("Host", "console.example"))
+              stop(id).header("Origin", "http://localhost:8080").header("Host", "localhost:8080"))
           .andExpect(status().is3xxRedirection());
       assertThat(count("select count(*) from suppression")).isEqualTo(1);
     }
@@ -555,9 +555,7 @@ class ConversationsControllerTest extends ConsoleFixture {
   }
 
   @Test
-  void placeholderTabRendersInTheShell() throws Exception {
-    assertThat(body(mvc.perform(get("/evals")).andExpect(status().isOk())))
-        .contains("href=\"/evals\" aria-current=\"page\"", "class=\"panel placeholder-panel\"");
+  void rootOpensTheConversations() throws Exception {
     mvc.perform(get("/"))
         .andExpect(status().is3xxRedirection())
         .andExpect(header().string("Location", "/conversations"));

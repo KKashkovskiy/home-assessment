@@ -29,7 +29,8 @@
   <p id="conv-footer" class="small muted conv-footer" th:text="|prompt ${conversation.promptVersion}, ${conversation.model} ${conversation.reasoningEffort}, cost ${@fmt.cost(inspector.cost())} (price table), model time ${@fmt.latency(inspector.modelTimeMs())}, ${@fmt.count(inspector.modelCalls(), 'model call')}, ${@fmt.count(inspector.repairs(), 'repair')}|">footer</p>
 </th:block>
 
-<!-- One turn. Rows with a #number are trace events, numbered in the order the pipeline wrote them. -->
+<!-- One turn. Rows with a #number are trace events, numbered in the order the pipeline wrote them. A turn read from an
+     eval run's own database (fromRunDatabase) has no prompt dialog or raw JSON link: those read the app's. -->
 <details th:fragment="turn(turn, open, rawOpen)" class="turn" th:id="'turn-' + ${turn.n}" th:open="${open}">
   <summary>
     <span class="title" th:text="'Turn ' + ${turn.n}">Turn 1</span>
@@ -48,7 +49,7 @@
         <pre class="raw mono" th:if="${turn.context != null}" th:text="${turn.context}">context</pre>
         <p class="muted small row-note" th:if="${turn.context == null}">no context item in the stored request</p>
       </details>
-      <p class="small row-note"><a th:href="@{/conversations/{id}/prompt(id=${turn.conversationId}, turn=${turn.n})}" data-dialog th:text="'View prompt ' + ${turn.promptVersion} + ' as sent'">View prompt</a></p>
+      <p class="small row-note" th:unless="${fromRunDatabase}"><a th:href="@{/conversations/{id}/prompt(id=${turn.conversationId}, turn=${turn.n})}" data-dialog th:text="'View prompt ' + ${turn.promptVersion} + ' as sent'">View prompt</a></p>
     </section>
     <section>
       <h4>Pre-guards</h4>
@@ -132,7 +133,7 @@
   <p class="small notice warn" th:if="${turn.decisionUnreadable()}">This build no longer reads the stored decision; its JSON is shown as stored.</p>
   <pre class="raw mono" th:if="${turn.decisionUnreadable()}" th:text="${turn.rawDecision}">{}</pre>
   <pre class="raw-json raw mono" th:unless="${turn.decisionUnreadable()}" th:hidden="${!rawOpen}" th:text="${turn.rawDecision}">{}</pre>
-  <p class="small row-note"><a th:href="@{/conversations/{id}/turns/{n}/raw(id=${turn.conversationId}, n=${turn.n})}">Raw request and response JSON</a> <span class="muted">(as stored with the turn, masked like this page)</span></p>
+  <p class="small row-note" th:unless="${fromRunDatabase}"><a th:href="@{/conversations/{id}/turns/{n}/raw(id=${turn.conversationId}, n=${turn.n})}">Raw request and response JSON</a> <span class="muted">(as stored with the turn, masked like this page)</span></p>
 </section>
 
 <span th:fragment="kept(value)" th:if="${value != null}" class="chip warn kept" th:text="'code kept ' + ${value}" title="The model asked for something else; code owns this field">code kept</span>

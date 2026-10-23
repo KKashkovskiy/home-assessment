@@ -420,6 +420,86 @@ td.nowrap { white-space: nowrap; }
 .yaml { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s3); font-family: var(--mono); font-size: .8rem; line-height: 1.45; white-space: pre; overflow: auto; margin: 0; min-height: 300px; }
 .tag { font-size: .75rem; padding: 1px 7px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); margin-right: 3px; white-space: nowrap; }
 
+/* Evals, served: the states the prototype's fixed data never reached, the rendered reports, and phone width. */
+.evals-page { gap: var(--s5); }
+.evals-page .page-head { margin-bottom: 0; }
+.evals-page .page-head .small { max-width: 90ch; }
+.auto-width, .evals-page header select { width: auto; }
+.evals-page .panel > header .small.muted { flex: 1 1 18rem; }
+#run-form .inline-fields + .inline-fields { margin-top: var(--s3); }
+#run-form-notice, #scenario-notice, #harness-notice { margin-bottom: var(--s3); }
+#run-form-notice:focus, #scenario-notice:focus, #harness-notice:focus { outline: none; }
+.filter-row { flex: 1 1 26rem; }
+.filter-row input[type="search"] { flex: 1 1 12rem; width: auto; }
+.scenario-table td:first-child, .scenario-table th:first-child { width: 2rem; }
+.scenario-table tr.broken td { background: var(--warn-soft); }
+.scenario-table .problem { display: block; max-width: 48ch; overflow-wrap: anywhere; }
+.scenario-table td:last-child { text-align: right; }
+.scenario-table a.mono { font-weight: 600; text-decoration: none; }
+.scenario-table a.mono:hover { text-decoration: underline; }
+.progress .log { max-height: 280px; min-height: 4.5em; padding: var(--s2) var(--s3); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; }
+.progress #run-status, .progress #run-meta { margin: 0; }
+#run-panel[data-running="true"] .bar div { background: repeating-linear-gradient(45deg, var(--accent) 0 10px, var(--accent-soft-ink) 10px 20px); }
+#run-panel[data-running="true"] { border-color: var(--accent); }
+td.gates, #runs-table td:first-child { white-space: nowrap; }
+.block { display: block; }
+.failures caption { font-weight: 600; color: var(--ink-2); }
+#report-title .mono, #run-title .mono { display: block; margin-top: 2px; font-weight: 400; overflow-wrap: anywhere; }
+.table-wrap { overflow-x: auto; }
+.tags { display: flex; flex-wrap: wrap; gap: 3px; }
+.tags .tag { margin-right: 0; }
+.report-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1 1 18rem; }
+.markdown tr.failed td { background: var(--fail-soft); }
+#scenario-notice [data-notice] { white-space: normal; }
+.notice .notice-title { margin: 0; }
+.notice .problems { margin: var(--s1) 0 0; padding-left: 1.2rem; }
+.notice .problems a { color: inherit; }
+.full-output summary { cursor: pointer; color: var(--ink-2); }
+.full-output[open] summary { margin-bottom: var(--s2); }
+#run-panel:focus, #report-panel:focus, #editor-panel:focus { outline: none; }
+.evals-page > .panel { scroll-margin-top: calc(var(--chrome-h, 62px) + var(--s2)); }
+.progress .bar.indeterminate div { width: 30% !important; animation: run-wait 1.2s ease-in-out infinite alternate; }
+@keyframes run-wait { from { margin-left: 0; } to { margin-left: 70%; } }
+.failed-here { padding-bottom: 0; }
+.failed-here .notice { margin: 0; }
+.markdown { font-size: .93rem; overflow-wrap: break-word; }
+.markdown h3 { font-size: 1.05rem; margin: var(--s2) 0 var(--s3); }
+.markdown h4 { font-size: .95rem; margin: var(--s4) 0 var(--s2); color: var(--ink-2); }
+.markdown h5 { font-size: .9rem; margin: var(--s3) 0 var(--s2); }
+.markdown table { margin: 0 0 var(--s3); }
+.markdown td, .markdown th { padding: var(--s1) var(--s2); }
+.markdown thead th:empty { padding: 0; }
+.markdown ul { margin: 0 0 var(--s3); padding-left: 1.2rem; }
+.markdown li + li { margin-top: 2px; }
+.markdown code { background: var(--surface-2); padding: 0 4px; border-radius: 3px; }
+.editor-id { margin-bottom: var(--s4); }
+.history-rows .stack.tight { gap: var(--s1); }
+.history-rows .hrow select { width: auto; }
+.add-line { align-self: flex-start; }
+#scenario-form .settings-grid { columns: 380px; }
+#scenario-form .editor-fallback, #harness-form .editor-fallback { min-height: 320px; }
+.code-editor { height: 420px; }
+.eval-trace .turn > summary { cursor: default; }
+@media (min-width: 721px) {
+  #run-form .field.wide { grid-column: span 2; }
+}
+@media (max-width: 720px) {
+  .evals-page { gap: var(--s4); }
+  /* A scenario row becomes a card: the tick, then id, title and last result stacked, Run at the end. */
+  .scenario-table thead { display: none; }
+  .scenario-table tbody tr { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; column-gap: var(--s2); row-gap: 2px; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); }
+  .scenario-table td { border: 0; padding: 0; }
+  .scenario-table td:nth-child(1) { grid-row: 1 / span 3; padding-top: 2px; }
+  .scenario-table td:nth-child(2), .scenario-table td:nth-child(5), .scenario-table td:nth-child(7) { grid-column: 2; }
+  .scenario-table td:nth-child(8) { grid-column: 3; grid-row: 1 / span 3; align-self: center; }
+  .scenario-table td:nth-child(3), .scenario-table td:nth-child(4), .scenario-table td:nth-child(6) { display: none; }
+  #runs-table th:nth-child(3), #runs-table td:nth-child(3), #runs-table th:nth-child(4), #runs-table td:nth-child(4) { display: none; }
+  .code-editor { height: 60vh; }
+  #report-title { flex-basis: 100%; }
+  .evals-page .panel > header > .small.muted { flex-basis: 100%; }
+  .markdown table { display: block; overflow-x: auto; }
+}
+
 /* Responsive */
 @media (max-width: 1100px) {
   .console { grid-template-columns: 260px 1fr; height: auto; }
@@ -498,8 +578,6 @@ button.chip[aria-pressed="true"] b { color: inherit; }
 .console > .start-panel { flex-direction: row; }
 .start-panel .panel { max-height: 80vh; overflow-y: auto; }
 .start-panel p { margin: 0; }
-.placeholder-panel { max-width: 640px; margin: var(--s6) auto; }
-.placeholder-panel h1 { flex: 1; font-size: 1rem; }
 @media (max-width: 720px) {
   .topbar { position: static; }
   .composer-row { flex-wrap: wrap; }

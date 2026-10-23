@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- One row per eval_run row, newest first: the trials' counts, the verdict, the three gates, the cost with the
+     judges' apart, and how long it took. The id opens the run's report. -->
+<tbody th:fragment="rows(runs)">
+  <tr th:each="row : ${runs}">
+    <td><a class="mono" th:href="@{/evals(run=${row.id})} + '#report-panel'" data-open="report-panel" th:text="${row.id}">2026-10-23T16-36-12Z</a></td>
+    <td class="nowrap" th:text="${@fmt.when(row.startedAt)}">23 Oct 03:36</td>
+    <td th:text="${row.promptVersion}">v1</td>
+    <td><th:block th:text="${row.model}">gpt-5.1</th:block> <span class="chip ghost" th:if="${row.offline}">offline</span> <span class="muted small" th:if="${row.trials > 1}" th:text="'k=' + ${row.trials}">k=3</span></td>
+    <td class="num"><th:block th:text="${row.passed} + ' / ' + ${row.passed + row.failed}">3 / 4</th:block><span class="muted small" th:if="${row.invalid > 0}" th:text="', ' + ${row.invalid} + ' invalid'"></span><span class="muted small" th:if="${row.skipped > 0}" th:text="', ' + ${row.skipped} + ' skipped'"></span></td>
+    <td><span th:class="${@fmt.outcomeClass(row.outcome())}" th:text="${@fmt.outcome(row.outcome())}">✓ green</span></td>
+    <td class="gates"><span th:class="${@fmt.gateClass(row.hard())}" th:text="${@fmt.gate(row.hard(), 'hard')}">✓ hard</span> <span th:class="${@fmt.gateClass(row.global())}" th:text="${@fmt.gate(row.global(), 'global')}">✓ global</span> <span th:class="${@fmt.gateClass(row.validity())}" th:text="${@fmt.gate(row.validity(), 'validity')}">✓ validity</span></td>
+    <td class="num"><th:block th:text="${@fmt.cost(row.costUsd)}">$0.0342</th:block><span class="muted small block" th:if="${row.judgeModel != null}" th:text="'judges ' + ${@fmt.cost(row.judgeCostUsd)}">judges $0.0114</span></td>
+    <td class="num nowrap" th:text="${@fmt.runDuration(row)}">1m 30s</td>
+  </tr>
+</tbody>
+</body>
+</html>

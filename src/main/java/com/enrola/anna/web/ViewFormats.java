@@ -2,6 +2,8 @@ package com.enrola.anna.web;
 
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
+import com.enrola.anna.agent.HandoffReason;
+import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.agent.Stage;
 import com.enrola.anna.config.Settings;
 import com.enrola.anna.config.SettingsStore;
@@ -18,6 +20,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.OptionalDouble;
@@ -608,5 +611,150 @@ public class ViewFormats {
           case TURNS -> String.format(Locale.ENGLISH, "%.1f turns", size);
         };
     return (row.change() > 0 ? "+" : "−") + magnitude;
+  }
+
+  public List<LeadIntent> leadIntents() {
+    return List.of(LeadIntent.values());
+  }
+
+  public List<HandoffReason> handoffReasons() {
+    return List.of(HandoffReason.values());
+  }
+
+  /** "✓ green", "✕ red": how an eval run ended, as its chip says it. */
+  public String outcome(RunOutcome outcome) {
+    return switch (outcome) {
+      case GREEN -> "✓ green";
+      case RED -> "✕ red";
+      case SKIPPED -> "– skipped";
+      case PLANNED -> "◇ dry run";
+      case CANCELLED -> "■ cancelled";
+      case ERROR -> "! no result";
+    };
+  }
+
+  public String outcomeClass(RunOutcome outcome) {
+    return switch (outcome) {
+      case GREEN -> "chip pass";
+      case RED, ERROR -> "chip fail";
+      case SKIPPED -> "chip warn";
+      case PLANNED -> "chip accent";
+      case CANCELLED -> "chip ghost";
+    };
+  }
+
+  /** What a finished run's outcome means, under its bar. */
+  public String outcomeLine(RunOutcome outcome) {
+    return switch (outcome) {
+      case GREEN -> "Every gate passed.";
+      case RED -> "A gate failed: the report names the trials and the checks.";
+      case SKIPPED ->
+          "Nothing ran: no eval key, or the estimate was over the budget. The report says which.";
+      case PLANNED -> "Dry run: the report holds the plan and its estimate; nothing was called.";
+      case CANCELLED -> "Cancelled. The run's folder keeps what it wrote before it stopped.";
+      case ERROR -> "The run ended without a result; the log above says why.";
+    };
+  }
+
+  /** "✓ PASS", "✕ FAIL", "INVALID", "not run": a trial's or a scenario's last result. */
+  public String result(String status) {
+    return switch (status) {
+      case "" -> "not run";
+      case "PASS" -> "✓ PASS";
+      case "FAIL" -> "✕ FAIL";
+      default -> status.replace('_', ' ');
+    };
+  }
+
+  public String resultClass(String status) {
+    return switch (status) {
+      case "PASS" -> "result pass";
+      case "FAIL" -> "result fail";
+      default -> "result unknown";
+    };
+  }
+
+  /** "✓ hard", "✕ global", "– validity": one of a run's three gates, or one that never ran. */
+  public String gate(EvalReports.RunRow.Gate gate, String name) {
+    return switch (gate) {
+          case PASS -> "✓ ";
+          case FAIL -> "✕ ";
+          case NOT_RUN -> "– ";
+        }
+        + name;
+  }
+
+  public String gateClass(EvalReports.RunRow.Gate gate) {
+    return switch (gate) {
+      case PASS -> "chip pass";
+      case FAIL -> "chip fail";
+      case NOT_RUN -> "chip ghost";
+    };
+  }
+
+  /** "pass^k 67%": the share of scenarios whose every trial passed. */
+  public String passK(BigDecimal share) {
+    return "pass^k " + percent(share);
+  }
+
+  /** "95% CI 49% to 94%": the per-trial pass rate's Wilson interval. */
+  public String wilson(EvalReports.RunRow row) {
+    return "95% CI " + percent(row.wilsonLow()) + " to " + percent(row.wilsonHigh());
+  }
+
+  private static String percent(BigDecimal share) {
+    return share.movePointRight(2).setScale(0, RoundingMode.HALF_UP).toPlainString() + "%";
+  }
+
+  /**
+   * "tag core, offline, judges none, 3 trials, settings cap": what a run was asked, in the words of
+   * run.sh's flags.
+   */
+  public String runRequest(RunRequest request) {
+    List<String> parts = new ArrayList<>();
+    if (!request.scenarios().isEmpty()) {
+      parts.add(String.join(", ", request.scenarios()));
+    }
+    addIf(parts, "filter ", request.filter());
+    addIf(parts, "tag ", request.tag());
+    addIf(parts, "kind ", request.kind());
+    addIf(parts, "priority ", request.priority());
+    if (parts.isEmpty()) {
+      parts.add("every scenario");
+    }
+    parts.add(request.offline() ? "offline stand-in" : "eval key");
+    parts.add("judges " + request.judges());
+    parts.add(count(request.trials(), "trial") + " each");
+    parts.add(
+        request.budgetUsd() == null ? "settings cap" : "cap $" + dollars(request.budgetUsd()));
+    if (request.dryRun()) {
+      parts.add("dry run");
+    }
+    return String.join(", ", parts);
+  }
+
+  /**
+   * "Trials 3 of 40", "Judge questions 5 of 38", "Trials 40 of 40: writing the report…": what the
+   * bar measures now.
+   */
+  public String progress(EvalsPage.RunPanel panel) {
+    EvalRunLauncher.Progress progress = panel.state().progress();
+    if (progress == null) {
+      return "Starting: Maven builds, then the suite boots.";
+    }
+    String phase = progress.phase().equals("judge") ? "Judge questions " : "Trials ";
+    String done = phase + progress.done() + " of " + progress.total();
+    return progress.done() == progress.total() ? done + ": writing the report…" : done;
+  }
+
+  /** "1m 30s", or "unfinished" when the row has no end. */
+  public String runDuration(EvalReports.RunRow row) {
+    return row.duration() == null ? "unfinished" : duration(row.duration().toSeconds());
+  }
+
+  private static void addIf(List<String> parts, String label, String value) {
+    if (!value.isBlank()) {
+      parts.add(label + value);
+    }
   }
 }
