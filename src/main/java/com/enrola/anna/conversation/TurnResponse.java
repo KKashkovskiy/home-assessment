@@ -19,9 +19,9 @@ public record TurnResponse(
     boolean goalMet,
     boolean unsubscribed,
     boolean conversationEnded,
-    String endReason,
+    EndReason endReason,
     boolean needsHuman,
-    String handoffReason,
+    HandoffReason handoffReason,
     List<Flag> flags,
     List<EndReasonEntry> endReasonHistory,
     BookingView booking,
@@ -48,9 +48,6 @@ public record TurnResponse(
   /** The booked call. */
   public record BookingView(String id, Instant startUtc, String localLabel) {}
 
-  /** One terminal-state transition. */
-  public record EndReasonEntry(String reason, Instant at) {}
-
   /** "Sun 26 Jul 10:00 AM AEST": the lead's wall clock, readable without arithmetic. */
   private static final DateTimeFormatter LEAD_LOCAL_TIME =
       DateTimeFormatter.ofPattern("EEE d MMM h:mm a z", Locale.ENGLISH);
@@ -64,11 +61,11 @@ public record TurnResponse(
         conversation.goalMet,
         conversation.unsubscribed,
         conversation.ended,
-        "NONE",
+        conversation.endReason,
         conversation.needsHuman,
-        "NONE",
+        conversation.handoffReason,
         List.copyOf(conversation.flags()),
-        List.of(),
+        conversation.endReasonHistory(),
         null,
         null,
         now.atZone(ZoneId.of(conversation.leadZoneId)).format(LEAD_LOCAL_TIME),

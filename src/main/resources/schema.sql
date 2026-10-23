@@ -17,13 +17,16 @@ CREATE TABLE IF NOT EXISTS lead (
 CREATE TABLE IF NOT EXISTS conversation (
   id                       VARCHAR(40)  PRIMARY KEY,
   lead_id                  VARCHAR(40)  NOT NULL REFERENCES lead(id),
-  status                   VARCHAR(20)  NOT NULL,  -- ACTIVE
+  status                   VARCHAR(20)  NOT NULL,  -- ACTIVE, HANDOFF, or the end reason once ended
   stage                    VARCHAR(20)  NOT NULL,  -- Stage name, ENGAGE at start
   flags_json               CLOB         NOT NULL,  -- JSON array of Flag names
   goal_met                 BOOLEAN      NOT NULL DEFAULT FALSE,
   unsubscribed             BOOLEAN      NOT NULL DEFAULT FALSE,
   ended                    BOOLEAN      NOT NULL DEFAULT FALSE,
   needs_human              BOOLEAN      NOT NULL DEFAULT FALSE,
+  end_reason               VARCHAR(20)  NOT NULL,  -- EndReason name, NONE while open
+  end_reason_history_json  CLOB         NOT NULL,  -- JSON array of {reason, at}, oldest first
+  handoff_reason           VARCHAR(20)  NOT NULL,  -- HandoffReason name, the latest; NONE until a handoff
   lead_zone_id             VARCHAR(40)  NOT NULL,  -- Australia/Melbourne etc., fixed at start
   prompt_version           VARCHAR(20)  NOT NULL,  -- v1
   source                   VARCHAR(10)  NOT NULL,  -- API
@@ -46,3 +49,21 @@ CREATE TABLE IF NOT EXISTS message (
   created_at          TIMESTAMP WITH TIME ZONE NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS message_provider_idx ON message(conversation_id, provider_message_id);
+
+CREATE TABLE IF NOT EXISTS turn (
+  id                  VARCHAR(40) PRIMARY KEY,
+  conversation_id     VARCHAR(40) NOT NULL REFERENCES conversation(id),
+  turn_no             INT         NOT NULL,
+  inbound_message_id  VARCHAR(40) NOT NULL REFERENCES message(id),
+  status              VARCHAR(10) NOT NULL,          -- OK | NO_REPLY | REPAIRED | FALLBACK | ERROR
+  response_json       CLOB        NOT NULL,          -- the response returned; replayed on a duplicate
+  created_at          TIMESTAMP WITH TIME ZONE NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS turn_no_idx ON turn(conversation_id, turn_no);
+
+CREATE TABLE IF NOT EXISTS suppression (
+  phone       VARCHAR(20) PRIMARY KEY,               -- E.164
+  reason      VARCHAR(10) NOT NULL,                  -- KEYWORD
+  lead_id     VARCHAR(40),
+  created_at  TIMESTAMP WITH TIME ZONE NOT NULL
+);

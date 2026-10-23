@@ -23,6 +23,21 @@ public record Message(
     Instant createdAt)
     implements Persistable<String> {
 
+  public static Message inbound(
+      String conversationId, int turnNo, String text, String providerMessageId, Instant at) {
+    return new Message(
+        UUID.randomUUID().toString(),
+        conversationId,
+        turnNo,
+        Direction.IN,
+        text,
+        text.length(),
+        providerMessageId,
+        null,
+        false,
+        at);
+  }
+
   public static Message outbound(
       String conversationId, int turnNo, String text, MessageSource source, Instant at) {
     return new Message(

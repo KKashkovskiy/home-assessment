@@ -18,3 +18,7 @@ anna:
   templates:
     version: v1                           # stamped on each conversation as its prompt version
     prefix: classpath:prompts/${anna.templates.version}/templates/
+  sms:
+    max-inbound-chars: 1600               # longer inbound is stored whole and flagged INPUT_TRUNCATED
+  turns:
+    lock-wait: 2s                         # a second turn or start waits this long, then gets 409 BUSY

@@ -33,9 +33,23 @@ curl -s localhost:8080/api/conversations/<conversation_id>
 ```
 
 Start answers 201 with the template opener as `reply`, the conversation's state and its transcript. A second start
-for the same lead answers 409 with the open conversation's id, an unknown lead or conversation 404, a malformed
-request 400 and a non-JSON body 415; those errors carry `{"error", "message", "conversation_id"}`. Conversations
-are rows, so a restart loses nothing.
+for the same lead answers 409 with the open conversation's id (`?force=true` opens a second one anyway), an unknown
+lead or conversation 404, a malformed request 400 and a non-JSON body 415; those errors carry `{"error", "message",
+"conversation_id"}`. Post the lead's replies to the conversation:
+
+```
+curl -s -X POST localhost:8080/api/conversations/<conversation_id>/messages -H 'content-type: application/json' \
+  -d '{"text":"yeah, save money","provider_message_id":"a1"}'
+```
+
+Each inbound is stored once: a retry with the same `provider_message_id` gets the first response back and writes
+nothing. With no model, an ordinary reply is stored, `needs_human` is set with `handoff_reason` `ERROR`, nothing is
+sent and the conversation stays open. A whole message of STOP, STOPALL, UNSUBSCRIBE, OPTOUT, CANCEL, END or QUIT,
+ignoring case, punctuation and spaces, ends the conversation `UNSUBSCRIBED`, returns the fixed confirmation and
+suppresses the phone: every later start for it answers 409 `SUPPRESSED`, forced or not, and later messages on any
+of its conversations are stored without a reply.
+A message for a conversation that is mid-turn waits two seconds, then gets 409 `BUSY`. Conversations, turns and
+suppressions are rows, so a restart loses nothing.
 
 `schema.sql` creates missing tables and never changes existing ones, so delete `data/` after pulling a schema change.
 

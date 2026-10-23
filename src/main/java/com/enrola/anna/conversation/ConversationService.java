@@ -1,5 +1,6 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
 import com.enrola.anna.prompt.Template;
@@ -14,10 +15,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * The one place conversation state changes. Throws {@link NotFoundException} and {@link
- * ConflictException}; status codes are the API's business.
+ * Starts conversations and reads them back; {@link InboundTurns} runs their turns. Throws {@link
+ * NotFoundException} and {@link ConflictException}; status codes are the API's business.
+ *
+ * <p>A start holds the lead's {@link TurnLocks} lock and commits inside it, so the next start for
+ * that lead sees the new row; that is why it uses a {@link TransactionTemplate} and not
+ * {@code @Transactional}.
  */
 @Service
 public class ConversationService {
@@ -28,6 +34,9 @@ public class ConversationService {
   private final ConversationRepository conversations;
   private final MessageRepository messages;
   private final Templates templates;
+  private final Suppressions suppressions;
+  private final TurnLocks locks;
+  private final TransactionTemplate tx;
   private final Clock clock;
 
   public ConversationService(
@@ -35,48 +44,84 @@ public class ConversationService {
       ConversationRepository conversations,
       MessageRepository messages,
       Templates templates,
+      Suppressions suppressions,
+      TurnLocks locks,
+      TransactionTemplate tx,
       Clock clock) {
     this.leads = leads;
     this.conversations = conversations;
     this.messages = messages;
     this.templates = templates;
+    this.suppressions = suppressions;
+    this.locks = locks;
+    this.tx = tx;
     this.clock = clock;
   }
 
   /**
-   * Creates the conversation and stores the template opener as turn 0. A lead with an active
-   * conversation gets a conflict naming it.
+   * Creates the conversation and stores the template opener as turn 0. An opted-out phone gets a
+   * SUPPRESSED conflict; a lead with an open conversation gets an ACTIVE conflict naming it.
    */
-  @Transactional
   public TurnResponse start(String leadId) {
-    Lead lead = leads.findById(leadId).orElseThrow(() -> new NotFoundException("lead", leadId));
-    rejectIfActive(leadId);
-    Instant now = clock.instant();
-    Conversation conversation = conversations.save(newConversation(lead, now));
-    Message opener = storeOpener(conversation, lead, now);
-    return TurnResponse.of(conversation, opener.text(), List.of(opener), now);
+    Lead lead = requireLead(leadId);
+    return locks.forLead(leadId, () -> tx.execute(_ -> openIfNoneOpen(lead)));
+  }
+
+  /**
+   * Like {@link #start}, but opens a second conversation beside an open one. An opted-out phone is
+   * still refused: nothing overrides an opt-out.
+   */
+  public TurnResponse forceStart(String leadId) {
+    Lead lead = requireLead(leadId);
+    return locks.forLead(leadId, () -> tx.execute(_ -> openUnlessSuppressed(lead)));
   }
 
   /** The conversation as it stands: state plus transcript, with no reply. */
   @Transactional(readOnly = true)
   public TurnResponse view(String conversationId) {
-    Conversation conversation =
-        conversations
-            .findById(conversationId)
-            .orElseThrow(() -> new NotFoundException("conversation", conversationId));
-    List<Message> transcript =
-        messages.findByConversationIdOrderByTurnNoAscCreatedAtAsc(conversationId);
-    return TurnResponse.of(conversation, null, transcript, clock.instant());
+    return TurnResponse.of(
+        conversations.require(conversationId),
+        null,
+        messages.transcript(conversationId),
+        clock.instant());
   }
 
-  private void rejectIfActive(String leadId) {
+  private Lead requireLead(String leadId) {
+    return leads.findById(leadId).orElseThrow(() -> new NotFoundException("lead", leadId));
+  }
+
+  private TurnResponse openIfNoneOpen(Lead lead) {
+    rejectIfSuppressed(lead);
+    rejectIfOpen(lead);
+    return open(lead);
+  }
+
+  private TurnResponse openUnlessSuppressed(Lead lead) {
+    rejectIfSuppressed(lead);
+    return open(lead);
+  }
+
+  private void rejectIfSuppressed(Lead lead) {
+    if (suppressions.optedOut(lead.phone())) {
+      throw new ConflictException("SUPPRESSED", "phone is opted out", null);
+    }
+  }
+
+  private void rejectIfOpen(Lead lead) {
     conversations
-        .findActiveByLead(leadId)
+        .findOpenByLead(lead.id())
         .ifPresent(
-            active -> {
+            open -> {
               throw new ConflictException(
-                  "ACTIVE", "lead " + leadId + " has an active conversation", active.id);
+                  "ACTIVE", "lead " + lead.id() + " has an active conversation", open.id);
             });
+  }
+
+  private TurnResponse open(Lead lead) {
+    Instant now = clock.instant();
+    Conversation conversation = conversations.save(newConversation(lead, now));
+    Message opener = storeOpener(conversation, lead, now);
+    return TurnResponse.of(conversation, opener.text(), List.of(opener), now);
   }
 
   /** An unguessable id, because it reaches URLs; version 0 makes {@code save} insert. */
@@ -85,10 +130,13 @@ public class ConversationService {
     Conversation conversation = new Conversation();
     conversation.id = "c-" + UUID.randomUUID();
     conversation.leadId = lead.id();
-    conversation.status = Conversation.ACTIVE;
+    conversation.status = ConversationStatus.ACTIVE;
     conversation.stage = Stage.ENGAGE;
     conversation.flagsJson =
         Flags.write(zone.assumed() ? EnumSet.of(Flag.TZ_ASSUMED) : EnumSet.noneOf(Flag.class));
+    conversation.endReason = EndReason.NONE;
+    conversation.setEndReasonHistory(List.of());
+    conversation.handoffReason = HandoffReason.NONE;
     conversation.leadZoneId = zone.zone().getId();
     conversation.promptVersion = templates.version();
     conversation.source = Conversation.SOURCE_API;
