@@ -67,3 +67,37 @@ CREATE TABLE IF NOT EXISTS suppression (
   lead_id     VARCHAR(40),
   created_at  TIMESTAMP WITH TIME ZONE NOT NULL
 );
+
+-- What each turn's model call returned and cost; zeros and nulls for a turn that made none.
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS decision_json CLOB;
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS model VARCHAR(60);
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS prompt_version VARCHAR(20);
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS tokens_in INT DEFAULT 0 NOT NULL;
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS tokens_cached INT DEFAULT 0 NOT NULL;
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS tokens_out INT DEFAULT 0 NOT NULL;
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS tokens_reasoning INT DEFAULT 0 NOT NULL;
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS cost_usd DECIMAL(10,6) DEFAULT 0 NOT NULL;
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS latency_ms INT DEFAULT 0 NOT NULL;
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS reasoning_summary CLOB;     -- never sent to the lead
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS raw_request_json CLOB;      -- the SDK's request body; the key is a header
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS raw_response_json CLOB;
+
+CREATE TABLE IF NOT EXISTS trace_event (
+  id              VARCHAR(40) PRIMARY KEY,
+  conversation_id VARCHAR(40) NOT NULL REFERENCES conversation(id),
+  turn_no         INT         NOT NULL,
+  seq             INT         NOT NULL,              -- order within the turn, from 1
+  type            VARCHAR(20) NOT NULL,              -- GUARD | MODEL_CALL | TOOL_CALL | STATE_DIFF | ERROR
+  name            VARCHAR(60) NOT NULL,
+  outcome         VARCHAR(10) NOT NULL,              -- PASS | BLOCK | OVERRIDE | REPAIR | INFO
+  payload_json    CLOB,
+  created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+  CONSTRAINT trace_event_seq_uq UNIQUE (conversation_id, turn_no, seq)
+);
+
+-- What a conversation started on, and what the model has gathered about the lead.
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS model VARCHAR(60);
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS reasoning_effort VARCHAR(10);
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS app_version VARCHAR(20);
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS extracted_json CLOB;   -- JSON object of known facts
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS summary VARCHAR(200);  -- the model's latest line for the advisor

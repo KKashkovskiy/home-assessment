@@ -1,4 +1,4 @@
-package com.enrola.anna.conversation;
+package com.enrola.anna.agent;
 
 /** Where the script is. Every conversation starts at ENGAGE. */
 public enum Stage {

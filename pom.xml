@@ -18,6 +18,8 @@
     <java.version>25</java.version>
     <errorprone.version>2.51.0</errorprone.version>
     <spotless.version>3.10.4</spotless.version>
+    <openai-java.version>4.90.0</openai-java.version>
+    <jsr305.version>3.0.2</jsr305.version>
   </properties>
 
   <dependencies>
@@ -32,6 +34,21 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.openai</groupId>
+      <artifactId>openai-java</artifactId>
+      <version>${openai-java.version}</version>
+    </dependency>
+    <!--
+      Classes reached through the SDK carry JSR-305 nullness annotations that nothing on the classpath defines;
+      javac warns "unknown enum constant When.NEVER" and the build fails on warnings. Compile time only.
+    -->
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>${jsr305.version}</version>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>com.h2database</groupId>

@@ -11,14 +11,26 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE  # one wire convention for every request and response body
 anna:
+  app-version: "@project.version@"       # filtered in from the pom at build time; stamped on each conversation
   persona:
-    name: Anna                            # {persona} in the templates
+    name: Anna                            # {persona} in the templates, {{persona}} in the prompt
     company: Comparato                    # named in the opener and the disclosure
     disclosure-in-opener: true            # ", Comparato's AI assistant" vs " from Comparato"
-  templates:
-    version: v1                           # stamped on each conversation as its prompt version
-    prefix: classpath:prompts/${anna.templates.version}/templates/
+  prompt:
+    version: v1                           # the bundle under prompts/; stamped on each conversation
+  agent:
+    model: gpt-5.1                        # non-mini; checked at boot when a key is set
+    reasoning-effort: low                 # low | medium | high; sent as reasoning.effort
+    reasoning-summary: auto               # auto | concise | detailed; stored on the turn, never sent to the lead
+    timeout: 30s                          # per HTTP attempt; a call makes up to 1 + max-retries attempts
+    max-retries: 2                        # SDK retries on timeout and 5xx
+    max-output-tokens: 1200               # the decision JSON is small; the cap protects the budget
+    strict-model-check: false             # true fails boot when the model check fails
+  prices:                                 # USD per 1M tokens by model id; the brackets keep the dot in the key
+    "[gpt-5.1]": { input: 1.25, cached: 0.125, output: 10.00 }
   sms:
-    max-inbound-chars: 1600               # longer inbound is stored whole and flagged INPUT_TRUNCATED
+    max-chars: 320                        # hard reply limit, sent as {{max_chars}}
+    target-chars: 300                     # what the prompt asks for, sent as {{target_chars}}
+    max-inbound-chars: 1600               # longer inbound is stored whole, flagged INPUT_TRUNCATED, cut for the model
   turns:
     lock-wait: 2s                         # a second turn or start waits this long, then gets 409 BUSY

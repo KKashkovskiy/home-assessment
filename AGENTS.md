@@ -32,7 +32,8 @@ Root `com.enrola.anna`. Feature packages arrive with their features and stay fla
 `guard`, `scheduling`, `prompt`, `config`, `web`. Tests mirror main; the eval harness goes in
 `src/test/java/com/enrola/anna/eval`. No `common`, `util`, `core` or `shared` package, ever; a helper belongs to the
 feature that first needed it.
-Dependencies point one way, `conversation` to `guard` to `lead`: `guard` never imports `conversation`.
+Dependencies point one way: `conversation` to `agent`, and `conversation` to `guard` to `lead`; `agent` and `guard`
+never import `conversation`.
 
 ## Running the gates
 
@@ -59,7 +60,9 @@ compile and every warning fails the build, so a suppression needs a reason. It r
 ## Tests
 
 Spring tests run against a real H2 file in a temp directory, set through `@DynamicPropertySource` as in
-`AnnaApplicationTest`. No test touches `./data`, and nothing mocks H2 or a repository.
+`AnnaApplicationTest`. No test touches `./data`, and nothing mocks H2 or a repository. Spring tests set
+`OPENAI_API_KEY=` blank, so no test calls OpenAI or costs money; a test that needs the model scripts it with
+`ScriptedModelClient`.
 
 ## What not to do
 

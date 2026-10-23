@@ -17,9 +17,11 @@ import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * Boots the full context and proves the database settings: an H2 file in a temp directory, not
- * {@code ./data}, and instants stored without loss in a JVM zone with daylight saving.
+ * {@code ./data}, and instants stored without loss in a JVM zone with daylight saving. A blank
+ * {@code OPENAI_API_KEY} keeps an exported key from reaching OpenAI from a test, here and in every
+ * Spring test.
  */
-@SpringBootTest
+@SpringBootTest(properties = "OPENAI_API_KEY=")
 class AnnaApplicationTest {
 
   @TempDir static Path tempDir;

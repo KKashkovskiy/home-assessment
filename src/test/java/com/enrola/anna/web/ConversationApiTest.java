@@ -19,6 +19,7 @@ import com.enrola.anna.conversation.InboundTurns;
 import com.enrola.anna.conversation.TurnLocks;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
+import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
 import com.enrola.anna.prompt.Templates;
 import com.enrola.anna.scheduling.LeadZones;
@@ -66,7 +67,7 @@ import org.springframework.web.context.WebApplicationContext;
  * July 2026, 10:00 in Melbourne, with no model configured. Locks wait 100 ms so BUSY is quick. The
  * clock is imported, not just nested, so the {@code Nested} groups share this context.
  */
-@SpringBootTest(properties = "anna.turns.lock-wait=100ms")
+@SpringBootTest(properties = {"anna.turns.lock-wait=100ms", "OPENAI_API_KEY="})
 @Import(ConversationApiTest.FixedClock.class)
 class ConversationApiTest {
 
@@ -91,13 +92,15 @@ class ConversationApiTest {
   @Autowired WebApplicationContext context;
   @Autowired JdbcTemplate jdbc;
   @Autowired LeadRepository leads;
-  @Autowired Templates templates;
+  @Autowired PromptLoader prompts;
+  Templates templates;
   @Autowired TurnLocks locks;
   MockMvc mvc;
 
   @BeforeEach
   void noConversations() {
     mvc = MockMvcBuilders.webAppContextSetup(context).build();
+    templates = prompts.active().templates();
     jdbc.update("delete from turn");
     jdbc.update("delete from message");
     jdbc.update("delete from conversation");
@@ -131,6 +134,23 @@ class ConversationApiTest {
           .andExpect(jsonPath("$.transcript[0].source").value("TEMPLATE"))
           .andExpect(jsonPath("$.transcript[0].chars").value(opener.length()))
           .andExpect(jsonPath("$.transcript[0].at").value("2026-07-26T00:00:00Z"));
+    }
+
+    @Test
+    void startRecordsWhatTheConversationRunsOn() throws Exception {
+      String id = idOf(start("lauren"));
+
+      assertThat(
+              jdbc.queryForMap(
+                  "select prompt_version, model, reasoning_effort, app_version from conversation"
+                      + " where id = ?",
+                  id))
+          .containsEntry("PROMPT_VERSION", "v1")
+          .containsEntry("MODEL", "gpt-5.1")
+          .containsEntry("REASONING_EFFORT", "low")
+          .hasEntrySatisfying(
+              "APP_VERSION",
+              version -> assertThat(version.toString()).matches("\\d+\\.\\d+\\.\\d+.*"));
     }
 
     @Test
@@ -616,7 +636,7 @@ class ConversationApiTest {
 
     private static ConfigurableApplicationContext boot(String datasourceUrl) {
       return new SpringApplicationBuilder(AnnaApplication.class)
-          .run("--spring.datasource.url=" + datasourceUrl, "--server.port=0");
+          .run("--spring.datasource.url=" + datasourceUrl, "--server.port=0", "--OPENAI_API_KEY=");
     }
   }
 

@@ -22,7 +22,9 @@ first boot and ignored by git.
 
 No key is needed to build, test or run. Keys come from the environment only: export them in the shell, or copy
 `.env.example` to `.env`, fill it in and load it with `set -a; . ./.env; set +a`. Spring does not read `.env` on its
-own, and git ignores it.
+own, and git ignores it. With `OPENAI_API_KEY` set, the app makes one small request at boot and logs
+`model check ok: gpt-5.1`; a failure is a warning unless `anna.agent.strict-model-check` is true. Without it the log
+says `model check skipped`. The key travels as a request header; the key itself is in no stored row or log line.
 
 The server has no pages yet, so the root URL answers with a 404. The platform API is there: three leads are seeded
 on first boot (`lauren`, `john`, `jane`). Start a conversation and read it back:
@@ -43,15 +45,23 @@ curl -s -X POST localhost:8080/api/conversations/<conversation_id>/messages -H '
 ```
 
 Each inbound is stored once: a retry with the same `provider_message_id` gets the first response back and writes
-nothing. With no model, an ordinary reply is stored, `needs_human` is set with `handoff_reason` `ERROR`, nothing is
-sent and the conversation stays open. A whole message of STOP, STOPALL, UNSUBSCRIBE, OPTOUT, CANCEL, END or QUIT,
-ignoring case, punctuation and spaces, ends the conversation `UNSUBSCRIBED`, returns the fixed confirmation and
-suppresses the phone: every later start for it answers 409 `SUPPRESSED`, forced or not, and later messages on any
-of its conversations are stored without a reply.
+nothing. With a key, the model reads the whole transcript, replayed from the database on every turn, plus the turn's
+context, and returns one JSON decision under a strict schema: intent, stage, flags, facts gathered and a line for
+the advisor, then the reply. The reply comes back in the response; the decision, tokens, cost, latency, the model's
+reasoning summary (never sent to the lead) and the raw request and response JSON are stored on the turn, with trace
+events beside it. The model has no calendar to read, so it can ask for a call but cannot offer times. Without a key,
+or when a call still fails after the SDK's retries or returns something that is not a decision, an ordinary reply is
+stored, `needs_human` is set with `handoff_reason` `ERROR`, nothing is sent and the conversation stays open.
+
+A whole message of STOP, STOPALL, UNSUBSCRIBE, OPTOUT, CANCEL, END or QUIT, ignoring case, punctuation and spaces,
+ends the conversation `UNSUBSCRIBED`, returns the fixed confirmation and suppresses the phone: every later start for
+it answers 409 `SUPPRESSED`, forced or not, and later messages on any of its conversations are stored without a
+reply.
 A message for a conversation that is mid-turn waits two seconds, then gets 409 `BUSY`. Conversations, turns and
 suppressions are rows, so a restart loses nothing.
 
-`schema.sql` creates missing tables and never changes existing ones, so delete `data/` after pulling a schema change.
+`schema.sql` adds missing tables and columns but never changes existing ones, so delete `data/` after pulling a change
+to one.
 
 ## What Anna does
 

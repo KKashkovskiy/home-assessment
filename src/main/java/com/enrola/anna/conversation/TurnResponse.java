@@ -1,5 +1,9 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.agent.EndReason;
+import com.enrola.anna.agent.Flag;
+import com.enrola.anna.agent.HandoffReason;
+import com.enrola.anna.agent.Stage;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -67,7 +71,7 @@ public record TurnResponse(
         List.copyOf(conversation.flags()),
         conversation.endReasonHistory(),
         null,
-        null,
+        conversation.extracted(),
         now.atZone(ZoneId.of(conversation.leadZoneId)).format(LEAD_LOCAL_TIME),
         "/conversations/" + conversation.id,
         transcript.stream().map(MessageView::of).toList());

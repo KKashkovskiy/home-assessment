@@ -1,8 +1,9 @@
-package com.enrola.anna.conversation;
+package com.enrola.anna.agent;
 
 /**
  * Things worth a human's attention on a conversation, in one vocabulary for the flags column. The
- * first group judges what the lead wrote; the second records what code did or had to assume.
+ * first group judges what the lead wrote and is the decision schema's list; the second records what
+ * code did or had to assume.
  */
 public enum Flag {
   // What the lead wrote.

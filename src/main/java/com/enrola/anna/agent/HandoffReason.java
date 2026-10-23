@@ -1,4 +1,4 @@
-package com.enrola.anna.conversation;
+package com.enrola.anna.agent;
 
 /** Why a human should look; NONE until one should. The latest reason replaces the previous one. */
 public enum HandoffReason {

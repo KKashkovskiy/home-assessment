@@ -1,17 +1,22 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.agent.EndReason;
+import com.enrola.anna.agent.Flag;
+import com.enrola.anna.agent.HandoffReason;
+import com.enrola.anna.agent.Stage;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Version;
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * One SMS conversation with one lead: the aggregate every turn updates. A row with public fields,
- * not a bean with invariants; {@link ConversationService} and {@link InboundTurns} change it, and
- * {@link StateRules} alone sets its terminal and handoff fields.
+ * not a bean with invariants; {@link ConversationService}, {@link InboundTurns} and {@link
+ * DecisionApplier} change it, and {@link StateRules} alone sets its terminal and handoff fields.
  */
 public class Conversation {
 
@@ -41,8 +46,20 @@ public class Conversation {
    */
   public String leadZoneId;
 
+  // What the conversation started on: prompt bundle, model, reasoning effort, app build.
   public String promptVersion;
+  public String model;
+  public String reasoningEffort;
+  public String appVersion;
+
   public String source;
+
+  /** What the model has gathered about the lead, as a JSON object; null before its first turn. */
+  public String extractedJson;
+
+  /** The model's latest one-line summary for the advisor. */
+  public String summary;
+
   public Instant createdAt;
   public Instant updatedAt;
   @Version public long version;
@@ -55,6 +72,10 @@ public class Conversation {
     EnumSet<Flag> flags = flags();
     flags.add(flag);
     flagsJson = Flags.write(flags);
+  }
+
+  public JsonNode extracted() {
+    return extractedJson == null ? null : JSON.readTree(extractedJson);
   }
 
   /** Every end-reason transition so far, oldest first. */

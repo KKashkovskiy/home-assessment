@@ -3,6 +3,8 @@ package com.enrola.anna.conversation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import com.enrola.anna.agent.EndReason;
+import com.enrola.anna.agent.HandoffReason;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;

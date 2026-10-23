@@ -125,7 +125,6 @@ class TemplatesTest {
     return new Templates(
         new DefaultResourceLoader(),
         prefix,
-        "v1",
         new PersonaProperties("Anna", "Comparato", disclosureInOpener));
   }
 

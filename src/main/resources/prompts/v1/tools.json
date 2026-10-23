@@ -1,0 +1,32 @@
+[
+  {
+    "type": "function",
+    "name": "get_availability",
+    "strict": true,
+    "description": "Find advisor call slots for this lead. Dates are in the lead's local timezone. Returns up to 6 slots, each with an opaque slot_id and a local_label. Only offer times from this result.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date_from", "date_to", "part_of_day"],
+      "properties": {
+        "date_from": {"type": "string", "description": "YYYY-MM-DD, lead local"},
+        "date_to": {"type": "string", "description": "YYYY-MM-DD, lead local, inclusive"},
+        "part_of_day": {"type": "string", "enum": ["ANY", "MORNING", "MIDDAY", "AFTERNOON", "EVENING"]}
+      }
+    }
+  },
+  {
+    "type": "function",
+    "name": "book_call",
+    "strict": true,
+    "description": "Book the advisor call in a slot the lead explicitly chose. slot_id must come from the latest get_availability result. Returns BOOKED, SLOT_TAKEN or an error.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slot_id"],
+      "properties": {
+        "slot_id": {"type": "string"}
+      }
+    }
+  }
+]

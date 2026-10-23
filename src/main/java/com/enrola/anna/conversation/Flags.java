@@ -1,5 +1,6 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.agent.Flag;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Map;

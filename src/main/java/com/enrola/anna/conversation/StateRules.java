@@ -1,5 +1,7 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.agent.EndReason;
+import com.enrola.anna.agent.HandoffReason;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;

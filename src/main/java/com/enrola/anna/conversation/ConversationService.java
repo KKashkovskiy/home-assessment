@@ -1,10 +1,16 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.agent.EndReason;
+import com.enrola.anna.agent.Flag;
+import com.enrola.anna.agent.HandoffReason;
+import com.enrola.anna.agent.Stage;
+import com.enrola.anna.config.AgentProperties;
 import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
+import com.enrola.anna.prompt.PromptBundle;
+import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
-import com.enrola.anna.prompt.Templates;
 import com.enrola.anna.scheduling.LeadZones;
 import java.time.Clock;
 import java.time.Instant;
@@ -13,6 +19,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -33,29 +40,35 @@ public class ConversationService {
   private final LeadRepository leads;
   private final ConversationRepository conversations;
   private final MessageRepository messages;
-  private final Templates templates;
+  private final PromptLoader prompts;
   private final Suppressions suppressions;
   private final TurnLocks locks;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final AgentProperties agent;
+  private final String appVersion;
 
   public ConversationService(
       LeadRepository leads,
       ConversationRepository conversations,
       MessageRepository messages,
-      Templates templates,
+      PromptLoader prompts,
       Suppressions suppressions,
       TurnLocks locks,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      AgentProperties agent,
+      @Value("${anna.app-version}") String appVersion) {
     this.leads = leads;
     this.conversations = conversations;
     this.messages = messages;
-    this.templates = templates;
+    this.prompts = prompts;
     this.suppressions = suppressions;
     this.locks = locks;
     this.tx = tx;
     this.clock = clock;
+    this.agent = agent;
+    this.appVersion = appVersion;
   }
 
   /**
@@ -119,13 +132,17 @@ public class ConversationService {
 
   private TurnResponse open(Lead lead) {
     Instant now = clock.instant();
-    Conversation conversation = conversations.save(newConversation(lead, now));
-    Message opener = storeOpener(conversation, lead, now);
+    PromptBundle bundle = prompts.active();
+    Conversation conversation = conversations.save(newConversation(lead, bundle, now));
+    Message opener = storeOpener(conversation, lead, bundle, now);
     return TurnResponse.of(conversation, opener.text(), List.of(opener), now);
   }
 
-  /** An unguessable id, because it reaches URLs; version 0 makes {@code save} insert. */
-  private Conversation newConversation(Lead lead, Instant now) {
+  /**
+   * An unguessable id, because it reaches URLs; version 0 makes {@code save} insert. It records the
+   * prompt bundle, model, effort and build it starts on.
+   */
+  private Conversation newConversation(Lead lead, PromptBundle bundle, Instant now) {
     LeadZones.Resolved zone = LeadZones.resolve(lead.state());
     Conversation conversation = new Conversation();
     conversation.id = "c-" + UUID.randomUUID();
@@ -138,7 +155,10 @@ public class ConversationService {
     conversation.setEndReasonHistory(List.of());
     conversation.handoffReason = HandoffReason.NONE;
     conversation.leadZoneId = zone.zone().getId();
-    conversation.promptVersion = templates.version();
+    conversation.promptVersion = bundle.id();
+    conversation.model = agent.model();
+    conversation.reasoningEffort = agent.reasoningEffort();
+    conversation.appVersion = appVersion;
     conversation.source = Conversation.SOURCE_API;
     conversation.createdAt = now;
     conversation.updatedAt = now;
@@ -146,11 +166,11 @@ public class ConversationService {
   }
 
   /** Turn 0: the provider variant for a lead with a fund, the first-time variant otherwise. */
-  private Message storeOpener(Conversation conversation, Lead lead, Instant now) {
+  private Message storeOpener(
+      Conversation conversation, Lead lead, PromptBundle bundle, Instant now) {
     Template template = lead.hasProvider() ? Template.OPENER_PROVIDER : Template.OPENER_NO_PROVIDER;
-    Message opener =
-        Message.outbound(
-            conversation.id, 0, templates.render(template, lead), MessageSource.TEMPLATE, now);
+    String text = bundle.templates().render(template, lead);
+    Message opener = Message.outbound(conversation.id, 0, text, MessageSource.TEMPLATE, now);
     messages.save(opener);
     log.info(
         "conversation {} started for lead {} with {}, {} chars",

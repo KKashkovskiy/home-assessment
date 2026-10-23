@@ -1,4 +1,4 @@
-package com.enrola.anna.conversation;
+package com.enrola.anna.agent;
 
 /** Why a conversation ended; NONE while it is open. {@code StateRules} ranks them. */
 public enum EndReason {
