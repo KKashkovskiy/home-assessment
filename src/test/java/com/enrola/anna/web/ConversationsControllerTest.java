@@ -3,6 +3,7 @@ package com.enrola.anna.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -448,7 +449,9 @@ class ConversationsControllerTest extends ConsoleFixture {
             {"Origin", "https://evil.example"},
             {"Origin", "null"}
           }) {
-        mvc.perform(stop(id).header(header[0], header[1])).andExpect(status().isForbidden());
+        mvc.perform(stop(id).header(header[0], header[1]))
+            .andExpect(status().isForbidden())
+            .andExpect(content().string(""));
       }
       assertThat(count("select count(*) from suppression")).isZero();
 

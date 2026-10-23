@@ -37,7 +37,7 @@ Cheapest first. Steps 1 and 2 need no key; steps 5 to 7 need `EVAL_OPENAI_API_KE
 
 | # | Run | Expect | Cost | Total |
 |---|---|---|---|---|
-| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,306 tests | $0 | $0 |
+| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,319 tests | $0 | $0 |
 | 2 | `evals/run.sh --offline` | every scenario answered by stand-ins, code that plays the model: report verdict PASS, 52 of 52 | $0 | $0 |
 | 3 | Export `OPENAI_API_KEY`, `./mvnw spring-boot:run` | log `model check ok: gpt-5.1`, no banner | one small call | $0 |
 | 4 | Start Lauren, reply "all of the above" | an `LLM` reply under 320 characters; the inspector shows the guards, the model round and the decision | about $0.01 | $0.01 |
@@ -115,8 +115,8 @@ pins the version it started on, so activating a new one never changes a conversa
   each but the latency percentiles linking to the conversations it counted; two prompt versions side by side.
 - **Evals**: runs the suite, edits scenarios, rubrics and prompts through their loaders' checks, renders reports.
 
-The console has no login: it listens on 127.0.0.1, and its pages refuse other host names, cross-origin posts and
-framing. The `/api/` routes have none of those checks (see Known issues).
+The app has no login: it listens on 127.0.0.1 and refuses any request, `/api/` included, under another host name or
+posted from another site; its pages refuse framing.
 
 ## How state survives a two-day pause
 
@@ -233,10 +233,6 @@ Nothing is deleted: messages and each turn's raw request and response stay in `d
 
 - **Exit code 0 is not a green run.** With no eval key, `evals/run.sh` skips every trial and exits 0 with report
   verdict SKIPPED; read the verdict.
-- **The API checks no host.** `/api/` has neither the console's host check nor its origin check, so a web page that
-  points its own name at 127.0.0.1 (DNS rebinding) can call it from a reviewer's browser: start conversations and,
-  with a key, spend. The fix is to extend `web/CrossSiteGuard`'s host check to `/api/**`; the platform calls server to
-  server.
 - **A distressed lead's health information can go unflagged.** In one of two keyed trials of the vulnerable-lead story
   the model flagged the lead vulnerable but not as health information, so the bodies were not hidden: prompt v1's
   distress rule asks only for the first, while its rule 6 asks for the second. One line in a v2, which needs a green

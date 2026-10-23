@@ -26,6 +26,7 @@ import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.Template;
 import com.enrola.anna.prompt.Templates;
 import com.jayway.jsonpath.JsonPath;
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -653,6 +654,65 @@ class ConversationApiTest {
           .andExpect(status().isConflict())
           .andExpect(jsonPath("$.error").value("SUPPRESSED"))
           .andExpect(jsonPath("$.message").value("phone is opted out"))
+          .andExpect(jsonPath("$.conversation_id").value(nullValue()));
+    }
+  }
+
+  /** What a DNS-rebinding page or a page on another site gets from the API: nothing. */
+  @Nested
+  class LocalOnly {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"evil.example", "evil.example:8080", "localhost.evil.example"})
+    void aForeignHostIsRefusedOnReadsAndWrites(String host) throws Exception {
+      String id = idOf(start("john"));
+
+      refused(mvc.perform(get("/api/conversations/{id}", id).header("Host", host)));
+      refused(startLaurenWith("Host", host));
+      assertThat(jdbc.queryForObject("select count(*) from conversation", Integer.class))
+          .isEqualTo(1);
+    }
+
+    /** The error shape follows the path the API is routed by, not the raw URI's spelling. */
+    @ParameterizedTest
+    @ValueSource(strings = {"/api;x=1/conversations/nope", "/%61pi/conversations/nope"})
+    void aDisguisedApiPathIsRefusedInTheApiShape(String path) throws Exception {
+      refused(mvc.perform(get(URI.create(path)).header("Host", "evil.example")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"localhost", "localhost:8080", "127.0.0.1:18080", "[::1]:8080"})
+    void aLocalHostOnAnyPortIsServed(String host) throws Exception {
+      startLaurenWith("Host", host).andExpect(status().isCreated());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+      "Origin, http://evil.example",
+      "Origin, null",
+      "Sec-Fetch-Site, cross-site",
+      "Sec-Fetch-Site, same-site"
+    })
+    void aBrowserPostFromAnotherSiteIsRefused(String header, String value) throws Exception {
+      refused(startLaurenWith(header, value));
+      assertThat(jdbc.queryForObject("select count(*) from conversation", Integer.class)).isZero();
+    }
+
+    private ResultActions startLaurenWith(String header, String value) throws Exception {
+      return mvc.perform(
+          post("/api/conversations")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content("{\"lead_id\":\"lauren\"}")
+              .header(header, value));
+    }
+
+    private static void refused(ResultActions result) throws Exception {
+      result
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.error").value("FORBIDDEN"))
+          .andExpect(
+              jsonPath("$.message")
+                  .value("request must name a local host and not come from another site"))
           .andExpect(jsonPath("$.conversation_id").value(nullValue()));
     }
   }
