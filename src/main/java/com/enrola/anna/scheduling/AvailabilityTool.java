@@ -10,9 +10,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.PropertyNamingStrategies;
@@ -32,13 +30,6 @@ public class AvailabilityTool {
       new ToolResult.Rejected("BAD_DATE", "dates must be YYYY-MM-DD");
   private static final ToolResult.Rejected BAD_RANGE =
       new ToolResult.Rejected("BAD_RANGE", "date_to is before date_from");
-
-  /**
-   * "Mon 27 Jul 12:00 PM"; the zone's name follows. English, not en-AU: on JDK 25 en-AU writes
-   * "Sept", "July" and "pm", which the label format does not allow.
-   */
-  private static final DateTimeFormatter LABEL =
-      DateTimeFormatter.ofPattern("EEE d MMM h:mm a", Locale.ENGLISH);
 
   private final AppClock clock;
   private final FakeCalendar calendar;
@@ -130,7 +121,7 @@ public class AvailabilityTool {
     List<Slot> slots =
         callable.stream()
             .limit(scheduling.maxSlots())
-            .map(start -> new Slot(Slot.idFor(start), start, label(start, leadZone)))
+            .map(start -> Slot.of(start, leadZone))
             .toList();
     ToolResult.Filtering filtering =
         new ToolResult.Filtering(
@@ -155,12 +146,5 @@ public class AvailabilityTool {
         && !local
             .plusMinutes(scheduling.eventMin())
             .isAfter(local.toLocalDate().atTime(scheduling.hoursTo()));
-  }
-
-  /**
-   * The lead's wall time and the zone's name at that start, so a label after a DST change says so.
-   */
-  private static String label(Instant start, ZoneId leadZone) {
-    return start.atZone(leadZone).format(LABEL) + " " + LeadZones.abbreviation(leadZone, start);
   }
 }

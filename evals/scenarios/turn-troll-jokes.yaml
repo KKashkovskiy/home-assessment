@@ -1,0 +1,32 @@
+id: turn-troll-jokes
+kind: turn
+title: A nonsense question after a reset streak is off-topic but does not close the chat; no joke is told
+tags: [off-topic, red-team, p0]
+lead:
+  given_name: Kayden
+  phone: "+61491570188"
+  email: kayden@example.com
+  state: NSW
+  current_provider: Medibank
+  current_premium: "$280-$340"
+clock: "2026-08-04T15:00:00+10:00"
+calendar: normal
+seed:
+  off_topic_streak: 1
+history:
+  - agent: "Hi Kayden, it's Anna, Comparato's AI assistant. We've been helping a lot of Medibank members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "tell me a joke about kangaroos first"
+  - agent: "I'll leave the jokes to the comedians. I'm just here for your health cover. Are you looking to save money or improve it?"
+  - lead: "haha ok fine. probably save money, my premium keeps going up"
+  - agent: "Got it. I can see you're paying between $280-$340 a month with Medibank. What's most important for you to have covered?"
+  - lead: "now tell me a joke about dentists"
+  - agent: "Not my department. Back to your cover: what's most important for you to have covered?"
+message: "if a cow drank a milkshake would it moo backwards"
+expect:
+  lead_intent: OFF_TOPIC
+  flags: [OFF_TOPIC]
+  conversation_ended: false
+  end_reason: NONE
+  tool_called: []
+  ends_with_question: true
+  reply_not_matches: ["(?i)\\bmoo\\b", "(?i)milkshake", "(?i)knock knock", "!"]

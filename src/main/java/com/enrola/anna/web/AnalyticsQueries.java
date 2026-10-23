@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -118,6 +119,9 @@ class AnalyticsQueries {
 
   /** Conversations whose decisions named one objection type, and how many of them booked. */
   record ObjectionCount(String type, long conversations, long recovered) {}
+
+  /** One eval run's scenarios that passed, out of those it ran. */
+  record EvalRunCounts(long passed, long ran) {}
 
   /**
    * The cohort's conversations. The turn that booked is the first whose book_call answered booked;
@@ -229,6 +233,21 @@ class AnalyticsQueries {
                     rs.getLong("conversations"),
                     rs.getLong("recovered")))
         .list();
+  }
+
+  /**
+   * The latest keyed eval run on {@code promptVersion}: its passed scenarios over those it ran, the
+   * skipped ones left out. An offline run proves the harness, not the prompt, and a run that
+   * skipped everything says nothing, so neither counts.
+   */
+  Optional<EvalRunCounts> latestKeyedEvalRun(String promptVersion) {
+    return db.sql(
+            "SELECT passed, selected - skipped AS ran FROM eval_run"
+                + " WHERE prompt_version = :version AND offline = FALSE AND verdict <> 'SKIPPED'"
+                + " ORDER BY started_at DESC LIMIT 1")
+        .param("version", promptVersion)
+        .query((rs, _) -> new EvalRunCounts(rs.getLong("passed"), rs.getLong("ran")))
+        .optional();
   }
 
   /** Every model a conversation has started on, for the filter's choices. */

@@ -91,6 +91,7 @@ abstract class ConsoleFixture {
     Files.deleteIfExists(DATABASE.resolve("quick-replies.txt"));
     clock.fixAt(Instant.parse(NOW));
     mvc = MockMvcBuilders.webAppContextSetup(context).build();
+    jdbc.update("delete from eval_run");
     jdbc.update("delete from booking");
     jdbc.update("delete from trace_event");
     jdbc.update("delete from turn");

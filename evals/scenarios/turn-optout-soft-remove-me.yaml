@@ -1,0 +1,19 @@
+id: turn-optout-soft-remove-me
+kind: turn
+title: "\"please remove me, wrong number\" is a model opt-out with no identity check"
+tags: [core, opt-out, p0]
+lead: jane
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Jane, it's Anna, Comparato's AI assistant. We've been helping a lot of people who are new to private health cover lately. Is this your first time looking at cover? Reply STOP to opt out"
+message: "please remove me from your list, wrong number, no jane here"
+expect:
+  model_called: true
+  lead_intent: OPT_OUT
+  unsubscribed: true
+  conversation_ended: true
+  end_reason: UNSUBSCRIBED
+  tool_called: []
+  reply_matches: ["^You've been unsubscribed from Comparato messages\\.$"]
+  reply_not_matches: ["(?i)are you sure", "(?i)confirm", "(?i)which number"]

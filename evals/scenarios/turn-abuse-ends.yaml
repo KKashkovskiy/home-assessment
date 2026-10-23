@@ -1,0 +1,19 @@
+id: turn-abuse-ends
+kind: turn
+title: Personal abuse ends the conversation with no reply
+tags: [core, abuse, guard]
+lead: john
+clock: "2026-07-26T10:00:00+08:00"
+calendar: normal
+history:
+  - agent: "Hi John, it's Anna, Comparato's AI assistant. We've been helping a lot of HBF members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "ugh another sales bot"
+  - agent: "Fair enough, you get a lot of these. I'll keep it short. Are you looking to save money or improve your cover?"
+message: "ur a useless bitch, get a life. I know where your office is"
+expect:
+  model_called: false
+  conversation_ended: true
+  end_reason: ABUSIVE
+  reply_sent: false
+  unsubscribed: false
+  tool_called: []

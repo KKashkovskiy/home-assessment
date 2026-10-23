@@ -7,6 +7,7 @@ import static com.enrola.anna.scheduling.SchedulingFixtures.SUNDAY;
 import static com.enrola.anna.scheduling.SchedulingFixtures.codeOf;
 import static com.enrola.anna.scheduling.SchedulingFixtures.melbourne;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.enrola.anna.AppClock;
 import com.enrola.anna.config.Settings.CalendarPreset;
@@ -19,6 +20,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -169,6 +171,35 @@ class FakeCalendarTest {
     clock.fixAt(melbourne(MONDAY, LocalTime.of(11, 30)));
 
     assertThat(codeOf(calendar.book(NOON, LAUREN, SCHEDULING))).isEqualTo("NOT_BOOKED");
+  }
+
+  /**
+   * The seeder's lookup: real ids and lead-zone labels, in the asked order, whatever the preset.
+   */
+  @Test
+  void slotsForLabelsResolveAgainstTheGrid() {
+    FakeCalendar fullyBooked = SchedulingFixtures.calendar(clock, CalendarPreset.FULLY_BOOKED);
+    Instant perthNoon = melbourne(MONDAY, LocalTime.of(14, 0));
+
+    List<Slot> slots =
+        fullyBooked.slotsForLabels(
+            List.of("Mon 27 Jul 12:00 PM AWST", "Mon 27 Jul 9:00 AM AWST"),
+            ZoneId.of("Australia/Perth"),
+            SCHEDULING);
+
+    assertThat(slots)
+        .extracting(Slot::startUtc)
+        .containsExactly(perthNoon, melbourne(MONDAY, LocalTime.of(11, 0)));
+    assertThat(slots.getFirst().slotId()).isEqualTo(Slot.idFor(perthNoon));
+  }
+
+  @Test
+  void unknownLabelIsRefused() {
+    assertThatThrownBy(
+            () ->
+                calendar.slotsForLabels(List.of("Sun 26 Jul 9:00 AM AEST"), MELBOURNE, SCHEDULING))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Sun 26 Jul 9:00 AM AEST");
   }
 
   /** Every free start from Sunday 26 July to Sunday 2 August, as Melbourne wall time. */

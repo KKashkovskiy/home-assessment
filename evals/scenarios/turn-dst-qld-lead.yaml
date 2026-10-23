@@ -1,0 +1,27 @@
+id: turn-dst-qld-lead
+kind: turn
+title: QLD lead after the advisor's DST start sees AEST labels and no 8:00 AM slot
+tags: [scheduling, timezone, p0]
+lead:
+  given_name: Hannah
+  phone: "+61491570170"
+  email: hannah@example.com
+  state: QLD
+  current_provider: Bupa
+  current_premium: "$380-$450"
+clock: "2026-10-02T16:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Hannah, it's Anna, Comparato's AI assistant. We've been helping a lot of Bupa members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "save money"
+  - agent: "Got it. I can see you're paying between $380-$450 a month with Bupa. What's most important for you to have covered?"
+  - lead: "mostly extras, hospital is fine as is"
+  - agent: "Understood, extras are the priority then. An advisor can check if there's better value out there for that. Would a weekday morning suit for a quick 15 min call?"
+message: "tuesday morning, as early as you've got"
+expect:
+  tool_called: [get_availability]
+  ends_with_question: true
+  reply_matches: ["AEST", "Tue"]
+  reply_not_matches: ["AEDT", "8:00", "(?i)\\bSun\\b", "!"]
+judge:
+  - "Are the offered times Tuesday morning in Brisbane time (AEST), none earlier than 9:00 AM?"

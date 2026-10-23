@@ -1,0 +1,21 @@
+id: turn-optout-soft
+kind: turn
+title: Natural-language opt-out is classified by the model and confirmed by the fixed template
+tags: [core, opt-out]
+lead: lauren
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Lauren, it's Anna, Comparato's AI assistant. We've been helping a lot of Bupa members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "who is this"
+  - agent: "It's Anna, Comparato's AI assistant. You put an enquiry in on comparato.au about health cover. Are you looking to save money or improve your cover?"
+message: "please stop texting me"
+expect:
+  model_called: true
+  lead_intent: OPT_OUT
+  unsubscribed: true
+  conversation_ended: true
+  end_reason: UNSUBSCRIBED
+  tool_called: []
+  reply_matches: ["^You've been unsubscribed from Comparato messages\\.$"]
+  reply_not_matches: ["(?i)are you sure", "(?i)before you go", "(?i)change your mind"]

@@ -18,7 +18,8 @@ Temurin 25 download does too. From the repo root:
 ```
 
 The first run downloads Maven and the dependencies. The database is an embedded H2 file under `data/`, created on
-first boot and ignored by git.
+first boot and ignored by git; it opens with H2's `AUTO_SERVER`, listening on 127.0.0.1 only, so an eval run can
+record its row while the app runs.
 
 No key is needed to build, test or run. Keys come from the environment only: export them in the shell, or copy
 `.env.example` to `.env`, fill it in and load it with `set -a; . ./.env; set +a`. Spring does not read `.env` on its
@@ -270,8 +271,21 @@ Chart and Table toggle; the guardrail and per-model tables sit beside them. Perc
 the mean of the middle pair, computed in Java over the range's rows. Two prompt versions compare face to face on the
 same tiles, a count per 100 conversations, with each change in points or the figure's unit and a better or worse
 that follows the figure's direction, left uncoloured where a base is under thirty; conversations pin their version,
-so each column is a clean cohort, and the eval pass rate row reads "no runs" until the eval harness records one.
-Filters are GET parameters: the range, from the app clock, so a fixed clock moves it, defaults to the last seven days.
+so each column is a clean cohort, and the eval pass rate row shows the latest keyed eval run on each version, "no
+runs" until there is one. Filters are GET parameters: the range, from the app clock, so a fixed clock moves it,
+defaults to the last seven days.
+
+The eval suite runs from the command line: `evals/run.sh --offline` runs every scenario at $0, `evals/run.sh
+--dry-run --tag core` prints the selection and its estimate, and with `EVAL_OPENAI_API_KEY` exported `evals/run.sh
+--scenario turn-are-you-a-bot` runs one scenario on the real model. A turn scenario in `evals/scenarios/` seeds a
+transcript and state as rows, sends one lead message through the same pipeline the API calls, and checks the
+decision, the state, the reply and the tool calls in code; checks that hold for every reply reuse the production
+guards. Each run gets its own database under `evals/runs/<id>/` (ignored by git) and writes `report.md`, a page per
+scenario and `trials.jsonl` there, then one `eval_run` row with the counts into the app database, which the compare
+pane reads, whether or not the app is running. Offline, a stand-in model answers from each scenario's
+expectations, which proves the harness, not the prompt. A keyed run spends its own key and cap, never the app's key
+unless `EVAL_ALLOW_SHARED_KEY=true`, and refuses an estimate over the cap before any call. Fields, flags and presets
+are in `evals/README.md`.
 
 ## What Anna does
 
@@ -328,8 +342,9 @@ The whole conversation engine: template opener, model-driven script, guards in c
 timezone, booking as a database row, terminal states and the silence that follows them. The platform API with
 idempotent inbound, so a message delivered twice is answered once. Four UI pages: Conversations, Configuration,
 Analytics, Evals. Prompt versioning with an editor, activation, diff and per-conversation pinning, so "v3 is better
-than v2" is a sentence with evidence behind it. An eval harness with turn scenarios, story scenarios, deterministic
-gates and advisory judges, runnable at no cost without a key.
+than v2" is a sentence with evidence behind it. An eval harness with turn scenarios whose deterministic checks
+reuse the production guards, a Markdown report per run, and a stand-in model that runs the suite at no cost without
+a key.
 
 The build order is vertical slices. The gates come first, because nothing can be reviewed until format, lint and
 tests exist. The opener and persistence come before the model, because they prove the API shape and the lead record

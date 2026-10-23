@@ -1,0 +1,27 @@
+id: turn-repeat-spam
+kind: turn
+title: "The fourth \"hi\" in a row is off topic and a verbatim repeat, so it counts twice and closes the chat"
+tags: [off-topic, loop, red-team, regression, p0]
+lead: lauren
+clock: "2026-08-04T10:00:00+10:00"
+calendar: normal
+seed:
+  off_topic_streak: 1
+history:
+  - agent: "Hi Lauren, it's Anna, Comparato's AI assistant. We've been helping a lot of Bupa members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "hi"
+  - agent: "Hi Lauren. Are you looking to save money or improve your cover?"
+  - lead: "Hi"
+  - agent: "Still here. Save money or improve your cover?"
+  - lead: "hi!"
+  - agent: "Happy to help when you're ready. Save money or improve your cover?"
+message: "HI"
+expect:
+  lead_intent: OFF_TOPIC
+  conversation_ended: true
+  end_reason: OFF_TOPIC_LIMIT
+  unsubscribed: false
+  goal_met: false
+  tool_called: []
+  reply_matches: ["comparato\\.au"]
+  ends_with_question: false

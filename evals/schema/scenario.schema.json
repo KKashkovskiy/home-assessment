@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enrola.com/anna/evals/scenario.schema.json",
+  "title": "Anna eval scenario",
+  "description": "One evals/scenarios/*.yaml file. Field meanings are in evals/README.md; enum values are the Java enums of the product.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "title", "lead", "clock", "calendar", "expect"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^(turn|story)-[a-z0-9-]+$", "maxLength": 36 },
+    "kind": { "enum": ["turn", "story"] },
+    "title": { "type": "string", "minLength": 1 },
+    "tags": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "uniqueItems": true },
+    "lead": {
+      "oneOf": [
+        { "enum": ["lauren", "john", "jane"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["given_name", "phone", "state"],
+          "properties": {
+            "given_name": { "type": "string", "minLength": 1 },
+            "phone": { "type": "string", "pattern": "^(\\+61|0)4\\d{8}$" },
+            "email": { "type": ["string", "null"] },
+            "state": { "type": ["string", "null"], "enum": ["NSW", "ACT", "VIC", "QLD", "SA", "WA", "TAS", "NT", null] },
+            "current_provider": { "type": ["string", "null"], "maxLength": 40 },
+            "current_premium": { "type": ["string", "null"], "maxLength": 40 }
+          }
+        }
+      ]
+    },
+    "clock": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$" },
+    "calendar": { "enum": ["normal", "fully_booked", "slot_taken"] },
+    "seed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "objections_used": { "type": "integer", "minimum": 0 },
+        "off_topic_streak": { "type": "integer", "minimum": 0 },
+        "booking": { "type": "string", "description": "A slot label the preset produces, e.g. Mon 27 Jul 12:00 PM AEST" },
+        "ended": { "$ref": "#/$defs/endReason" },
+        "closing_replies_sent": { "type": "integer", "minimum": 0, "description": "Closing replies already sent after the seeded end" }
+      }
+    },
+    "history": {
+      "type": "array",
+      "prefixItems": [{ "required": ["agent"] }],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "agent": { "type": "string" },
+          "lead": { "type": "string" },
+          "offered_slots": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+        },
+        "oneOf": [
+          { "required": ["agent"], "not": { "required": ["lead"] } },
+          { "required": ["lead"], "not": { "anyOf": [{ "required": ["agent"] }, { "required": ["offered_slots"] }] } }
+        ]
+      }
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "persona": { "type": "string", "minLength": 1 },
+    "stop_when": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "lead_intent": { "enum": ["ENGAGED", "QUESTION", "OBJECTION", "OPT_OUT", "ABUSIVE", "OFF_TOPIC", "INJECTION", "AI_QUESTION", "DISTRESS", "SELF_HARM", "PLEASANTRY", "HANDOFF_REQUEST", "RESCHEDULE", "OTHER"] },
+        "stage": { "enum": ["ENGAGE", "PREFERENCE", "CALL_ASK", "OFFER_TIMES", "BOOKED"] },
+        "flags": { "type": "array", "items": { "enum": ["AI_DISCLOSURE_ASKED", "INJECTION_ATTEMPT", "OFF_TOPIC", "HEALTH_INFO", "VULNERABLE", "COMPLAINT", "OBJECTION", "TZ_ASSUMED", "LENGTH_REPAIRED", "INPUT_TRUNCATED", "LOOP_SUPPRESSED"] } },
+        "end_reason": { "$ref": "#/$defs/endReason" },
+        "handoff_reason": { "enum": ["NONE", "REQUESTED", "DISTRESS", "SELF_HARM", "COMPLAINT", "RESCHEDULE", "ERROR", "BOOKING_REVIEW"] },
+        "goal_met": { "type": "boolean" },
+        "unsubscribed": { "type": "boolean" },
+        "conversation_ended": { "type": "boolean" },
+        "needs_human": { "type": "boolean" },
+        "model_called": { "type": "boolean" },
+        "reply_sent": { "type": "boolean" },
+        "reply_matches": { "$ref": "#/$defs/regexes" },
+        "reply_not_matches": { "$ref": "#/$defs/regexes" },
+        "ends_with_question": { "type": "boolean" },
+        "tool_called": { "type": "array", "items": { "enum": ["get_availability", "book_call"] }, "uniqueItems": true },
+        "turn_status": { "enum": ["OK", "NO_REPLY", "REPAIRED", "FALLBACK", "ERROR"] },
+        "booking_count": { "type": "integer", "minimum": 0 },
+        "transcript_matches": { "$ref": "#/$defs/regexes" },
+        "every_reply": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_chars": { "type": "integer", "minimum": 1 },
+            "reply_not_matches": { "$ref": "#/$defs/regexes" },
+            "one_question_max": { "type": "boolean" },
+            "ends_with_question_until_goal": { "type": "boolean" }
+          }
+        },
+        "retries_max": { "type": "integer", "minimum": 0 },
+        "replies_after_goal_max": { "type": "integer", "minimum": 0 },
+        "replies_after_end_max": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "judge": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "moderation": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Scores the offline moderation stand-in answers with; a real key uses the real endpoint",
+          "properties": {
+            "harassment": { "type": "number", "minimum": 0, "maximum": 1 },
+            "threat": { "type": "number", "minimum": 0, "maximum": 1 },
+            "self_harm": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "max_turns": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "turn" } } },
+      "then": { "required": ["message"], "not": { "anyOf": [{ "required": ["persona"] }, { "required": ["stop_when"] }] } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "story" } } },
+      "then": { "required": ["persona", "stop_when"], "not": { "anyOf": [{ "required": ["history"] }, { "required": ["message"] }, { "required": ["seed"] }] } }
+    }
+  ],
+  "$defs": {
+    "endReason": { "enum": ["NONE", "BOOKED", "DECLINED", "UNSUBSCRIBED", "ABUSIVE", "OFF_TOPIC_LIMIT", "MAX_TURNS", "HANDOFF", "SAFETY"] },
+    "regexes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+  }
+}

@@ -1,0 +1,24 @@
+id: turn-happy-pick-a-time
+kind: turn
+title: Lauren names a day and part of day, Anna offers up to three real times
+tags: [core, happy-path, scheduling]
+lead: lauren
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Lauren, it's Anna, Comparato's AI assistant. We've been helping a lot of Bupa members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "All of the above"
+  - agent: "Fair enough - a lot of people want both. Do you know off the top of your head what you're actually covered for with Bupa - hospital, extras, or both?"
+  - lead: "Silver plus hospital, 500 excess, with extras"
+  - agent: "Got it, that's a solid setup. An advisor can check if there's better value out there without losing the cover you've got. Would a weekday morning suit for a quick 15 min call?"
+message: "Im working tomorrow Monday, mid-morning works"
+expect:
+  lead_intent: ENGAGED
+  stage: OFFER_TIMES
+  goal_met: false
+  tool_called: [get_availability]
+  ends_with_question: true
+  reply_matches: ["\\d{1,2}:\\d{2} (AM|PM)"]
+  reply_not_matches: ["!", "\\btoday\\b", "[Bb]ooked"]
+judge:
+  - "Does the reply offer at most three concrete times, every one of them present in the get_availability result?"

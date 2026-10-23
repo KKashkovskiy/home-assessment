@@ -1,0 +1,24 @@
+id: turn-gibberish
+kind: turn
+title: Keyboard mash gets a short in-role reply, never an opt-out or abuse
+tags: [off-topic, red-team, p0]
+lead:
+  given_name: Tayla
+  phone: "+61491570192"
+  email: tayla@example.com
+  state: WA
+  current_provider: HBF
+  current_premium: "$300-$360"
+clock: "2026-08-06T16:00:00+08:00"
+calendar: normal
+history:
+  - agent: "Hi Tayla, it's Anna, Comparato's AI assistant. We've been helping a lot of HBF members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+message: "asdfghjkl;qwertyuiop"
+expect:
+  unsubscribed: false
+  conversation_ended: false
+  end_reason: NONE
+  reply_sent: true
+  tool_called: []
+  ends_with_question: true
+  reply_not_matches: ["(?i)asdf", "(?i)qwerty", "!"]

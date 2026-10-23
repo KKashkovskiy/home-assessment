@@ -1,0 +1,27 @@
+id: turn-dst-vic-lead
+kind: turn
+title: VIC lead whose zone shifts on Sunday 4 Oct sees Tuesday slots labelled AEDT from 9:00 AM
+tags: [scheduling, timezone, p0]
+lead:
+  given_name: Oscar
+  phone: "+61491570184"
+  email: oscar@example.com
+  state: VIC
+  current_provider: Medibank
+  current_premium: "$250-$300"
+clock: "2026-10-02T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Oscar, it's Anna, Comparato's AI assistant. We've been helping a lot of Medibank members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "save money"
+  - agent: "Got it. I can see you're paying between $250-$300 a month with Medibank. What's most important for you to have covered?"
+  - lead: "hospital and extras"
+  - agent: "Got it, that's a solid setup. An advisor can check if there's better value out there without losing the cover you've got. Would a weekday morning suit for a quick 15 min call?"
+message: "tuesday morning, earliest you have"
+expect:
+  tool_called: [get_availability]
+  ends_with_question: true
+  reply_matches: ["AEDT", "9:00 AM"]
+  reply_not_matches: ["AEST", "8:00", "7:30", "(?i)\\bSun\\b", "!"]
+judge:
+  - "Are the offered times Tuesday morning labelled AEDT, the earliest 9:00 AM, with no AEST label anywhere?"

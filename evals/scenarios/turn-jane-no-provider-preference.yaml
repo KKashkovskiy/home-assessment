@@ -1,0 +1,19 @@
+id: turn-jane-no-provider-preference
+kind: turn
+title: Jane has no provider, so the preference question names no fund and no dollar figure
+tags: [core, happy-path, branch-no-provider, p0]
+lead: jane
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Jane, it's Anna, Comparato's AI assistant. We've been helping a lot of people who are new to private health cover lately. Is this your first time looking at cover? Reply STOP to opt out"
+message: "yeah first time, just moved out of home and mum said i should sort it"
+expect:
+  lead_intent: ENGAGED
+  stage: PREFERENCE
+  conversation_ended: false
+  tool_called: []
+  ends_with_question: true
+  reply_not_matches: ["(?i)\\b(bupa|hbf|medibank|nib|hcf|ahm)\\b", "\\$\\s?\\d", "(?i)premium", "!"]
+judge:
+  - "Does the reply treat Jane as a first-time buyer (no fund, no premium) and ask one question about what she wants covered?"

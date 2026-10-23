@@ -19,7 +19,7 @@
       </tr>
     </tbody>
   </table>
-  <p class="small muted cmp-note" th:unless="${compare.empty()}">Conversations stay on the version they started on, so each column is a clean cohort. The eval pass rate is the latest eval run on that version, and reads "no runs" until one exists.<th:block th:if="${compare.lowN()}"> A base is under 30: the changes there are a direction only, so they stay uncoloured.</th:block></p>
+  <p class="small muted cmp-note" th:unless="${compare.empty()}">Conversations stay on the version they started on, so each column is a clean cohort. The eval pass rate is the latest keyed eval run on that version, and reads "no runs" until one exists.<th:block th:if="${compare.lowN()}"> A base is under 30: the changes there are a direction only, so they stay uncoloured.</th:block></p>
 </div>
 
 <th:block th:fragment="side(k)"><th:block th:if="${k != null}"><a class="cmp-value" th:if="${k.href != null}" th:href="${k.href}" th:text="${@fmt.compared(k)}">0%</a><span class="cmp-value" th:if="${k.href == null}" th:text="${@fmt.compared(k)}">0%</span> <span class="muted small" th:text="${@fmt.fraction(k)}">0 of 0</span></th:block><span class="muted" th:if="${k == null}">no runs</span></th:block>

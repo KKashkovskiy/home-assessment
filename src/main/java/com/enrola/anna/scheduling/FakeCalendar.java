@@ -109,6 +109,32 @@ public class FakeCalendar {
         : NOT_BOOKED;
   }
 
+  /**
+   * Scenario seeding: the slots labelled {@code labels} for a lead in {@code leadZone}, in that
+   * order, from the grid of the 31 days from now. The preset and the lead time do not apply, since
+   * a seeded offer is history; a label the grid cannot produce, a Sunday or a time off the grid,
+   * throws {@link IllegalArgumentException}.
+   */
+  public List<Slot> slotsForLabels(
+      List<String> labels, ZoneId leadZone, Settings.Scheduling scheduling) {
+    Instant now = clock.now();
+    List<Slot> grid =
+        gridStarts(now, now.plus(MAX_RANGE), scheduling)
+            .map(start -> Slot.of(start, leadZone))
+            .toList();
+    return labels.stream().map(label -> labelled(grid, label, now)).toList();
+  }
+
+  private static Slot labelled(List<Slot> grid, String label, Instant now) {
+    return grid.stream()
+        .filter(slot -> slot.label().equals(label))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalArgumentException(
+                    "no slot labelled '" + label + "' in the 31 days from " + now));
+  }
+
   /** Scenario hook: exactly these slots instead of the grid, still held to the same limits. */
   public void withSlots(List<Slot> explicit) {
     fixture = List.copyOf(explicit);

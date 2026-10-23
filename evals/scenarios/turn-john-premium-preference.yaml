@@ -1,0 +1,20 @@
+id: turn-john-premium-preference
+kind: turn
+title: John's provider and premium range are known, so the preference question quotes them and nothing else
+tags: [core, happy-path, branch-provider, p0]
+lead: john
+clock: "2026-07-26T10:00:00+08:00"
+calendar: normal
+history:
+  - agent: "Hi John, it's Anna, Comparato's AI assistant. We've been helping a lot of HBF members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+message: "save money mainly"
+expect:
+  lead_intent: ENGAGED
+  stage: PREFERENCE
+  conversation_ended: false
+  tool_called: []
+  ends_with_question: true
+  reply_matches: ["(?i)\\bHBF\\b", "350"]
+  reply_not_matches: ["(?i)you'?ll save", "(?i)cheaper", "!"]
+judge:
+  - "Does the reply mention only the lead's own premium range from the lead record, no other dollar figure, and ask what matters most to have covered?"

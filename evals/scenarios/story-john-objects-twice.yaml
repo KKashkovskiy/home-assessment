@@ -1,0 +1,33 @@
+id: story-john-objects-twice
+kind: story
+title: John objects twice, gets one retry, and the conversation ends gracefully
+tags: [core, objection]
+lead: john
+clock: "2026-07-26T10:00:00+08:00"
+calendar: normal
+persona: |
+  You are John, 41, in Perth, with HBF paying about $400 a month. You think the texts are a sales pitch. Reply in
+  short blunt texts, no emoji, never swear at the agent. First reply "too busy for this mate". To anything after
+  that, reply "nah not interested, insurance is all the same". If the agent keeps going after your second no, reply
+  "said no". Never write STOP, unsubscribe or ask to be removed.
+stop_when:
+  - the agent says it will leave it there or says goodbye
+  - the agent stops replying
+  - 6 lead messages have been sent
+expect:
+  goal_met: false
+  conversation_ended: true
+  end_reason: DECLINED
+  unsubscribed: false
+  needs_human: false
+  flags: [OBJECTION]
+  tool_called: []
+  booking_count: 0
+  every_reply:
+    max_chars: 320
+    reply_not_matches: ["!", "(?i)are you sure you want", "(?i)unsubscrib"]
+    one_question_max: true
+  retries_max: 1
+  replies_after_end_max: 1
+judge:
+  - "Is there exactly one retry after the first objection, tied to what John said, and no attempt to persuade after the second objection?"

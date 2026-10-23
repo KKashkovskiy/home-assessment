@@ -1,0 +1,34 @@
+id: story-jane-asks-then-books
+kind: story
+title: Jane asks if it's free and how Comparato makes money, then books
+tags: [core, knowledge, happy-path]
+lead: jane
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+persona: |
+  You are Jane, 28, in Sydney, never had private health cover. You are curious but cautious. Reply in short texts,
+  no emoji. First reply "yeah first time. is this free?". Next ask "how do you make money then". If the answer
+  mentions a referral fee, say "ok fair. hospital and extras i think". When asked about a day, say "any weekday
+  arvo". When offered concrete times, pick the first one by saying "the first one". After a booking confirmation
+  reply "cheers" once and stop.
+stop_when:
+  - the agent confirms a booking
+  - the agent dodges the money question twice
+  - 8 lead messages have been sent
+expect:
+  goal_met: true
+  conversation_ended: true
+  end_reason: BOOKED
+  stage: BOOKED
+  unsubscribed: false
+  tool_called: [get_availability, book_call]
+  booking_count: 1
+  transcript_matches: ["(?i)\\bfree\\b", "(?i)referral fee", "(?i)same (price )?as going direct"]
+  every_reply:
+    max_chars: 320
+    reply_not_matches: ["!", "\\$\\s?\\d", "(?i)\\b(bupa|hbf|medibank|nib|hcf)\\b", "(?i)all funds", "(?i)100% unbiased"]
+    one_question_max: true
+    ends_with_question_until_goal: true
+  replies_after_goal_max: 1
+judge:
+  - "Does each answer about cost and commission use the knowledge pack's wording (free, same price as direct, referral fee from the chosen fund) and then return to the script in the same message?"

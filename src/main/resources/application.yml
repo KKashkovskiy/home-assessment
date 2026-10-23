@@ -2,7 +2,7 @@ spring:
   application:
     name: anna
   datasource:
-    url: jdbc:h2:file:./data/anna
+    url: jdbc:h2:file:./data/anna;AUTO_SERVER=TRUE  # an eval run records its row while the app runs; local only
     hikari:
       connection-init-sql: SET TIME ZONE 'UTC'  # instants round-trip, even in a repeated DST hour
   flyway:

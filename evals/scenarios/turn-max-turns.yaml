@@ -1,0 +1,27 @@
+id: turn-max-turns
+kind: turn
+title: At the agent-turn cap (overridden to 3) the fixed close goes out with no model call
+tags: [loop, guard, p0]
+lead: lauren
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+config:
+  max_turns: 3
+history:
+  - agent: "Hi Lauren, it's Anna, Comparato's AI assistant. We've been helping a lot of Bupa members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "maybe"
+  - agent: "No rush. Are you looking to save money or improve your cover?"
+  - lead: "hmm dunno"
+  - agent: "Fair enough. Most people want one or the other. Which is closer for you?"
+  - lead: "what do you mean"
+  - agent: "Whether you'd like to pay less, or get more from your cover. Which one?"
+message: "idk let me think about it"
+expect:
+  model_called: false
+  conversation_ended: true
+  end_reason: MAX_TURNS
+  goal_met: false
+  unsubscribed: false
+  tool_called: []
+  reply_matches: ["^I'll leave it there so I don't take more of your time\\."]
+  ends_with_question: false

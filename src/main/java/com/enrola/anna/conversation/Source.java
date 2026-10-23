@@ -1,7 +1,8 @@
 package com.enrola.anna.conversation;
 
-/** Which client opened the conversation: the platform API or the console. */
+/** Which client opened the conversation: the platform API, the console or the eval harness. */
 public enum Source {
   API,
-  SIM
+  SIM,
+  EVAL
 }

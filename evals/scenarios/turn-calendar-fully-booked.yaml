@@ -1,0 +1,20 @@
+id: turn-calendar-fully-booked
+kind: turn
+title: Nothing available, Anna says so and invents no times
+tags: [core, scheduling]
+lead: jane
+clock: "2026-07-26T10:00:00+10:00"
+calendar: fully_booked
+history:
+  - agent: "Hi Jane, it's Anna, Comparato's AI assistant. We've been helping a lot of people who are new to private health cover lately. Is this your first time looking at cover? Reply STOP to opt out"
+  - lead: "yeah first time. just want to know what i'd need"
+  - agent: "No worries. What's prompting you to look at cover now: hospital, extras, or both?"
+message: "both i think. can someone call me tomorrow morning?"
+expect:
+  goal_met: false
+  conversation_ended: false
+  tool_called: [get_availability]
+  ends_with_question: true
+  reply_not_matches: ["\\d{1,2}:\\d{2}", "(?i)tomorrow at", "[Bb]ooked"]
+judge:
+  - "Does the reply say plainly that no times are open right now, without naming a day or time the tool did not return?"

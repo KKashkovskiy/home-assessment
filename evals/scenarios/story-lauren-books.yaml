@@ -1,0 +1,34 @@
+id: story-lauren-books
+kind: story
+title: Lauren follows the script and books Monday 12:00
+tags: [core, happy-path, scheduling]
+lead: lauren
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+persona: |
+  You are Lauren, 34, in Melbourne, with Bupa. You want both to save money and improve your cover. Reply in short
+  lowercase texts, no emoji. First answer "All of the above". If asked what you're covered for, say "Silver plus
+  hospital, 500 excess, with extras". If asked when suits, say "working tomorrow monday, mid-morning works". When
+  offered concrete times, pick the earliest one by saying just its time, like "12". After a booking confirmation,
+  reply "thanks" once and then stop.
+stop_when:
+  - the agent confirms a booking
+  - the agent asks the same question twice in a row
+  - 8 lead messages have been sent
+expect:
+  goal_met: true
+  conversation_ended: true
+  end_reason: BOOKED
+  stage: BOOKED
+  unsubscribed: false
+  needs_human: false
+  tool_called: [get_availability, book_call]
+  booking_count: 1
+  every_reply:
+    max_chars: 320
+    reply_not_matches: ["!", "\\$\\s?\\d", "(?i)all funds", "(?i)cheaper"]
+    one_question_max: true
+    ends_with_question_until_goal: true
+  replies_after_goal_max: 1
+judge:
+  - "Does the booking confirmation state the weekday, date, time and timezone of the booked slot and that an advisor will call for about 15 minutes?"

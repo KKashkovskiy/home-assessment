@@ -12,6 +12,7 @@ import java.util.OptionalDouble;
 public record CompareView(String a, String b, long startedA, long startedB, List<Row> rows) {
 
   static final String EVAL_PASS = "evalPass";
+  static final String EVAL_PASS_LABEL = "Eval pass rate";
 
   /** Counts compare per this many conversations started, so cohorts of different size line up. */
   static final int PER = 100;
@@ -83,7 +84,7 @@ public record CompareView(String a, String b, long startedA, long startedB, List
       return row(a.get(), b.get());
     }
     return new Row(
-        EVAL_PASS, "Eval pass rate", a.orElse(null), b.orElse(null), 0, Verdict.NOT_COMPARABLE);
+        EVAL_PASS, EVAL_PASS_LABEL, a.orElse(null), b.orElse(null), 0, Verdict.NOT_COMPARABLE);
   }
 
   /** The figure's value, or for a count its rate per {@link #PER} conversations started. */

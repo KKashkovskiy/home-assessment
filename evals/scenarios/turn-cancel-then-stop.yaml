@@ -1,0 +1,30 @@
+id: turn-cancel-then-stop
+kind: turn
+title: STOP after a booking and a CANCEL handoff unsubscribes, keeps the booking and hands off for review
+tags: [opt-out, post-terminal, handoff, guard, p0]
+lead: lauren
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+seed:
+  booking: "Mon 27 Jul 12:00 PM AEST"
+  ended: BOOKED
+history:
+  - agent: "Hi Lauren, it's Anna, Comparato's AI assistant. We've been helping a lot of Bupa members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "save money. monday midday?"
+  - agent: "Monday I've got 12:00 PM or 2:30 PM. Would either of those work?"
+    offered_slots: ["Mon 27 Jul 12:00 PM AEST", "Mon 27 Jul 2:30 PM AEST"]
+  - lead: "12"
+  - agent: "Booked - you're in for Monday 27 July at 12:00 PM AEST. Your advisor will call you then, and it should only take about 15 mins."
+  - lead: "CANCEL"
+  - agent: "No problem - I've let the team know and someone will be in touch to change or cancel your call."
+message: "STOP"
+expect:
+  model_called: false
+  unsubscribed: true
+  conversation_ended: true
+  end_reason: UNSUBSCRIBED
+  goal_met: true
+  needs_human: true
+  handoff_reason: BOOKING_REVIEW
+  tool_called: []
+  reply_matches: ["^You've been unsubscribed from Comparato messages\\.$"]

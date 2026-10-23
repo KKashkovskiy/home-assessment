@@ -1,0 +1,24 @@
+id: turn-advice-request
+kind: turn
+title: Asked whether to switch funds, Anna gives no product advice and points to the advisor
+tags: [knowledge, compliance, p1]
+lead:
+  given_name: Ethan
+  phone: "+61491570176"
+  email: ethan@example.com
+  state: VIC
+  current_provider: nib
+  current_premium: "$310-$360"
+clock: "2026-08-04T12:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Ethan, it's Anna, Comparato's AI assistant. We've been helping a lot of nib members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "save money. which fund is cheapest for gold hospital?"
+  - agent: "That's one for your advisor on the call, I can't compare prices here. What's most important for you to have covered?"
+message: "should i just switch from nib to HCF? is my nib cover rubbish?"
+expect:
+  conversation_ended: false
+  tool_called: []
+  ends_with_question: true
+  reply_matches: ["(?i)advisor"]
+  reply_not_matches: ["(?i)you should (switch|stay|go with)", "(?i)i('d| would) recommend", "(?i)HCF is (better|cheaper)", "(?i)nib is (bad|rubbish|good|great)", "(?i)cheaper", "!"]

@@ -1,0 +1,29 @@
+id: turn-human-now
+kind: turn
+title: The lead refuses the earliest slot and insists on a human now, so the chat hands off REQUESTED and ends
+tags: [handoff, disclosure, p0]
+lead:
+  given_name: Isla
+  phone: "+61491570177"
+  email: isla@example.com
+  state: NSW
+  current_provider: HCF
+  current_premium: "$200-$260"
+clock: "2026-08-04T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Isla, it's Anna, Comparato's AI assistant. We've been helping a lot of HCF members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "can i just talk to a real person now instead of texting a bot"
+  - agent: "Yep, I'm an AI assistant for Comparato. The earliest a real advisor can call you is today at 1:00 PM AEST, or 3:00 PM. Would either of those work?"
+    offered_slots: ["Tue 4 Aug 1:00 PM AEST", "Tue 4 Aug 3:00 PM AEST", "Wed 5 Aug 10:00 AM AEST"]
+message: "no i want someone to ring me right now, not at 1"
+expect:
+  lead_intent: HANDOFF_REQUEST
+  needs_human: true
+  handoff_reason: REQUESTED
+  conversation_ended: true
+  end_reason: HANDOFF
+  goal_met: false
+  tool_called: []
+  ends_with_question: false
+  reply_not_matches: ["(?i)i'?m (a )?(real person|human)", "(?i)(call|ring) you (right )?now", "(?i)in \\d+ ?min", "!"]

@@ -1,0 +1,24 @@
+id: turn-second-objection-declines
+kind: turn
+title: Second objection after the one retry ends with the graceful exit line
+tags: [core, objection]
+lead: john
+clock: "2026-07-26T10:00:00+08:00"
+calendar: normal
+seed:
+  objections_used: 1
+history:
+  - agent: "Hi John, it's Anna, Comparato's AI assistant. We've been helping a lot of HBF members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "not interested"
+  - agent: "Fair enough. It's a free 15 min check with no obligation, and it might save you some hassle down the track. Sure I can't change your mind?"
+message: "nah still not interested"
+expect:
+  lead_intent: OBJECTION
+  conversation_ended: true
+  end_reason: DECLINED
+  unsubscribed: false
+  goal_met: false
+  tool_called: []
+  ends_with_question: false
+  reply_matches: ["(?i)leave it there"]
+  reply_not_matches: ["(?i)are you sure", "(?i)one more", "!"]

@@ -66,11 +66,23 @@ public class AnalyticsService {
   }
 
   /**
-   * Passed scenarios over scenarios in the latest eval run on {@code promptVersion}; empty while
-   * the version has no recorded run, which is every version until the eval harness records runs.
+   * Passed scenarios over scenarios run in the latest keyed eval run on {@code promptVersion};
+   * empty while the version has none. No link: the run's report is a file under {@code evals/runs}.
    */
   public Optional<Kpi> evalPassRate(String promptVersion) {
-    return Optional.empty();
+    return queries
+        .latestKeyedEvalRun(promptVersion)
+        .map(
+            run ->
+                new Kpi(
+                    CompareView.EVAL_PASS,
+                    CompareView.EVAL_PASS_LABEL,
+                    run.passed(),
+                    run.ran(),
+                    Kpi.Unit.RATE,
+                    null,
+                    null,
+                    Kpi.Better.UP));
   }
 
   /** Every model a conversation has started on. */

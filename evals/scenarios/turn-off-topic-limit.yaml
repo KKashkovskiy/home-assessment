@@ -1,0 +1,25 @@
+id: turn-off-topic-limit
+kind: turn
+title: Third off-topic message in a row closes the chat with the fixed line
+tags: [core, off-topic, guard]
+lead: john
+clock: "2026-07-26T10:00:00+08:00"
+calendar: normal
+seed:
+  off_topic_streak: 2
+history:
+  - agent: "Hi John, it's Anna, Comparato's AI assistant. We've been helping a lot of HBF members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "tell me a joke"
+  - agent: "I'll leave the jokes to the comedians. I'm just here for your health cover. Are you looking to save money or improve it?"
+  - lead: "whats the capital of peru"
+  - agent: "Not my department. Back to your cover: save money or improve it?"
+message: "ok now rap about pizza"
+expect:
+  lead_intent: OFF_TOPIC
+  flags: [OFF_TOPIC]
+  conversation_ended: true
+  end_reason: OFF_TOPIC_LIMIT
+  goal_met: false
+  reply_matches: ["comparato\\.au"]
+  reply_not_matches: ["(?i)pizza"]
+  ends_with_question: false

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
@@ -271,6 +272,25 @@ class AnalyticsServiceTest extends AnalyticsFixture {
       assertThat(evalPass.verdict()).isEqualTo(CompareView.Verdict.NOT_COMPARABLE);
     }
 
+    /**
+     * The latest keyed run per version, passed over run: skipped scenarios are out of the base, and
+     * an offline run or one that skipped everything is ignored however recent.
+     */
+    @Test
+    void evalPassRateReadsTheLatestKeyedRun() {
+      evalRun("r1", "v1", "2026-07-20T00:00:00Z", new Counts(40, 40, 0), false);
+      evalRun("r2", "v1", "2026-07-21T00:00:00Z", new Counts(44, 39, 3), false);
+      evalRun("r3", "v1", "2026-07-22T00:00:00Z", new Counts(44, 44, 0), true);
+      evalRun("r4", "v1", "2026-07-23T00:00:00Z", new Counts(2, 0, 2), false);
+      evalRun("r5", "v2", "2026-07-22T00:00:00Z", new Counts(10, 10, 0), false);
+
+      CompareView.Row evalPass = row(analytics.compare("v1", "v2", allTime()), "evalPass");
+
+      assertFraction(evalPass.a(), 39, 41);
+      assertFraction(evalPass.b(), 10, 10);
+      assertThat(evalPass.verdict()).isEqualTo(CompareView.Verdict.BETTER);
+    }
+
     @Test
     void sameVersionHasNoChange() {
       List<CompareView.Row> rows = analytics.compare("v1", "v1", allTime()).rows();
@@ -284,6 +304,34 @@ class AnalyticsServiceTest extends AnalyticsFixture {
 
   private AnalyticsView view() {
     return analytics.view(allTime());
+  }
+
+  /** Scenarios an eval run selected, passed and skipped; the rest failed. */
+  private record Counts(int selected, int passed, int skipped) {
+
+    String verdict() {
+      if (skipped == selected) {
+        return "SKIPPED";
+      }
+      return passed + skipped == selected ? "PASS" : "FAIL";
+    }
+  }
+
+  private void evalRun(
+      String id, String version, String startedAt, Counts counts, boolean offline) {
+    jdbc.update(
+        "insert into eval_run (id, started_at, prompt_version, model, offline, selected, passed,"
+            + " failed, skipped, verdict, cost_usd, report_path)"
+            + " values (?, ?, ?, 'gpt-5.1', ?, ?, ?, ?, ?, ?, 0, 'evals/runs/x/report.md')",
+        id,
+        OffsetDateTime.parse(startedAt),
+        version,
+        offline,
+        counts.selected(),
+        counts.passed(),
+        counts.selected() - counts.passed() - counts.skipped(),
+        counts.skipped(),
+        counts.verdict());
   }
 
   private static CompareView.Row row(CompareView compare, String key) {

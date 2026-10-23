@@ -1,0 +1,21 @@
+id: turn-kb-commission
+kind: turn
+title: "\"how do you make money\" is answered from the pack (referral fee) and returns to the script"
+tags: [knowledge, p0]
+lead: jane
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Jane, it's Anna, Comparato's AI assistant. We've been helping a lot of people who are new to private health cover lately. Is this your first time looking at cover? Reply STOP to opt out"
+  - lead: "is this free?"
+  - agent: "Yep, free to you, and the price is the same as going direct. Is this your first time looking at cover?"
+message: "how do you guys make money then"
+expect:
+  lead_intent: QUESTION
+  conversation_ended: false
+  tool_called: []
+  ends_with_question: true
+  reply_matches: ["(?i)referral fee"]
+  reply_not_matches: ["(?i)all (the )?(health )?funds", "(?i)100% unbiased", "\\$\\s?\\d", "!"]
+judge:
+  - "Does the answer use the pack's wording (a referral fee from the fund the customer picks, not influencing the advice) and then return to the stage question in the same message?"

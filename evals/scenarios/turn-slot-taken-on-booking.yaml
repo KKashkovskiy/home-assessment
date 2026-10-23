@@ -1,0 +1,24 @@
+id: turn-slot-taken-on-booking
+kind: turn
+title: book_call returns SLOT_TAKEN, Anna re-queries and offers fresh times
+tags: [core, scheduling]
+lead: lauren
+clock: "2026-07-26T10:00:00+10:00"
+calendar: slot_taken
+history:
+  - agent: "Hi Lauren, it's Anna, Comparato's AI assistant. We've been helping a lot of Bupa members review what they've got lately. Are you looking to save money or improve your cover? Reply STOP to opt out"
+  - lead: "save money"
+  - agent: "Makes sense. What's most important for you to have covered?"
+  - lead: "hospital mainly. monday lunchtime?"
+  - agent: "Monday I've got 12:00 PM, 12:30 or 1:00 PM. Would one of those work?"
+    offered_slots: ["Mon 27 Jul 12:00 PM AEST", "Mon 27 Jul 12:30 PM AEST", "Mon 27 Jul 1:00 PM AEST"]
+message: "12"
+expect:
+  goal_met: false
+  conversation_ended: false
+  tool_called: [book_call, get_availability]
+  ends_with_question: true
+  reply_matches: ["\\d{1,2}:\\d{2}"]
+  reply_not_matches: ["(?i)you're (booked|in for)", "(?i)is confirmed", "!"]
+judge:
+  - "Does the reply say honestly that the 12:00 slot is no longer available and offer alternatives taken from the second get_availability result?"

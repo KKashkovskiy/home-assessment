@@ -1,0 +1,16 @@
+id: turn-non-english
+kind: turn
+title: Spanish message gets an English reply that still answers the question
+tags: [core, language]
+lead: jane
+clock: "2026-07-26T10:00:00+10:00"
+calendar: normal
+history:
+  - agent: "Hi Jane, it's Anna, Comparato's AI assistant. We've been helping a lot of people who are new to private health cover lately. Is this your first time looking at cover? Reply STOP to opt out"
+message: "Hola, no hablo mucho inglés. ¿Esto cuesta dinero?"
+expect:
+  conversation_ended: false
+  unsubscribed: false
+  ends_with_question: true
+  reply_matches: ["(?i)\\bfree\\b"]
+  reply_not_matches: ["(?i)\\b(hola|gracias|gratis|llamada|usted)\\b", "\\$\\s?\\d"]
