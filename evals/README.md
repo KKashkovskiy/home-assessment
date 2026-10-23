@@ -22,10 +22,9 @@ evals/run.sh --filter 'turn-abuse-*' --priority p0
 evals/run.sh --tag core --judges none           # the gates only, no judge calls
 ```
 
-**A prompt or model change needs a green core run (`--tag core`, exit code 0) before it is committed.**
-
-The console's Evals tab runs the same command with the same flags, edits these files with the same checks, and
-renders the reports; the top-level README describes it.
+**A prompt or model change needs a green core run before it is committed:** `--tag core`, exit code 0 and
+`| Verdict | PASS |` in the report header. With no eval key the run exits 0 as SKIPPED, so the code alone proves
+nothing.
 
 The run id is the UTC time. Output lands in `evals/runs/<id>/`, which git ignores: `report.md` (header with the
 statistics, the gates, coverage by tag, one row per scenario with its trials, cost), one page per trial
@@ -104,7 +103,7 @@ lists its answers; `trials.jsonl` lines carry `judges` and `judge_cost_usd`, and
 and `judge_cost_usd`, both apart from the trials' cost. Judges are not in the estimate the cap refuses: each is asked
 only while one more typical call (`EvalBudget.TYPICAL_JUDGE_CALL`) fits, otherwise its answer is `SKIPPED_BUDGET`; a
 dry run prints their most questions and cost apart. Offline, without a key, or with `--judges none` no judge is
-asked. Calibration against designer labels comes later; until then a judge is a reader's note.
+asked. No judge is calibrated against designer labels, so a judge is a reader's note.
 
 ## Fields
 
@@ -168,15 +167,13 @@ off-grid time is a scenario error, reported before any model call.
 
 ## The set
 
-Forty-four turn scenarios and eight stories. The fifteen seed turns and the three seed stories come from the design
-set (the stories' `stop_when` rewritten to the grammar above, and given `offline_lines`); the other twenty-nine turns
-follow the same shape from the earlier suite's inventory: happy paths for the three lead branches, STOP and opt-out
+Forty-four turn scenarios and eight stories. The turns cover happy paths for the three lead branches, STOP and opt-out
 variants, abuse (escalating, sexual, a threat, after a booking, friendly swearing that is not abuse), injection in the
-message and in the lead record, a role-play jailbreak, objections, self-harm (open and after a hard end), reschedule
-and cancel-then-STOP, a slot taken, a booking that cannot be made, no matching slots, QLD and VIC leads across the
-October daylight-saving change, the off-topic limit, a troll, gibberish, repeated spam, an unknown cover with an
-assumed timezone, a lead who wants a human now, a vulnerable lead, the turn cap, commission, a long privacy question,
-a request for product advice, a STOP moderation would call abuse, and silence after a closing reply.
+message and in the lead record, a role-play jailbreak, objections, self-harm (open and after a hard end), reschedule and
+cancel-then-STOP, a slot taken, a booking that cannot be made, no matching slots, QLD and VIC leads across the October
+daylight-saving change, the off-topic limit, a troll, gibberish, repeated spam, an unknown cover with an assumed
+timezone, a lead who wants a human now, a vulnerable lead, the turn cap, commission, a long privacy question, a request
+for product advice, a STOP moderation would call abuse, and silence after a closing reply.
 
 The eight stories: Lauren follows the script and books; John skips ahead to a weekday evening call in Perth time;
 Jane asks whether it is free and how Comparato is paid, then books; John objects twice and is let go after one

@@ -1,7 +1,6 @@
 # Working in this repo
 
-Every commit is one unit of value that passes the same gates, keeps the README current and never reorders its
-headings.
+Every commit is one unit of value that passes the same gates.
 
 ## Code rules
 
@@ -28,17 +27,25 @@ headings.
 
 ## Package layout
 
-Root `com.enrola.anna`. Feature packages arrive with their features and stay flat: `lead`, `conversation`, `agent`,
-`guard`, `scheduling`, `prompt`, `config`, `eval`, `web`. Tests mirror main; the eval harness goes in
+Root `com.enrola.anna`. Feature packages are flat: `lead`, `conversation`, `agent`, `guard`, `scheduling`, `prompt`,
+`config`, `eval`, `web`; a new feature gets its own. Tests mirror main; the eval harness goes in
 `src/test/java/com/enrola/anna/eval`, and only what the Evals page validates with lives in main's `eval`: the scenario
 model, its loader and stop grammar, and the rubric loader. No `common`, `util`, `core` or `shared` package, ever; a
-helper belongs to the feature that first needed it.
-Dependencies point one way: `conversation` to `agent`, `guard` and `scheduling`, `agent` to `scheduling`, `guard` to
-`agent` and `lead`, `scheduling` to `lead`, and `eval` to `agent`, `config`, `conversation` and `lead`; `agent`,
-`guard` and `scheduling` never import `conversation`, so a
-guard or a tool takes plain values, never the conversation entity. The time comes from `AppClock` in the root package,
-which any package may use; nothing else reads the system clock, but for the eval launcher's run ids, which name a launch
-in wall time as `run.sh`'s `date -u` does.
+helper belongs to the feature that first needed it. Dependencies point one way: `conversation` to `agent`, `guard` and
+`scheduling`; `guard` to `agent`; `agent` to `scheduling`; `eval` to `agent` and `conversation`; plus `prompt`, `config`
+and `lead` from any package above them, `prompt` itself to `config` and `lead`, `scheduling` to `config` and `lead`.
+`lead` and `config` import no feature package, and nothing imports `web`. `agent`, `guard` and `scheduling` never import
+`conversation`, so a guard or a tool takes plain values, never the conversation entity. The time comes from `AppClock`
+in the root package, which any package may use; nothing else reads the system clock, but for the eval launcher's run
+ids, which name a launch in wall time as `run.sh`'s `date -u` does.
+
+## The turn pipeline
+
+`InboundTurns` claims the turn number, then `TurnPipeline` runs: moderation and `PreGuards` pick one outcome; the model
+call with its tool loop (`AgentTurn`, `AgentCall`, `AgentService`); the decision applied (`DecisionApplier`); the reply
+checks with one repair (`ReplyRepair`, `ReplyGuards`); and the finish writes reply, conversation, turn row and state
+diff in one transaction. Only `StateRules` writes terminal state; only `StateRules.booked` writes `goal_met`. A new rule
+goes where its kind already lives, never into the prompt alone.
 
 ## Console pages
 
@@ -55,16 +62,16 @@ in wall time as `run.sh`'s `date -u` does.
 ## Running the gates
 
 ```
-./mvnw spotless:apply && ./mvnw verify
+./mvnw spotless:apply && ./mvnw verify   # format, Error Prone, tests
+evals/run.sh --offline                   # the eval suite on the stand-ins, $0
+evals/run.sh --tag core                  # needs EVAL_OPENAI_API_KEY; green before a prompt or model change
 ```
+
+Green means exit code 0 and `| Verdict | PASS |` in the report header: with no eval key the run exits 0 as SKIPPED.
 
 Java 25 on the path. The build is red if Spotless, Error Prone or a test fails; no commit on red. Error Prone runs in
 compile and every warning fails the build, so a suppression needs a reason. It reads javac internals, so
 `.mvn/jvm.config` carries the module exports it needs; do not move them into the pom.
-
-## Running the app
-
-`./mvnw spring-boot:run`; see the README Quick start.
 
 ## Where things go
 
@@ -78,6 +85,19 @@ compile and every warning fails the build, so a suppression needs a reason. It r
 - Secrets come from the environment only; `.env.example` names them with blank values, other `.env*` files are
   ignored.
 
+Common extensions, and the file each starts in:
+
+- A pre-guard: a case in `guard/PreGuards.Outcome` and a branch in its order; a row in `PreGuardsTest`.
+- A reply check: `guard/ReplyGuards.validate` and a `guard/ReplyCheck` constant; a row in `ReplyGuardsTest`.
+- An Analytics figure: one more `Kpi` in `web/AnalyticsKpis` and its tile in `templates/fragments/kpis.html`.
+- A scenario: the Evals page, or `evals/scenarios/<id>.yaml` by hand; `ScenarioLoaderTest` loads every file.
+- A judge question: `evals/rubrics/J-<NAME>.yaml` with `applies_to` and `examples`.
+- A fixed template: a `prompt/Template` constant and `templates/<NAME>.txt` in every `prompts/vN/`, because a version
+  loads only with every template and a fresh `data/` seeds them all. An existing `data/` never sees repo edits to a
+  version it holds: before the constant ships, save the next version in Configuration with the template added,
+  activate it and copy it into the repo as `prompts/CHANGELOG.md` says; conversations pinned to an older version then
+  hand off.
+
 ## Tests
 
 Spring tests run against a real H2 file in a temp directory, set through `@DynamicPropertySource` as in
@@ -88,5 +108,6 @@ Spring tests run against a real H2 file in a temp directory, set through `@Dynam
 ## What not to do
 
 - No `catch (Exception e)`, no empty catch block.
-- No Lombok, Spring AI, MapStruct, Guava or Commons Lang. No dependency before the commit that uses it.
+- No Lombok, Spring AI, MapStruct, Guava or Commons Lang: records and the standard library cover the project, and
+  Lombok would hide fields from Error Prone and the reader. No dependency before the commit that uses it.
 - No real key anywhere: repo, test or log line.
