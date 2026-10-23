@@ -3,7 +3,7 @@ package com.enrola.anna.conversation;
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.HandoffReason;
-import java.time.Instant;
+import com.enrola.anna.agent.Stage;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -11,10 +11,11 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The one place a model decision changes a conversation: stage, flags, extracted facts, summary,
- * and the ending or handoff it asks for, through {@link StateRules}. What to send is the caller's
- * business. The model's {@code goal_met} is advisory: a claim is traced as overridden and changes
- * nothing, because code owns the goal.
+ * Where a model decision changes a conversation: its classification, and the ending or handoff it
+ * asks for, through {@link StateRules}. What to send is the caller's business, and the counts
+ * belong to {@link TurnCounters}. Fields code owns are never taken from the model: a claimed goal,
+ * a BOOKED stage or an end reason the model may not set is traced as overridden and changes
+ * nothing.
  */
 @Component
 class DecisionApplier {
@@ -30,21 +31,61 @@ class DecisionApplier {
     this.json = json;
   }
 
-  void apply(Conversation conversation, int turnNo, Decision decision, Instant now) {
+  /**
+   * What every decision leaves, whatever becomes of its reply: stage, flags, extracted facts and
+   * summary. Until a booking exists the goal is not met and the stage is not BOOKED.
+   */
+  void classify(RunningTurn turn, Decision decision) {
+    Conversation conversation = turn.conversation();
     conversation.stage = decision.stage();
+    if (decision.stage() == Stage.BOOKED && !conversation.goalMet) {
+      conversation.stage = Stage.OFFER_TIMES;
+      override(turn, "stage", Map.of("model", Stage.BOOKED, "code", Stage.OFFER_TIMES));
+    }
+    if (decision.goalMet() && !conversation.goalMet) {
+      override(turn, "goal_met", Map.of("model", true, "code", false));
+    }
     decision.flags().forEach(conversation::addFlag);
     conversation.extractedJson = merged(conversation.extractedJson, decision.extracted());
     if (decision.summary() != null) {
       conversation.summary = AgentTurn.cut(decision.summary(), SUMMARY_MAX);
     }
-    if (decision.conversationEnded() && decision.endReason() != EndReason.NONE) {
-      StateRules.end(conversation, decision.endReason(), now);
+  }
+
+  /** The handoff the model asks for, then the ending, each only with its flag set. */
+  void applyEnding(RunningTurn turn, Decision decision) {
+    if (decision.needsHuman()) {
+      handOff(turn, decision.handoffReason());
     }
-    if (decision.needsHuman() && decision.handoffReason() != HandoffReason.NONE) {
-      StateRules.handoff(conversation, decision.handoffReason());
+    if (decision.conversationEnded()) {
+      end(turn, decision.endReason());
     }
-    if (decision.goalMet()) {
-      traceGoalMetOverride(conversation, turnNo);
+  }
+
+  /**
+   * A request for a person or a complaint hands the thread over and ends it HANDOFF; DISTRESS and
+   * the rest stay open, so Anna may answer gently.
+   */
+  private static void handOff(RunningTurn turn, HandoffReason reason) {
+    switch (reason) {
+      case NONE -> {}
+      case REQUESTED, COMPLAINT -> {
+        StateRules.handoff(turn.conversation(), reason);
+        StateRules.end(turn.conversation(), EndReason.HANDOFF, turn.now());
+      }
+      case DISTRESS, SELF_HARM, RESCHEDULE, ERROR, BOOKING_REVIEW ->
+          StateRules.handoff(turn.conversation(), reason);
+    }
+  }
+
+  /** The model may end DECLINED or HANDOFF; every other end belongs to a code path. */
+  private void end(RunningTurn turn, EndReason reason) {
+    switch (reason) {
+      case NONE -> {}
+      case DECLINED, HANDOFF -> StateRules.end(turn.conversation(), reason, turn.now());
+      case BOOKED, UNSUBSCRIBED, ABUSIVE, OFF_TOPIC_LIMIT, MAX_TURNS, SAFETY ->
+          override(
+              turn, "end_reason", Map.of("model", reason, "code", turn.conversation().endReason));
     }
   }
 
@@ -65,14 +106,8 @@ class DecisionApplier {
     return !value.isNull() && !(value.isString() && value.stringValue().equals("UNKNOWN"));
   }
 
-  private void traceGoalMetOverride(Conversation conversation, int turnNo) {
-    trace.record(
-        conversation.id,
-        turnNo,
-        new TraceLog.Entry(
-            TraceEventType.GUARD,
-            "goal_met_override",
-            TraceOutcome.OVERRIDE,
-            Map.of("model", true, "code", false)));
+  /** {@code modelAndCode} holds what the model said and what code kept, for the inspector. */
+  private void override(RunningTurn turn, String field, Map<String, ?> modelAndCode) {
+    trace.record(turn, TraceLog.Entry.guard(field, TraceOutcome.OVERRIDE, modelAndCode));
   }
 }

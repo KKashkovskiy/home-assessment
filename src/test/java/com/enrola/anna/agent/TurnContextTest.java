@@ -2,6 +2,7 @@ package com.enrola.anna.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.enrola.anna.config.LimitsProperties;
 import com.enrola.anna.lead.Lead;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -76,7 +77,7 @@ class TurnContextTest {
         lead,
         PERTH_NOW,
         new TurnContext.Counters(1, 0, 0, 0),
-        new TurnContext.Limits(15, 1, 3),
+        new LimitsProperties(15, 3, 1),
         null,
         List.of(),
         ended,

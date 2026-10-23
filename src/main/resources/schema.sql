@@ -63,7 +63,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS turn_no_idx ON turn(conversation_id, turn_no);
 
 CREATE TABLE IF NOT EXISTS suppression (
   phone       VARCHAR(20) PRIMARY KEY,               -- E.164
-  reason      VARCHAR(10) NOT NULL,                  -- KEYWORD
+  reason      VARCHAR(10) NOT NULL,                  -- KEYWORD | MODEL
   lead_id     VARCHAR(40),
   created_at  TIMESTAMP WITH TIME ZONE NOT NULL
 );
@@ -101,3 +101,11 @@ ALTER TABLE conversation ADD COLUMN IF NOT EXISTS reasoning_effort VARCHAR(10);
 ALTER TABLE conversation ADD COLUMN IF NOT EXISTS app_version VARCHAR(20);
 ALTER TABLE conversation ADD COLUMN IF NOT EXISTS extracted_json CLOB;   -- JSON object of known facts
 ALTER TABLE conversation ADD COLUMN IF NOT EXISTS summary VARCHAR(200);  -- the model's latest line for the advisor
+
+-- Counters only code moves, and the turn whose messages first carried health information.
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS objections_used INT DEFAULT 0 NOT NULL;
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS off_topic_streak INT DEFAULT 0 NOT NULL;
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS agent_turns INT DEFAULT 0 NOT NULL;            -- messages sent after the opener
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS post_terminal_replies INT DEFAULT 0 NOT NULL;  -- messages sent on or after the ending turn
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS health_info_turn INT;  -- null until HEALTH_INFO; bodies from it on are hidden
+CREATE INDEX IF NOT EXISTS turn_cost_idx ON turn(conversation_id, cost_usd);   -- the spend caps sum it

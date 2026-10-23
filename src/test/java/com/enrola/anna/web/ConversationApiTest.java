@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -101,6 +102,7 @@ class ConversationApiTest {
   void noConversations() {
     mvc = MockMvcBuilders.webAppContextSetup(context).build();
     templates = prompts.active().templates();
+    jdbc.update("delete from trace_event");
     jdbc.update("delete from turn");
     jdbc.update("delete from message");
     jdbc.update("delete from conversation");
@@ -258,7 +260,7 @@ class ConversationApiTest {
           .andExpect(jsonPath("$.conversation_id").value(id));
     }
 
-    /** No code path ends with HANDOFF yet, so the row is set directly. */
+    /** This context has no model to end it HANDOFF, so the row is set directly. */
     @Test
     void endedConversationNoLongerBlocksAStart() throws Exception {
       String id = idOf(start("lauren"));
@@ -268,6 +270,23 @@ class ConversationApiTest {
           id);
 
       start("lauren").andExpect(status().isCreated());
+    }
+
+    /** Only a deliberate forced start texts a lead who was abusive again. */
+    @Test
+    void abusiveEndBlocksAPlainStart() throws Exception {
+      String id = idOf(start("lauren"));
+      jdbc.update(
+          "update conversation set ended = true, end_reason = 'ABUSIVE', status = 'ABUSIVE'"
+              + " where id = ?",
+          id);
+
+      start("lauren")
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.error").value("ABUSIVE"))
+          .andExpect(jsonPath("$.message").value("lead lauren's last conversation ended abusive"))
+          .andExpect(jsonPath("$.conversation_id").value(id));
+      forceStart("lauren").andExpect(status().isCreated());
     }
 
     @Test
@@ -310,6 +329,36 @@ class ConversationApiTest {
       mvc.perform(get("/api/conversations/{id}", "c-" + "x".repeat(60)))
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.error").value("VALIDATION"));
+    }
+
+    /** This context has no model to flag health information, so the row is set directly. */
+    @Test
+    void healthBodiesAreHiddenUnlessIncludeHealth() throws Exception {
+      String id = idOf(start("lauren"));
+      inbound(id, "I have a heart condition", "p1");
+      jdbc.update(
+          "update conversation set health_info_turn = 1, flags_json = '[\"HEALTH_INFO\"]'"
+              + " where id = ?",
+          id);
+
+      mvc.perform(get("/api/conversations/{id}", id))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.transcript[0].text").value(startsWith("Hi Lauren")))
+          .andExpect(jsonPath("$.transcript[0].redacted").doesNotExist())
+          .andExpect(jsonPath("$.transcript[1].text").value(nullValue()))
+          .andExpect(jsonPath("$.transcript[1].redacted").value("HEALTH_INFO"));
+      mvc.perform(get("/api/conversations/{id}?includeHealth=true", id))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.transcript[1].text").value("I have a heart condition"))
+          .andExpect(jsonPath("$.transcript[1].redacted").doesNotExist());
+    }
+
+    @Test
+    void includeHealthMustBeABoolean() throws Exception {
+      mvc.perform(get("/api/conversations/{id}?includeHealth=maybe", idOf(start("john"))))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.error").value("VALIDATION"))
+          .andExpect(jsonPath("$.message").value("includeHealth has the wrong type"));
     }
   }
 
@@ -535,17 +584,16 @@ class ConversationApiTest {
       assertThat(turnStatus(id, 2)).isEqualTo("NO_REPLY");
     }
 
-    /** No code path ends ABUSIVE yet, so the row is set directly. */
-    @ParameterizedTest
-    @ValueSource(strings = {"hello?", "STOP"})
-    void hardTerminalConversationAnswersNothing(String text) throws Exception {
+    /** This context has no moderation or model to end it ABUSIVE, so the row is set directly. */
+    @Test
+    void hardTerminalConversationAnswersNothing() throws Exception {
       String id = idOf(start("lauren"));
       jdbc.update(
           "update conversation set ended = true, end_reason = 'ABUSIVE', status = 'ABUSIVE'"
               + " where id = ?",
           id);
 
-      inbound(id, text, "p3")
+      inbound(id, "hello?", "p3")
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.reply").value(nullValue()))
           .andExpect(jsonPath("$.end_reason").value("ABUSIVE"))
@@ -553,8 +601,9 @@ class ConversationApiTest {
           .andExpect(jsonPath("$.transcript[?(@.direction == 'OUT')]").value(hasSize(1)));
     }
 
+    /** Compliance beats silence: an opt-out outranks the abusive end and is confirmed. */
     @Test
-    void stopOnHardTerminalConversationStillSuppresses() throws Exception {
+    void stopAfterAHardEndUnsubscribesAndConfirms() throws Exception {
       String id = idOf(start("lauren"));
       jdbc.update(
           "update conversation set ended = true, end_reason = 'ABUSIVE', status = 'ABUSIVE'"
@@ -563,9 +612,14 @@ class ConversationApiTest {
 
       inbound(id, "STOP", "p3")
           .andExpect(status().isOk())
-          .andExpect(jsonPath("$.reply").value(nullValue()))
-          .andExpect(jsonPath("$.end_reason").value("ABUSIVE"))
-          .andExpect(jsonPath("$.transcript[?(@.direction == 'OUT')]").value(hasSize(1)));
+          .andExpect(
+              jsonPath("$.reply")
+                  .value(
+                      templates.render(
+                          Template.UNSUBSCRIBE_CONFIRMATION,
+                          leads.findById("lauren").orElseThrow())))
+          .andExpect(jsonPath("$.end_reason").value("UNSUBSCRIBED"))
+          .andExpect(jsonPath("$.unsubscribed").value(true));
       assertThat(
               jdbc.queryForObject(
                   "select reason from suppression where phone = '+61400000001'", String.class))

@@ -21,14 +21,18 @@ record TurnOutcome(
     return new TurnOutcome(null, null, TurnStatus.NO_REPLY, decidedBy, Turn.ModelCall.NONE);
   }
 
-  /** The model's decision: its reply, or nothing when it chose not to send one. */
-  static TurnOutcome decided(String reply, Turn.ModelCall call) {
-    return reply == null
-        ? new TurnOutcome(null, null, TurnStatus.NO_REPLY, "model sent no reply", call)
-        : new TurnOutcome(reply, MessageSource.LLM, TurnStatus.OK, "model decision", call);
+  /** The model's reply, sent as decided. */
+  static TurnOutcome decided(String reply) {
+    return new TurnOutcome(
+        reply, MessageSource.LLM, TurnStatus.OK, "model decision", Turn.ModelCall.NONE);
   }
 
-  static TurnOutcome failed(String decidedBy, Turn.ModelCall call) {
-    return new TurnOutcome(null, null, TurnStatus.ERROR, decidedBy, call);
+  static TurnOutcome failed(String decidedBy) {
+    return new TurnOutcome(null, null, TurnStatus.ERROR, decidedBy, Turn.ModelCall.NONE);
+  }
+
+  /** This outcome, made by a turn that called the model, so the call is stored on the turn. */
+  TurnOutcome withModelCall(Turn.ModelCall call) {
+    return new TurnOutcome(reply, source, status, decidedBy, call);
   }
 }

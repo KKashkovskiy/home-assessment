@@ -52,8 +52,11 @@ public class ConversationApi {
     return inboundTurns.handle(id, request.text(), request.providerMessageId());
   }
 
+  /** Bodies a turn with health information hid come back only with {@code includeHealth=true}. */
   @GetMapping("/{id}")
-  public TurnResponse view(@PathVariable @Pattern(regexp = ID, message = ID_RULE) String id) {
-    return conversations.view(id);
+  public TurnResponse view(
+      @PathVariable @Pattern(regexp = ID, message = ID_RULE) String id,
+      @RequestParam(defaultValue = "false") boolean includeHealth) {
+    return includeHealth ? conversations.viewWithHealth(id) : conversations.view(id);
   }
 }

@@ -34,3 +34,16 @@ anna:
     max-inbound-chars: 1600               # longer inbound is stored whole, flagged INPUT_TRUNCATED, cut for the model
   turns:
     lock-wait: 2s                         # a second turn or start waits this long, then gets 409 BUSY
+  limits:
+    max-turns: 15                         # agent messages after the opener; the 16th inbound gets MAX_TURNS_CLOSE
+    off-topic-limit: 3                    # OFF_TOPIC or INJECTION streak, verbatim repeats included, that ends OFF_TOPIC_LIMIT
+    objection-retries: 1                  # objections that get a retry; the next one is DECLINED
+  budgets:
+    app-cap-usd: 10.00                    # sum of turn.cost_usd across every conversation
+    conversation-cap-usd: 0.50            # sum of turn.cost_usd for one conversation
+  moderation:
+    harassment: 0.5                       # harassment and harassment/threatening scores at or above end ABUSIVE
+    threat: 0.5                           # violence and violence/graphic, likewise
+    self-harm: 0.3                        # self-harm, self-harm/intent, self-harm/instructions send SELF_HARM_SAFETY
+    timeout: 5s                           # per attempt; moderation has its own budget, shorter than the model's
+    max-retries: 0                        # a failed screen is traced as unavailable and the turn goes on

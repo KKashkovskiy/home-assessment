@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  * with a key, like {@link OpenAiModelClient}; without one {@link AgentService} logs the skip.
  */
 @Component
-@ConditionalOnExpression(OpenAiModelClient.WHEN_KEY_SET)
+@ConditionalOnExpression(OpenAiClientConfig.WHEN_KEY_SET)
 public class ModelCheck implements ApplicationRunner {
 
   private static final Logger log = LoggerFactory.getLogger(ModelCheck.class);

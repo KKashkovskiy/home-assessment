@@ -73,7 +73,9 @@ public class ConversationService {
 
   /**
    * Creates the conversation and stores the template opener as turn 0. An opted-out phone gets a
-   * SUPPRESSED conflict; a lead with an open conversation gets an ACTIVE conflict naming it.
+   * SUPPRESSED conflict; a lead with an open conversation gets an ACTIVE conflict naming it, and
+   * one whose last conversation ended ABUSIVE an ABUSIVE conflict naming that, so only a deliberate
+   * {@link #forceStart} texts them again.
    */
   public TurnResponse start(String leadId) {
     Lead lead = requireLead(leadId);
@@ -81,20 +83,32 @@ public class ConversationService {
   }
 
   /**
-   * Like {@link #start}, but opens a second conversation beside an open one. An opted-out phone is
-   * still refused: nothing overrides an opt-out.
+   * Like {@link #start}, but opens a second conversation beside an open one, or after an abusive
+   * end. An opted-out phone is still refused: nothing overrides an opt-out.
    */
   public TurnResponse forceStart(String leadId) {
     Lead lead = requireLead(leadId);
     return locks.forLead(leadId, () -> tx.execute(_ -> openUnlessSuppressed(lead)));
   }
 
-  /** The conversation as it stands: state plus transcript, with no reply. */
+  /**
+   * The conversation as it stands: state plus transcript, with no reply. Bodies from a turn that
+   * carried health information on are hidden.
+   */
   @Transactional(readOnly = true)
   public TurnResponse view(String conversationId) {
     return TurnResponse.of(
         conversations.require(conversationId),
         null,
+        messages.transcript(conversationId),
+        clock.instant());
+  }
+
+  /** Like {@link #view}, with every body shown, health information included. */
+  @Transactional(readOnly = true)
+  public TurnResponse viewWithHealth(String conversationId) {
+    return TurnResponse.withHealth(
+        conversations.require(conversationId),
         messages.transcript(conversationId),
         clock.instant());
   }
@@ -106,6 +120,7 @@ public class ConversationService {
   private TurnResponse openIfNoneOpen(Lead lead) {
     rejectIfSuppressed(lead);
     rejectIfOpen(lead);
+    rejectIfLastEndedAbusive(lead);
     return open(lead);
   }
 
@@ -127,6 +142,19 @@ public class ConversationService {
             open -> {
               throw new ConflictException(
                   "ACTIVE", "lead " + lead.id() + " has an active conversation", open.id);
+            });
+  }
+
+  private void rejectIfLastEndedAbusive(Lead lead) {
+    conversations
+        .findLatestByLead(lead.id())
+        .filter(latest -> latest.endReason == EndReason.ABUSIVE)
+        .ifPresent(
+            abusive -> {
+              throw new ConflictException(
+                  "ABUSIVE",
+                  "lead " + lead.id() + "'s last conversation ended abusive",
+                  abusive.id);
             });
   }
 

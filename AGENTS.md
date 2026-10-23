@@ -32,8 +32,8 @@ Root `com.enrola.anna`. Feature packages arrive with their features and stay fla
 `guard`, `scheduling`, `prompt`, `config`, `web`. Tests mirror main; the eval harness goes in
 `src/test/java/com/enrola/anna/eval`. No `common`, `util`, `core` or `shared` package, ever; a helper belongs to the
 feature that first needed it.
-Dependencies point one way: `conversation` to `agent`, and `conversation` to `guard` to `lead`; `agent` and `guard`
-never import `conversation`.
+Dependencies point one way: `conversation` to `agent` and `guard`, and `guard` to `agent` and `lead`; `agent` and
+`guard` never import `conversation`, so a guard takes plain values, never the conversation entity.
 
 ## Running the gates
 

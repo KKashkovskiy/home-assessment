@@ -70,10 +70,11 @@ class ApiErrors {
     return validation(message);
   }
 
+  /** Query and path parameters are named as on the wire already. */
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   @ResponseStatus(HttpStatus.BAD_REQUEST)
   ApiError wrongParameterType(MethodArgumentTypeMismatchException e) {
-    return validation(wireName(e.getName()) + " has the wrong type");
+    return validation(e.getName() + " has the wrong type");
   }
 
   @ExceptionHandler(HttpMessageNotReadableException.class)

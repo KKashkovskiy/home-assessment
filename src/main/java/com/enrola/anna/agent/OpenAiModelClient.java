@@ -2,10 +2,8 @@ package com.enrola.anna.agent;
 
 import com.enrola.anna.agent.ModelResponse.Failure;
 import com.enrola.anna.agent.ModelResponse.Usage;
-import com.enrola.anna.config.AgentProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.JsonValue;
 import com.openai.core.ObjectMappers;
 import com.openai.errors.OpenAIException;
@@ -26,7 +24,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -37,29 +34,21 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The Responses API over openai-java, stateless: {@code store} false, no previous response id, the
  * whole transcript supplied by the caller on every call, the output held to a strict JSON schema.
- * Exists only when {@code OPENAI_API_KEY} is set; the key travels as a header and is never part of
- * the recorded request JSON. The SDK retries timeouts and 5xx; whatever is left after that becomes
- * a {@link ModelResponse.Failed}.
+ * Exists only when {@code OPENAI_API_KEY} is set, over the shared {@link OpenAiClientConfig}
+ * client; the key travels as a header and is never part of the recorded request JSON. The SDK
+ * retries timeouts and 5xx; whatever is left after that becomes a {@link ModelResponse.Failed}.
  */
 @Component
-@ConditionalOnExpression(OpenAiModelClient.WHEN_KEY_SET)
+@ConditionalOnExpression(OpenAiClientConfig.WHEN_KEY_SET)
 public final class OpenAiModelClient implements ModelClient {
-
-  /** The condition for the beans that talk to OpenAI: {@code OPENAI_API_KEY} is set. */
-  public static final String WHEN_KEY_SET = "!'${OPENAI_API_KEY:}'.isBlank()";
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
   private static final TypeReference<Map<String, Object>> OBJECT = new TypeReference<>() {};
 
   private final OpenAIClient client;
 
-  public OpenAiModelClient(@Value("${OPENAI_API_KEY}") String apiKey, AgentProperties agent) {
-    this.client =
-        OpenAIOkHttpClient.builder()
-            .apiKey(apiKey)
-            .timeout(agent.timeout())
-            .maxRetries(agent.maxRetries())
-            .build();
+  public OpenAiModelClient(OpenAIClient client) {
+    this.client = client;
   }
 
   @Override

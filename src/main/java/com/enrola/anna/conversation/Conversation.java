@@ -15,8 +15,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * One SMS conversation with one lead: the aggregate every turn updates. A row with public fields,
- * not a bean with invariants; {@link ConversationService}, {@link InboundTurns} and {@link
- * DecisionApplier} change it, and {@link StateRules} alone sets its terminal and handoff fields.
+ * not a bean with invariants; {@link ConversationService} creates it, the steps of {@link
+ * TurnPipeline} change it, and {@link StateRules} alone sets its terminal and handoff fields.
  */
 public class Conversation {
 
@@ -59,6 +59,17 @@ public class Conversation {
 
   /** The model's latest one-line summary for the advisor. */
   public String summary;
+
+  // Counts only code moves; the model reads them in the turn context. Agent turns are the
+  // messages sent after the opener, post-terminal replies those sent on or after the turn that
+  // ended it.
+  public int objectionsUsed;
+  public int offTopicStreak;
+  public int agentTurns;
+  public int postTerminalReplies;
+
+  /** The turn that first carried HEALTH_INFO, null before; bodies from it on are hidden. */
+  public Integer healthInfoTurn;
 
   public Instant createdAt;
   public Instant updatedAt;

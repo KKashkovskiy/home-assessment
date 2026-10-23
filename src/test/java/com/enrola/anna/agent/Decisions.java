@@ -32,6 +32,8 @@ public final class Decisions {
 
   /** Mutable, test scope only. */
   public static final class Builder {
+    private LeadIntent leadIntent = LeadIntent.ENGAGED;
+    private ObjectionType objectionType = ObjectionType.NONE;
     private Stage stage = Stage.ENGAGE;
     private List<Flag> flags = List.of();
     private Decision.Extracted extracted =
@@ -42,6 +44,18 @@ public final class Decisions {
     private boolean goalMet;
     private EndReason endReason = EndReason.NONE;
     private HandoffReason handoffReason = HandoffReason.NONE;
+
+    public Builder intent(LeadIntent value) {
+      leadIntent = value;
+      return this;
+    }
+
+    /** An OBJECTION of {@code value}. */
+    public Builder objection(ObjectionType value) {
+      leadIntent = LeadIntent.OBJECTION;
+      objectionType = value;
+      return this;
+    }
 
     public Builder stage(Stage value) {
       stage = value;
@@ -91,9 +105,9 @@ public final class Decisions {
 
     public Decision build() {
       return new Decision(
-          LeadIntent.ENGAGED,
+          leadIntent,
           stage,
-          ObjectionType.NONE,
+          objectionType,
           flags,
           extracted,
           summary,

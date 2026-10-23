@@ -1,5 +1,6 @@
 package com.enrola.anna.agent;
 
+import com.enrola.anna.config.LimitsProperties;
 import com.enrola.anna.lead.Lead;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -16,7 +17,7 @@ public record TurnContext(
     Lead lead,
     ZonedDateTime leadNow,
     Counters counters,
-    Limits limits,
+    LimitsProperties limits,
     String bookingLabel,
     List<String> lastOfferedSlots,
     boolean ended,
@@ -25,9 +26,6 @@ public record TurnContext(
   /** How much of each allowance this conversation has used. */
   public record Counters(
       int agentTurns, int objectionsUsed, int offTopicStreak, int postTerminalReplies) {}
-
-  /** The allowances the prompt counts against. */
-  public record Limits(int maxTurns, int objectionRetries, int offTopicLimit) {}
 
   private static final DateTimeFormatter NOW =
       DateTimeFormatter.ofPattern("EEEE d MMMM yyyy, h:mm a z", Locale.UK);

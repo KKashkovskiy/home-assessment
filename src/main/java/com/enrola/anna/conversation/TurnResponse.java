@@ -4,6 +4,7 @@ import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.Stage;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -14,7 +15,9 @@ import tools.jackson.databind.JsonNode;
 /**
  * API response for every conversation call: one shape, snake_case on the wire by the app's Jackson
  * setting. Fields with nothing to report ({@code booking}, {@code extracted}) are null, not absent,
- * so the platform parses one contract. {@code trace_url} is the conversation's page path.
+ * so the platform parses one contract. {@code trace_url} is the conversation's page path. Once a
+ * turn carried health information, message bodies from that turn on are hidden unless asked for;
+ * {@code reply} is always what is to be sent.
  */
 public record TurnResponse(
     String conversationId,
@@ -34,9 +37,18 @@ public record TurnResponse(
     String traceUrl,
     List<MessageView> transcript) {
 
-  /** One transcript line. */
+  /**
+   * One transcript line. A hidden body has {@code text} null and {@code redacted} naming the flag
+   * that hid it; {@code redacted} is absent when the body is shown.
+   */
   public record MessageView(
-      int turn, Direction direction, String text, int chars, MessageSource source, Instant at) {
+      int turn,
+      Direction direction,
+      String text,
+      int chars,
+      MessageSource source,
+      Instant at,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String redacted) {
 
     static MessageView of(Message message) {
       return new MessageView(
@@ -45,7 +57,19 @@ public record TurnResponse(
           message.text(),
           message.charCount(),
           message.source(),
-          message.createdAt());
+          message.createdAt(),
+          null);
+    }
+
+    static MessageView hidden(Message message) {
+      return new MessageView(
+          message.turnNo(),
+          message.direction(),
+          null,
+          message.charCount(),
+          message.source(),
+          message.createdAt(),
+          Flag.HEALTH_INFO.name());
     }
   }
 
@@ -56,8 +80,30 @@ public record TurnResponse(
   private static final DateTimeFormatter LEAD_LOCAL_TIME =
       DateTimeFormatter.ofPattern("EEE d MMM h:mm a z", Locale.ENGLISH);
 
+  /** Bodies from the conversation's HEALTH_INFO turn on are hidden. */
   static TurnResponse of(
       Conversation conversation, String reply, List<Message> transcript, Instant now) {
+    Integer hiddenFrom = conversation.healthInfoTurn;
+    return build(
+        conversation,
+        reply,
+        transcript.stream()
+            .map(
+                message ->
+                    hiddenFrom != null && message.turnNo() >= hiddenFrom
+                        ? MessageView.hidden(message)
+                        : MessageView.of(message))
+            .toList(),
+        now);
+  }
+
+  /** Every body shown, health information included; there is no reply. */
+  static TurnResponse withHealth(Conversation conversation, List<Message> transcript, Instant now) {
+    return build(conversation, null, transcript.stream().map(MessageView::of).toList(), now);
+  }
+
+  private static TurnResponse build(
+      Conversation conversation, String reply, List<MessageView> transcript, Instant now) {
     return new TurnResponse(
         conversation.id,
         reply,
@@ -74,6 +120,6 @@ public record TurnResponse(
         conversation.extracted(),
         now.atZone(ZoneId.of(conversation.leadZoneId)).format(LEAD_LOCAL_TIME),
         "/conversations/" + conversation.id,
-        transcript.stream().map(MessageView::of).toList());
+        transcript);
   }
 }

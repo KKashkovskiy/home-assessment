@@ -24,7 +24,14 @@ public final class StopKeywords {
    * and "opt-out" match, "stop texting me" and "Cancel that, Thursday's better" do not.
    */
   public static boolean isStop(String text) {
-    String key = PUNCTUATION_AND_SPACE.matcher(text.toUpperCase(Locale.ROOT)).replaceAll("");
-    return KEYWORDS.contains(key);
+    return KEYWORDS.contains(normalise(text));
+  }
+
+  /**
+   * The text upper-cased with punctuation and spaces removed: what a keyword is matched on, and
+   * what two messages are compared on when one may repeat the other.
+   */
+  public static String normalise(String text) {
+    return PUNCTUATION_AND_SPACE.matcher(text.toUpperCase(Locale.ROOT)).replaceAll("");
   }
 }

@@ -56,7 +56,42 @@ stored, `needs_human` is set with `handoff_reason` `ERROR`, nothing is sent and 
 A whole message of STOP, STOPALL, UNSUBSCRIBE, OPTOUT, CANCEL, END or QUIT, ignoring case, punctuation and spaces,
 ends the conversation `UNSUBSCRIBED`, returns the fixed confirmation and suppresses the phone: every later start for
 it answers 409 `SUPPRESSED`, forced or not, and later messages on any of its conversations are stored without a
-reply.
+reply, save the safety template below.
+
+Every inbound passes these guards before the model sees it, and every rule about how a conversation ends and stays
+ended is code, not prompt. With a key, OpenAI's moderations endpoint screens each message but a STOP first, with its
+own timeout (`anna.moderation.timeout`, 5 seconds, no retry); when it fails, or there is no key, the turn goes on and
+the trace says moderation was unavailable. The checks run in this order and the first that matches decides the
+turn; the rows after the call act on the model's decision.
+
+| Check | What happens |
+|---|---|
+| Whole-message STOP keyword | ends `UNSUBSCRIBED`, suppresses the phone, sends the confirmation, even after another end; a repeat is silent |
+| Moderation self-harm score at or above `anna.moderation.self-harm` | the Lifeline template once per conversation, flag `VULNERABLE`, handoff `SELF_HARM`; ends `SAFETY`, or after a hard end adds `SAFETY` to the history only |
+| Ended hard: `UNSUBSCRIBED`, `ABUSIVE`, `SAFETY`, `OFF_TOPIC_LIMIT` | stored, no model call, no reply |
+| Moderation harassment or threat score at or above its threshold | ends `ABUSIVE`, no reply, no model call |
+| No key, or spend at `anna.budgets.app-cap-usd` or `conversation-cap-usd` | no model call, `needs_human` with `ERROR`, stays open |
+| Ended soft: `BOOKED`, `DECLINED`, `MAX_TURNS`, `HANDOFF` | the model only classifies; RESCHEDULE or HANDOFF_REQUEST gets one `HANDOFF_ACK`, anything else at most one closing reply of 160 characters or fewer with no question mark, then silence flagged `LOOP_SUPPRESSED` |
+| `anna.limits.max-turns` messages sent | `MAX_TURNS_CLOSE`, ends `MAX_TURNS` |
+| After the call: intent OPT_OUT, ABUSIVE or SELF_HARM | the model's reply is discarded for the outcome of the matching row above; an opt-out is suppressed as `MODEL` |
+| After the call: an objection beyond `anna.limits.objection-retries` | `DECLINED_CLOSE`, ends `DECLINED`; busy with a day named is a deferral, not counted |
+| After the call: an OFF_TOPIC or INJECTION streak at `anna.limits.off-topic-limit` | `OFF_TOPIC_CLOSE`, ends `OFF_TOPIC_LIMIT`; a verbatim repeat adds to the streak whatever the model called it |
+| After the call: `send_reply` false before any end | a bad decision: `needs_human` with `ERROR`, no reply |
+
+The model may end a conversation `DECLINED` or `HANDOFF`, and a request for a person or a complaint ends it
+`HANDOFF`; a fixed close or the model's own sign-off is the one closing reply. `goal_met`, `stage: BOOKED` and any
+other end reason from the model are traced as `OVERRIDE` and ignored, because only a booking meets the goal.
+`end_reason` only moves up, `UNSUBSCRIBED` over `SAFETY` over `ABUSIVE` over the rest, and every transition stays in
+`end_reason_history`; `needs_human` is sticky and `handoff_reason` is the latest. Spend is the sum of `turn.cost_usd`.
+A lead whose last conversation ended `ABUSIVE` gets 409 `ABUSIVE` on a plain start; only `?force=true` texts them
+again. Moderation and the pre-guards write a `GUARD` trace event every turn, pass or not, the checks after the call
+write one when they act, and each turn ends with a `STATE_DIFF` event naming the fields it changed. One gap is known:
+while moderation is down, a self-harm message after a hard end gets silence, because the model is never asked on a
+hard-terminal conversation.
+
+Once a turn carries health information, message bodies from that turn on come back as `null` with
+`"redacted": "HEALTH_INFO"`, unless the GET asks with `?includeHealth=true`.
+
 A message for a conversation that is mid-turn waits two seconds, then gets 409 `BUSY`. Conversations, turns and
 suppressions are rows, so a restart loses nothing.
 

@@ -3,6 +3,7 @@ package com.enrola.anna.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.config.AgentProperties;
+import com.openai.client.OpenAIClient;
 import com.openai.core.ObjectMappers;
 import com.openai.core.http.Headers;
 import com.openai.errors.BadRequestException;
@@ -179,7 +180,8 @@ class OpenAiModelClientTest {
                 AgentProperties.class,
                 () ->
                     new AgentProperties("gpt-5.1", null, null, Duration.ofSeconds(1), 0, 16, false))
-            .withUserConfiguration(OpenAiModelClient.class, ModelCheck.class);
+            .withUserConfiguration(
+                OpenAiClientConfig.class, OpenAiModelClient.class, ModelCheck.class);
 
     runner
         .withPropertyValues("OPENAI_API_KEY=sk-test")
@@ -193,6 +195,7 @@ class OpenAiModelClientTest {
         .run(
             context ->
                 assertThat(context)
+                    .doesNotHaveBean(OpenAIClient.class)
                     .doesNotHaveBean(ModelClient.class)
                     .doesNotHaveBean(ModelCheck.class));
   }

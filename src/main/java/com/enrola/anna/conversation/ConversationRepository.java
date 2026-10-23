@@ -13,6 +13,10 @@ public interface ConversationRepository extends CrudRepository<Conversation, Str
           + " order by created_at desc limit 1")
   Optional<Conversation> findOpenByLead(String leadId);
 
+  /** The lead's newest conversation, open or ended. */
+  @Query("select * from conversation where lead_id = :leadId order by created_at desc limit 1")
+  Optional<Conversation> findLatestByLead(String leadId);
+
   /** The conversation, or {@link NotFoundException} naming the id. */
   default Conversation require(String id) {
     return findById(id).orElseThrow(() -> new NotFoundException("conversation", id));

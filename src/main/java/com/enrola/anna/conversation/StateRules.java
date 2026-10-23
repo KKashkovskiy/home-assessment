@@ -8,23 +8,16 @@ import java.util.List;
 
 /**
  * The conversation's state machine: the only code that sets {@code ended}, {@code endReason},
- * {@code status} after start, {@code unsubscribed}, {@code needsHuman} and {@code handoffReason}.
- * Every switch lists every constant, so a new reason fails to compile until it is placed.
+ * {@code status} after start, {@code unsubscribed}, {@code needsHuman} and {@code handoffReason},
+ * and the rules for what may follow an end. Every switch lists every constant, so a new reason
+ * fails to compile until it is placed.
  */
 final class StateRules {
 
-  private StateRules() {}
+  /** The one closing reply after a soft-terminal end fits a single segment and asks nothing. */
+  private static final int CLOSING_REPLY_MAX_CHARS = 160;
 
-  /**
-   * True when later inbound messages are stored and never answered: the lead opted out, was
-   * abusive, needs safety resources, or kept going off topic.
-   */
-  static boolean isHardTerminal(EndReason reason) {
-    return switch (reason) {
-      case UNSUBSCRIBED, ABUSIVE, SAFETY, OFF_TOPIC_LIMIT -> true;
-      case NONE, BOOKED, DECLINED, MAX_TURNS, HANDOFF -> false;
-    };
-  }
+  private StateRules() {}
 
   /**
    * Ends the conversation with {@code reason} unless the current reason ranks the same or higher,
@@ -41,9 +34,23 @@ final class StateRules {
     conversation.endReason = reason;
     conversation.status = statusOf(reason);
     conversation.unsubscribed = reason == EndReason.UNSUBSCRIBED;
-    List<EndReasonEntry> history = new ArrayList<>(conversation.endReasonHistory());
-    history.add(new EndReasonEntry(reason, at));
-    conversation.setEndReasonHistory(history);
+    appendHistory(conversation, reason, at);
+  }
+
+  /**
+   * Hands off SELF_HARM and ends SAFETY. After a hard-terminal end the end reason stays and SAFETY
+   * is only added to the history, but the handoff happens even on an unsubscribed conversation, the
+   * one place that ignores the opt-out: safety beats silence.
+   */
+  static void safety(Conversation conversation, Instant at) {
+    if (conversation.endReason.isHardTerminal()) {
+      appendHistory(conversation, EndReason.SAFETY, at);
+      conversation.needsHuman = true;
+      conversation.handoffReason = HandoffReason.SELF_HARM;
+      return;
+    }
+    handoff(conversation, HandoffReason.SELF_HARM);
+    end(conversation, EndReason.SAFETY, at);
   }
 
   /**
@@ -65,6 +72,13 @@ final class StateRules {
     }
   }
 
+  /** True while no closing reply has gone out and {@code reply} is short and asks nothing. */
+  static boolean closingReplyAllowed(Conversation conversation, String reply) {
+    return conversation.postTerminalReplies == 0
+        && reply.length() <= CLOSING_REPLY_MAX_CHARS
+        && !reply.contains("?");
+  }
+
   /** UNSUBSCRIBED over SAFETY over ABUSIVE over the rest. */
   private static int rank(EndReason reason) {
     return switch (reason) {
@@ -74,6 +88,12 @@ final class StateRules {
       case SAFETY -> 3;
       case UNSUBSCRIBED -> 4;
     };
+  }
+
+  private static void appendHistory(Conversation conversation, EndReason reason, Instant at) {
+    List<EndReasonEntry> history = new ArrayList<>(conversation.endReasonHistory());
+    history.add(new EndReasonEntry(reason, at));
+    conversation.setEndReasonHistory(history);
   }
 
   private static ConversationStatus statusOf(EndReason reason) {

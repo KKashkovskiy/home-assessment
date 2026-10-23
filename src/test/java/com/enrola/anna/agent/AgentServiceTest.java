@@ -3,6 +3,7 @@ package com.enrola.anna.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.config.AgentProperties;
+import com.enrola.anna.config.LimitsProperties;
 import com.enrola.anna.config.PersonaProperties;
 import com.enrola.anna.config.SmsProperties;
 import com.enrola.anna.lead.Lead;
@@ -43,7 +44,7 @@ class AgentServiceTest {
               Instant.EPOCH),
           Instant.parse("2026-07-26T00:00:00Z").atZone(ZoneId.of("Australia/Melbourne")),
           new TurnContext.Counters(0, 0, 0, 0),
-          new TurnContext.Limits(15, 1, 3),
+          new LimitsProperties(15, 3, 1),
           null,
           List.of(),
           false,

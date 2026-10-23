@@ -11,7 +11,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-/** Terminal precedence and handoff stickiness on a fresh, open conversation. */
+/**
+ * Terminal precedence, handoff stickiness, safety after an end and the closing-reply rule, from a
+ * fresh, open conversation.
+ */
 class StateRulesTest {
 
   static final Instant T1 = Instant.parse("2026-07-26T00:00:00Z");
@@ -70,22 +73,6 @@ class StateRulesTest {
     assertThat(conversation.endReason).isEqualTo(EndReason.UNSUBSCRIBED);
   }
 
-  @ParameterizedTest(name = "{0} hard-terminal: {1}")
-  @CsvSource({
-    "NONE,            false",
-    "BOOKED,          false",
-    "DECLINED,        false",
-    "UNSUBSCRIBED,    true",
-    "ABUSIVE,         true",
-    "OFF_TOPIC_LIMIT, true",
-    "MAX_TURNS,       false",
-    "HANDOFF,         false",
-    "SAFETY,          true"
-  })
-  void hardTerminalReasonsSilenceLaterMessages(EndReason reason, boolean hardTerminal) {
-    assertThat(StateRules.isHardTerminal(reason)).isEqualTo(hardTerminal);
-  }
-
   @Test
   void endNoneIsRejected() {
     assertThatIllegalArgumentException()
@@ -119,6 +106,58 @@ class StateRulesTest {
 
     assertThat(conversation.needsHuman).isFalse();
     assertThat(conversation.handoffReason).isEqualTo(HandoffReason.NONE);
+  }
+
+  @Test
+  void safetyOnAnOpenConversationEndsSafetyAndHandsOff() {
+    StateRules.safety(conversation, T1);
+
+    assertThat(conversation.endReason).isEqualTo(EndReason.SAFETY);
+    assertThat(conversation.needsHuman).isTrue();
+    assertThat(conversation.handoffReason).isEqualTo(HandoffReason.SELF_HARM);
+  }
+
+  /** Safety beats silence: an opted-out lead is still handed off, and stays opted out. */
+  @Test
+  void safetyAfterStopKeepsTheEndAndHandsOff() {
+    StateRules.end(conversation, EndReason.UNSUBSCRIBED, T1);
+
+    StateRules.safety(conversation, T2);
+
+    assertThat(conversation.endReason).isEqualTo(EndReason.UNSUBSCRIBED);
+    assertThat(conversation.unsubscribed).isTrue();
+    assertThat(conversation.status).isEqualTo(ConversationStatus.UNSUBSCRIBED);
+    assertThat(conversation.endReasonHistory())
+        .containsExactly(
+            new EndReasonEntry(EndReason.UNSUBSCRIBED, T1),
+            new EndReasonEntry(EndReason.SAFETY, T2));
+    assertThat(conversation.needsHuman).isTrue();
+    assertThat(conversation.handoffReason).isEqualTo(HandoffReason.SELF_HARM);
+  }
+
+  @Test
+  void safetyAfterASoftEndEndsSafety() {
+    StateRules.end(conversation, EndReason.DECLINED, T1);
+
+    StateRules.safety(conversation, T2);
+
+    assertThat(conversation.endReason).isEqualTo(EndReason.SAFETY);
+    assertThat(conversation.handoffReason).isEqualTo(HandoffReason.SELF_HARM);
+  }
+
+  @ParameterizedTest(name = "{1} chars, \"?\" {2}, {0} sent before: {3}")
+  @CsvSource({
+    "0, 160, false, true",
+    "0, 161, false, false",
+    "0, 120, true,  false",
+    "1, 20,  false, false"
+  })
+  void closingReplyIsOneShortStatement(
+      int sentBefore, int length, boolean question, boolean allowed) {
+    conversation.postTerminalReplies = sentBefore;
+    String reply = question ? "?".repeat(length) : "x".repeat(length);
+
+    assertThat(StateRules.closingReplyAllowed(conversation, reply)).isEqualTo(allowed);
   }
 
   @Test

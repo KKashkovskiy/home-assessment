@@ -11,9 +11,13 @@ import org.springframework.data.domain.Persistable;
 public record Suppression(@Id String phone, Reason reason, String leadId, Instant createdAt)
     implements Persistable<String> {
 
-  /** How the opt-out was recognised. KEYWORD: a whole-message STOP keyword. */
+  /**
+   * How the opt-out was recognised. KEYWORD: a whole-message STOP keyword. MODEL: the model read an
+   * opt-out in the lead's own words.
+   */
   public enum Reason {
-    KEYWORD
+    KEYWORD,
+    MODEL
   }
 
   @Override
