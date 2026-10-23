@@ -14,11 +14,13 @@ import com.enrola.anna.scheduling.LeadZones;
 import com.enrola.anna.scheduling.ToolResult;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalDouble;
 import org.springframework.stereotype.Component;
 
 /**
@@ -397,6 +399,11 @@ public class ViewFormats {
     };
   }
 
+  /** "Australia/Melbourne": the zone the console's days and times are in. */
+  public String advisorZone() {
+    return settings.current().scheduling().advisorZone().getId();
+  }
+
   /** "26 Jul 10:00" in the advisors' zone, for the list's activity column. */
   public String when(Instant at) {
     return WHEN.format(at.atZone(settings.current().scheduling().advisorZone()));
@@ -437,5 +444,169 @@ public class ViewFormats {
   /** An enum name for people: underscores become spaces. */
   public String words(Enum<?> value) {
     return value.name().replace('_', ' ');
+  }
+
+  /**
+   * "stage: OFFER TIMES", "needs human: yes", "started from 17 Oct 00:14": a list filter's chip.
+   */
+  public String chip(ConversationFilter.Chip chip) {
+    String label = chip.param().label();
+    return switch (chip.value()) {
+      case Instant at -> label + " " + when(at);
+      case Boolean yes -> label + ": " + yesNo(yes);
+      case Enum<?> value -> label + ": " + words(value);
+      default -> label + ": " + chip.value();
+    };
+  }
+
+  public List<AnalyticsFilter.Range> ranges() {
+    return List.of(AnalyticsFilter.Range.values());
+  }
+
+  /** "last 7 days": a range as its select and the n-line name it. */
+  public String range(AnalyticsFilter.Range range) {
+    return switch (range) {
+      case LAST_24H -> "last 24 hours";
+      case LAST_7D -> "last 7 days";
+      case LAST_30D -> "last 30 days";
+      case ALL -> "all time";
+    };
+  }
+
+  /** "n = 6 conversations, last 7 days from 19 Jul 10:00, prompt v2, SIM": what the page counts. */
+  public String nLine(AnalyticsPage page) {
+    AnalyticsFilter filter = page.filter();
+    StringBuilder line =
+        new StringBuilder("n = ")
+            .append(count(page.view().started(), "conversation"))
+            .append(", ")
+            .append(range(filter.range()));
+    if (page.view().since() != null) {
+      line.append(" from ").append(when(page.view().since()));
+    }
+    if (filter.promptVersion() != null) {
+      line.append(", prompt ").append(filter.promptVersion());
+    }
+    if (filter.source() != null) {
+      line.append(", ").append(filter.source());
+    }
+    if (filter.model() != null) {
+      line.append(", ").append(filter.model());
+    }
+    return line.toString();
+  }
+
+  /**
+   * A figure as its tile shows it: "83.3%", "1", "$0.0233", "15m 0s", "2.3 s", "5.0"; "n/a" with
+   * nothing to measure it on.
+   */
+  public String kpi(Kpi kpi) {
+    OptionalDouble value = kpi.value();
+    if (value.isEmpty()) {
+      return "n/a";
+    }
+    return switch (kpi.unit()) {
+      case RATE -> String.format(Locale.ENGLISH, "%.1f%%", value.getAsDouble() * 100);
+      case COUNT -> Long.toString(kpi.numerator());
+      case USD -> cost(BigDecimal.valueOf(value.getAsDouble()));
+      case SECONDS -> duration(kpi.numerator());
+      case MILLIS -> latency(kpi.numerator());
+      case TURNS -> String.format(Locale.ENGLISH, "%.1f", value.getAsDouble());
+    };
+  }
+
+  /**
+   * A figure as the comparison shows it: a count per {@link CompareView#PER} conversations started,
+   * "4.3 per 100", so it reads in the unit its change does; anything else as its tile.
+   */
+  public String compared(Kpi kpi) {
+    if (kpi.unit() != Kpi.Unit.COUNT) {
+      return kpi(kpi);
+    }
+    OptionalDouble per = CompareView.compared(kpi);
+    return per.isEmpty()
+        ? "n/a"
+        : String.format(Locale.ENGLISH, "%.1f per %d", per.getAsDouble(), CompareView.PER);
+  }
+
+  /**
+   * What a figure is out of: "5 of 6", "2 turns in 6 conversations", "$0.1400 over 6", "median of
+   * 2", "nearest rank of 13 model turns".
+   */
+  public String fraction(Kpi kpi) {
+    return switch (kpi.unit()) {
+      case RATE -> kpi.numerator() + " of " + kpi.denominator();
+      case COUNT ->
+          count(kpi.numerator(), "turn") + " in " + count(kpi.denominator(), "conversation");
+      case USD -> cost(inDollars(kpi.numerator())) + " over " + kpi.denominator();
+      case SECONDS, TURNS -> "median of " + kpi.denominator();
+      case MILLIS -> "nearest rank of " + count(kpi.denominator(), "model turn");
+    };
+  }
+
+  /** A {@link Kpi}'s money integer back in dollars. */
+  private static BigDecimal inDollars(long usdUnits) {
+    return BigDecimal.valueOf(usdUnits).divide(BigDecimal.valueOf(Kpi.USD_SCALE));
+  }
+
+  /** "45 s", "15m 0s", "2h 5m", "3d 4h": a wait in its two largest units. */
+  public String duration(long seconds) {
+    Duration wait = Duration.ofSeconds(seconds);
+    if (seconds < 60) {
+      return seconds + " s";
+    }
+    if (seconds < 3600) {
+      return wait.toMinutesPart() + "m " + wait.toSecondsPart() + "s";
+    }
+    if (seconds < 86_400) {
+      return wait.toHoursPart() + "h " + wait.toMinutesPart() + "m";
+    }
+    return wait.toDaysPart() + "d " + wait.toHoursPart() + "h";
+  }
+
+  /** "+20.0 pts better", "no change", "n/a": how a figure moved from one version to the other. */
+  public String delta(CompareView.Row row) {
+    return switch (row.verdict()) {
+      case NOT_COMPARABLE -> "n/a";
+      case SAME -> "no change";
+      case BETTER -> change(row) + " better";
+      case WORSE -> change(row) + " worse";
+    };
+  }
+
+  /**
+   * Better is green and worse red, whichever way the figure moved; under the low n line both stay
+   * plain, since the words already say it is only a direction.
+   */
+  public String deltaClass(CompareView.Row row) {
+    if (row.lowN()) {
+      return "num delta flat";
+    }
+    return switch (row.verdict()) {
+      case BETTER -> "num delta up";
+      case WORSE -> "num delta down";
+      case SAME, NOT_COMPARABLE -> "num delta flat";
+    };
+  }
+
+  /**
+   * "+20.0 pts", "−$0.0100", "+1.0 per 100", "−1.6 s": the change in the unit the row compares in,
+   * a latency in seconds once either side reads in seconds.
+   */
+  private String change(CompareView.Row row) {
+    double size = Math.abs(row.change());
+    String magnitude =
+        switch (row.a().unit()) {
+          case RATE -> String.format(Locale.ENGLISH, "%.1f pts", size * 100);
+          case COUNT -> String.format(Locale.ENGLISH, "%.1f per %d", size, CompareView.PER);
+          case USD -> cost(BigDecimal.valueOf(size));
+          case SECONDS -> duration(Math.round(size));
+          case MILLIS ->
+              row.inSeconds()
+                  ? String.format(Locale.ENGLISH, "%.1f s", size / 1000)
+                  : latency(Math.round(size));
+          case TURNS -> String.format(Locale.ENGLISH, "%.1f turns", size);
+        };
+    return (row.change() > 0 ? "+" : "−") + magnitude;
   }
 }

@@ -1,7 +1,8 @@
 /* Anna console. The server renders every page and fragment; this script adds the theme toggle, the status strip's
    test controls posting on change, the start panel as a dialog, filters that apply on change, the composer's
-   optimistic send, the inspector's toggles, prompt dialog and live log, and Monaco over the prompt editor's form.
-   Every action is also a plain form post or link, so the console works without it. */
+   optimistic send, the inspector's toggles, prompt dialog and live log, Monaco over the prompt editor's form, and
+   the analytics charts over their tables. Every action is also a plain form post or link, so the console works
+   without it. */
 (function () {
   'use strict';
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -66,10 +67,15 @@
   }
 
   function applyFilters(form) {
+    const query = queryOf(form);
+    location.assign(form.action + (query ? '?' + query : ''));
+  }
+
+  /* A form's fields as a query string, leaving out the empty ones. */
+  function queryOf(form) {
     const params = new URLSearchParams();
     new FormData(form).forEach((value, key) => { if (value) params.append(key, value); });
-    const query = params.toString();
-    location.assign(form.action + (query ? '?' + query : ''));
+    return params.toString();
   }
 
   /* ---------- Start panel ---------- */
@@ -491,6 +497,145 @@
     editor.diffModels = [];
   }
 
+  /* ---------- Analytics ---------- */
+
+  /* The server renders the tiles, every chart's table and the comparison. This draws each chart from the rows
+     /analytics/data.json gives for the same filter, in one hue with the booked-anyway part in the second, and puts
+     the table one click away. Without the script, or when the data does not load, the tables stay. */
+  function initAnalytics() {
+    const panels = $$('.chart-panel');
+    if (!panels.length) return;
+    request('/analytics/data.json' + location.search)
+      .then(({ ok, body }) => { if (!ok) throw new Error('chart data failed'); return JSON.parse(body).charts; })
+      .then((charts) => panels.forEach((panel) => drawPanel(panel, charts[$('.chart', panel).dataset.chart])))
+      .catch(() => { /* the tables the server rendered stay */ });
+    document.addEventListener('mousemove', moveTooltip);
+    initCompare();
+  }
+
+  /* How each chart draws, by its data-chart key: bars with an optional share of the first bar and a booked part,
+     or a line whose axis reads in dollars or seconds to the step's precision. */
+  const CHARTS = {
+    funnel: (rows, width) => hbars(rows, width, { share: true }),
+    endReasons: (rows, width) => hbars(rows, width, {}),
+    objections: (rows, width) => hbars(rows, width, {}),
+    cost: (rows, width) => lines(rows, width, (v, digits) => '$' + v.toFixed(digits)),
+    latency: (rows, width) => lines(rows, width, (v, digits) => v.toFixed(digits) + ' s'),
+  };
+
+  /* The chart is drawn at its box's width, so its text stays at its set size on a phone as on a wide screen, and
+     is named by its panel's heading. */
+  function drawPanel(panel, rows) {
+    if (!rows || !rows.length) return;
+    const box = $('.chart', panel);
+    const toggle = $('.segmented', panel);
+    setView(panel, 'chart');
+    const style = getComputedStyle(box);
+    const width = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    box.innerHTML = CHARTS[box.dataset.chart](rows, Math.max(280, Math.round(width)));
+    $('svg', box).setAttribute('aria-labelledby', panel.getAttribute('aria-labelledby'));
+    toggle.hidden = false;
+    $$('button', toggle).forEach((button) => button.addEventListener('click', () => setView(panel, button.dataset.view)));
+  }
+
+  function setView(panel, view) {
+    $$('.segmented button', panel).forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
+    $$('[data-shows]', panel).forEach((el) => { el.hidden = el.dataset.shows !== view; });
+  }
+
+  const esc = (text) => String(text == null ? '' : text)
+    .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const tip = (row) => row.label + ': ' + row.shown + (row.note ? ', ' + row.note : '');
+
+  /* What a bar says at its end: the value, its share of the first bar (the funnel's started), the booked part. */
+  function barLabel(row, first, opts) {
+    const share = opts.share && first ? ' (' + Math.round(row.value / first * 100) + '%)' : '';
+    return row.shown + share + (row.segment != null ? ', ' + row.segment + ' booked' : '');
+  }
+
+  /* Horizontal bars over rows {label, value, segment, shown, note, href}, each a link to its conversations; the
+     segment sits inset inside its bar, so the whole bar stays visible. */
+  function hbars(rows, W, opts) {
+    const max = Math.max(1, ...rows.map((row) => row.value));
+    const LW = Math.min(130, Math.round(W * 0.36)), BH = 22, GAP = 8, INSET = 5;
+    const x = (v) => LW + (v / max) * (W - LW - 110);
+    const bar = (row, i) => {
+      const y = i * (BH + GAP);
+      const segment = row.segment ? `<rect class="bar recovered" x="${LW}" y="${y + INSET}" width="${Math.max(2, x(row.segment) - LW)}" height="${BH - 2 * INSET}" rx="2"/>` : '';
+      return `<a href="${esc(row.href)}" aria-label="${esc(tip(row))}"><g data-tip="${esc(tip(row))}">`
+        + `<text x="${LW - 8}" y="${y + BH / 2 + 4}" text-anchor="end">${esc(row.label)}</text>`
+        + `<rect class="hit" x="0" y="${y}" width="${W}" height="${BH}"/>`
+        + `<rect class="bar" x="${LW}" y="${y}" width="${Math.max(2, x(row.value) - LW)}" height="${BH}" rx="3"/>${segment}`
+        + `<text class="label-value" x="${x(row.value) + 8}" y="${y + BH / 2 + 4}">${esc(barLabel(row, rows[0].value, opts))}</text></g></a>`;
+    };
+    return `<svg viewBox="0 0 ${W} ${rows.length * (BH + GAP)}" role="group">${rows.map(bar).join('')}</svg>`;
+  }
+
+  /* Axis ticks at a 1, 2 or 5 step, with the decimals that step needs. */
+  function ticks(max) {
+    const rough = max / 4;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+    const step = [1, 2, 5, 10].map((m) => m * magnitude).find((candidate) => candidate >= rough);
+    const digits = Math.max(0, -Math.floor(Math.log10(step)));
+    const values = [];
+    for (let v = 0; v <= max + step / 2; v += step) values.push(v);
+    return { values, digits, top: values[values.length - 1] };
+  }
+
+  /* One line over rows {label, value, shown, note}, a row a day; a day with no value breaks the line. fmt labels
+     the axis; day labels thin out to fit. */
+  function lines(rows, W, fmt) {
+    const H = 220, L = 56, R = 16, T = 12, B = 32, n = rows.length;
+    const measured = rows.filter((row) => row.value != null);
+    const axis = ticks(Math.max(...measured.map((row) => row.value)) * 1.1 || 1);
+    const x = (i) => (n === 1 ? (L + W - R) / 2 : L + i * (W - L - R) / (n - 1));
+    const y = (v) => T + (1 - v / axis.top) * (H - T - B);
+    const every = Math.ceil(n / Math.max(2, Math.floor((W - L) / 60)));
+    const grid = axis.values.map((t) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/>`
+      + `<text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${fmt(t, axis.digits)}</text>`).join('');
+    const days = rows.map((row, i) => (i % every ? '' : `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(row.label)}</text>`)).join('');
+    const path = rows.map((row, i) => (row.value == null ? '' : ((i && rows[i - 1].value != null) ? 'L' : 'M') + x(i) + ' ' + y(row.value))).join(' ');
+    const dots = rows.map((row, i) => (row.value == null ? '' : `<g data-tip="${esc(tip(row))}"><circle class="hit" cx="${x(i)}" cy="${y(row.value)}" r="12"/>`
+      + `<circle class="dot" cx="${x(i)}" cy="${y(row.value)}" r="3.5"/></g>`)).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" role="img">${grid}${days}<path class="line" d="${path}"/>${dots}</svg>`;
+  }
+
+  function moveTooltip(e) {
+    const box = $('#tooltip');
+    const target = e.target.closest && e.target.closest('[data-tip]');
+    if (!box) return;
+    box.hidden = !target;
+    if (!target) return;
+    box.textContent = target.dataset.tip;
+    box.style.left = (e.clientX + 12) + 'px';
+    box.style.top = (e.clientY + 12) + 'px';
+  }
+
+  /* A version pick swaps the comparison in place and keeps the pair in the address and the filter form; without
+     the script, or when the swap fails, the form's button reloads the page. */
+  function initCompare() {
+    const form = $('#cmp-form');
+    if (!form) return;
+    $('#cmp-apply').hidden = true;
+    form.addEventListener('change', () => swapCompare(form));
+  }
+
+  function swapCompare(form) {
+    const query = queryOf(form);
+    request('/analytics/compare?' + query)
+      .then(({ ok, body }) => {
+        const fresh = ok ? parseFragment(body) : null;
+        if (!fresh) throw new Error('compare failed');
+        $('#cmp-body').replaceWith(fresh);
+        ['a', 'b'].forEach((name) => { $('#filters [name="' + name + '"]').value = form.elements[name].value; });
+        history.replaceState(null, '', form.action + '?' + query);
+      })
+      .catch(() => {
+        $('#cmp-caption').textContent = 'The comparison did not load. Press Compare to reload the page.';
+        $('#cmp-apply').hidden = false;
+      });
+  }
+
   initTheme();
   initAutosubmit();
   trackChromeHeight();
@@ -501,4 +646,5 @@
   initInspector();
   initPromptDialog();
   initConfiguration();
+  initAnalytics();
 })();

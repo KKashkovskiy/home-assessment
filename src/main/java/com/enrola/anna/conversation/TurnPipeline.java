@@ -146,11 +146,15 @@ class TurnPipeline {
   private ModerationVerdict screen(RunningTurn turn) {
     String text = turn.inbound().text();
     if (StopKeywords.isStop(text)) {
-      guard(turn, "moderation", TraceOutcome.INFO, Map.of("skipped", "STOP"));
+      guard(turn, RoutingGuards.MODERATION, TraceOutcome.INFO, Map.of("skipped", "STOP"));
       return ModerationVerdict.UNAVAILABLE;
     }
     ModerationVerdict verdict = moderation.screen(text);
-    guard(turn, "moderation", verdict.available() ? TraceOutcome.PASS : TraceOutcome.INFO, verdict);
+    guard(
+        turn,
+        RoutingGuards.MODERATION,
+        verdict.available() ? TraceOutcome.PASS : TraceOutcome.INFO,
+        verdict);
     return verdict;
   }
 
@@ -161,7 +165,7 @@ class TurnPipeline {
             .decide(turn.inbound().text(), verdict, standing(turn), modelAccess(turn));
     guard(
         turn,
-        "pre-guards",
+        RoutingGuards.PRE_GUARDS,
         verdictOf(outcome),
         Map.of("outcome", outcome.getClass().getSimpleName(), "detail", outcome));
     return outcome;

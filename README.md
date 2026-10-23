@@ -185,7 +185,7 @@ The schema is a set of Flyway migrations under `src/main/resources/db/migration/
 tables and columns it lacks.
 
 The console is one server-rendered page over the services the API calls, with the markup and stylesheet of the
-clickable prototype; Analytics and Evals are tabs with no page in this build. The left pane lists
+clickable prototype; Evals is a tab with no page in this build. The left pane lists
 conversations, newest activity first, with six filters carried as GET parameters and combined with AND, each shown as
 a chip that removes it, and a search over name, id and summary. The middle pane is the SMS thread: the lead on the
 left, Anna on the right with a `n/320` count and a chip naming what wrote the reply (`TEMPLATE`, `LLM`, `FIXED`, or
@@ -250,6 +250,28 @@ validate or fit the active prompt version's templates is renamed `.bad`, logged,
 as set or not set, and what needs a restart (port, database URL, data directory, the model's and moderation's timeouts
 and retries, the strict model check) is listed read-only. The clock and preset controls in the status strip make the
 same save with one value changed, so the clock badge and the calendar follow from any page.
+
+The Analytics tab is a read-only view over the same rows, read fresh on every load: no table, job or cache feeds
+it. Its tiles are the reply rate, the booking rate of started and of replied, the opt-out rate split into STOP
+keyword and model intent by the suppression's reason, the handoff rate by reason, guardrail violations against a
+target of zero, the median turns to book (the agent's replies up to the turn that booked) and time to book, cost per
+conversation and per booking, turn latency p50 and p95, the error and retry rates, which count turns, and a show rate
+that reads n/a until an advisor outcome feed exists. A conversation the console reset is not a start and never counts.
+A violation is a turn on which a guard caught the model, a failed reply check or a field code overrode, counted once
+per turn; guard rows that only record code choosing a route, such as a STOP or a moderation verdict, are marked
+routing in the guard table and not counted. Every tile prints its numerator and what it is out of, carries a low n
+badge under thirty, labels its target as a hypothesis, and, but for the latency percentiles, links to the
+conversation list filtered to exactly the conversations it counted, the range, source, model and prompt version
+included; those extra filters show in the list as chips, and the list's header counts every match, past the 200 rows
+it shows. The stage funnel (cumulative: a conversation at Offer times passed Call ask), the conversations by state,
+the objections with the part that booked anyway, and cost and latency for every day of the range in the advisors'
+zone are tables the server renders, which the script draws over as SVG charts from `/analytics/data.json`, each with a
+Chart and Table toggle; the guardrail and per-model tables sit beside them. Percentiles are nearest rank and medians
+the mean of the middle pair, computed in Java over the range's rows. Two prompt versions compare face to face on the
+same tiles, a count per 100 conversations, with each change in points or the figure's unit and a better or worse
+that follows the figure's direction, left uncoloured where a base is under thirty; conversations pin their version,
+so each column is a clean cohort, and the eval pass rate row reads "no runs" until the eval harness records one.
+Filters are GET parameters: the range, from the app clock, so a fixed clock moves it, defaults to the last seven days.
 
 ## What Anna does
 

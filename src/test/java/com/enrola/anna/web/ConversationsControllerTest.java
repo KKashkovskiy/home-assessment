@@ -56,7 +56,7 @@ class ConversationsControllerTest extends ConsoleFixture {
       String page = body(mvc.perform(get("/conversations?q=lauren")).andExpect(status().isOk()));
 
       assertThat(rows(page)).isEqualTo(1);
-      assertThat(page).contains("id=\"conv-count\" class=\"muted small\">1 of 2<");
+      assertThat(page).contains("id=\"conv-count\" class=\"muted small\">1 of 1<");
       assertThat(row(page, "Lauren")).contains(">VIC<", ">Engage<", "ACTIVE</span>", ">SIM<");
     }
 
@@ -555,12 +555,9 @@ class ConversationsControllerTest extends ConsoleFixture {
   }
 
   @Test
-  void placeholderTabsRenderInTheShell() throws Exception {
-    for (String tab : new String[] {"analytics", "evals"}) {
-      assertThat(body(mvc.perform(get("/" + tab)).andExpect(status().isOk())))
-          .contains(
-              "href=\"/" + tab + "\" aria-current=\"page\"", "class=\"panel placeholder-panel\"");
-    }
+  void placeholderTabRendersInTheShell() throws Exception {
+    assertThat(body(mvc.perform(get("/evals")).andExpect(status().isOk())))
+        .contains("href=\"/evals\" aria-current=\"page\"", "class=\"panel placeholder-panel\"");
     mvc.perform(get("/"))
         .andExpect(status().is3xxRedirection())
         .andExpect(header().string("Location", "/conversations"));

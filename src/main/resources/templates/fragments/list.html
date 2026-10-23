@@ -4,9 +4,10 @@
 <aside th:fragment="pane(page)" class="panel pane-list" aria-label="Conversation list" th:with="filter=${page.filter}">
   <header>
     <h2>Conversations <span id="conv-count" class="muted small" th:text="${#lists.size(page.rows)} + ' of ' + ${page.total}">0 of 0</span></h2>
-    <a id="start-btn" class="btn primary sm" th:href="${filter.url('/conversations', 'start', 'true')}" data-opens="start-panel">Start a conversation</a>
+    <a id="start-btn" class="btn primary sm" th:href="${filter.startUrl()}" data-opens="start-panel">Start a conversation</a>
   </header>
   <form id="filter-controls" class="list-tools" method="get" th:action="@{/conversations}" aria-label="Filters">
+    <input type="hidden" th:each="p : ${filter.hiddenParams()}" th:name="${p.key}" th:value="${p.value}">
     <label class="visually-hidden" for="conv-search">Search by name, id or summary</label>
     <input id="conv-search" name="q" type="search" th:value="${filter.q}" placeholder="Search name, conversation id or summary">
     <div class="filter-controls" th:with="statuses=${@fmt.statuses()}, endReasons=${@fmt.endReasons()}, stages=${@fmt.stages()}, flags=${@fmt.flags()}, sources=${@fmt.sources()}, status=${filter.status}, endReason=${filter.endReason}, stage=${filter.stage}, flag=${filter.flag}, source=${filter.source}">
@@ -19,7 +20,7 @@
     </div>
     <button class="btn sm apply-filters" type="submit">Apply filters</button>
     <div id="active-filters" class="active-filters" aria-label="Active filters" th:unless="${#lists.isEmpty(filter.chips())}">
-      <a th:each="chip : ${filter.chips()}" class="chip" th:href="${chip.removeUrl}" th:title="'Remove the ' + ${chip.label} + ' filter'"><span aria-hidden="true">✕</span> <th:block th:text="${chip.label} + ': ' + ${chip.value}"/></a>
+      <a th:each="chip : ${filter.chips()}" class="chip" th:href="${chip.removeUrl}" th:title="'Remove the ' + ${chip.param.label()} + ' filter'"><span aria-hidden="true">✕</span> <th:block th:text="${@fmt.chip(chip)}"/></a>
     </div>
   </form>
   <ul id="conv-list" class="conv-list">

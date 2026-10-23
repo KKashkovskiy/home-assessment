@@ -22,6 +22,9 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class SchedulingTools {
 
+  /** The booking tool's name, as the model calls it and the trace records it. */
+  public static final String BOOK_CALL = "book_call";
+
   private static final Logger log = LoggerFactory.getLogger(SchedulingTools.class);
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -51,7 +54,7 @@ public class SchedulingTools {
             args(argumentsJson, AvailabilityTool.Args.class)
                 .map(args -> availability.run(args, context))
                 .orElse(BAD_ARGS);
-        case "book_call" ->
+        case BOOK_CALL ->
             args(argumentsJson, BookCallTool.Args.class)
                 .map(args -> bookCall.run(args, context))
                 .orElse(BAD_ARGS);

@@ -25,7 +25,7 @@ public class CrossSiteGuard implements HandlerInterceptor, WebMvcConfigurer {
     registry
         .addInterceptor(this)
         .addPathPatterns(
-            "/", "/conversations/**", "/ui/**", "/configuration/**", "/analytics", "/evals");
+            "/", "/conversations/**", "/ui/**", "/configuration/**", "/analytics/**", "/evals");
   }
 
   @Override

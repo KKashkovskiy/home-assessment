@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page('Analytics', 'analytics', ~{:: main})}">
+<body>
+  <!-- Read-only figures over the stored rows. The tiles, the tables and the comparison are rendered here; the
+       script draws each chart from /analytics/data.json for the same filter and toggles it with its table. The
+       filter and the compared pair are GET forms, so every view has a URL and works without the script. -->
+  <main id="main" class="page stack analytics-page" tabindex="-1" th:with="view=${page.view}, filter=${page.filter}">
+    <form id="filters" class="page-head analytics-filters" method="get" th:action="@{/analytics}" aria-label="Filters">
+      <h1>Analytics</h1>
+      <label class="row small" for="f-range">Range <select id="f-range" name="range" data-autosubmit><option th:each="r : ${@fmt.ranges()}" th:value="${r}" th:text="${@fmt.range(r)}" th:selected="${r == filter.range}">last 7 days</option></select></label>
+      <label class="row small" for="f-source">Source <select id="f-source" name="source" data-autosubmit><option value="">all</option><option th:each="s : ${@fmt.sources()}" th:value="${s}" th:text="${s}" th:selected="${s == filter.source}">SIM</option></select></label>
+      <label class="row small" for="f-model">Model <select id="f-model" name="model" data-autosubmit><option value="">all</option><option th:each="m : ${page.models}" th:value="${m}" th:text="${m}" th:selected="${m == filter.model}">gpt-5.1</option></select></label>
+      <label class="row small" for="f-version">Prompt version <select id="f-version" name="promptVersion" data-autosubmit><option value="">all</option><option th:each="v : ${page.versions}" th:value="${v}" th:text="${v}" th:selected="${v == filter.promptVersion}">v1</option></select></label>
+      <input type="hidden" name="a" th:value="${page.compare.a}"><input type="hidden" name="b" th:value="${page.compare.b}">
+      <button class="btn sm" type="submit" data-autosubmit-button>Apply</button>
+      <span class="spacer"></span>
+      <span id="n-line" class="small muted" th:text="${@fmt.nLine(page)}">n = 0 conversations, last 7 days</span>
+    </form>
+
+    <section th:replace="~{fragments/kpis :: grid(${view})}"></section>
+    <p id="kpi-note" class="small muted analytics-note">Rates show count over base, and every figure but the latency percentiles links to the conversations it counted, range included; the error, retry and violation figures count turns and link to the conversations that had them. A base under 30 carries a low n badge: read it as a direction. Target lines are hypotheses from the brief, not industry benchmarks. Percentiles are nearest rank; a median of an even count is the mean of the middle two.</p>
+
+    <div class="grid-2">
+      <section th:replace="~{fragments/charts :: panel(${view.series('funnel')}, 'Reached stage', 'Stage', 'Reached', 'Share and drop', null)}"></section>
+      <section th:replace="~{fragments/charts :: panel(${view.series('endReasons')}, 'How conversations stand', 'State', 'Conversations', 'Share', null)}"></section>
+      <section th:replace="~{fragments/charts :: panel(${view.series('objections')}, 'Objections by type', 'Objection', 'Conversations', 'Outcome', 'A conversation counts once per objection type it raised.')}"></section>
+      <section class="panel" aria-labelledby="guard-title" id="guard-panel">
+        <header><h2 id="guard-title">Guardrail triggers</h2><span class="small muted">verdicts per guard</span></header>
+        <div class="table-wrap">
+          <table id="guard-table" th:unless="${#lists.isEmpty(view.guards)}"><caption class="visually-hidden">Guard verdicts in range</caption>
+            <thead><tr><th>Guard</th><th class="num">Pass</th><th class="num">Block</th><th class="num">Repair</th><th class="num">Override</th></tr></thead>
+            <tbody><tr th:each="g : ${view.guards}"><td><span class="mono" th:text="${g.name}">length</span> <span class="chip ghost" th:if="${g.routing}" title="Code choosing a route, not the model breaking a rule: not counted as a violation">routing</span></td><td class="num" th:text="${g.pass}">0</td><td class="num" th:text="${g.block}">0</td><td class="num" th:text="${g.repair}">0</td><td class="num" th:text="${g.override}">0</td></tr></tbody>
+          </table>
+          <p class="chart-empty small muted" th:if="${#lists.isEmpty(view.guards)}">No guard verdicts in range.</p>
+        </div>
+        <p class="chart-note small muted">A violation is a turn on which a guard caught the model: a failed reply check or a field code overrode, counted once per turn.</p>
+      </section>
+      <th:block th:with="dayNote=|Days in the advisors' zone, ${@fmt.advisorZone()}; the day's spend over the conversations it touched.|">
+        <section th:replace="~{fragments/charts :: panel(${view.series('cost')}, 'Cost per conversation, by day', 'Day', 'Per conversation', 'Spend', ${dayNote})}"></section>
+      </th:block>
+      <section th:replace="~{fragments/charts :: panel(${view.series('latency')}, 'Mean turn latency, by day', 'Day', 'Mean', 'Turns', 'The mean per day; the p50 and p95 tiles are over the whole range.')}"></section>
+    </div>
+
+    <section class="panel" aria-labelledby="ops-title" id="ops-panel">
+      <header><h2 id="ops-title">Ops, per model</h2><span class="small muted">turns that called the model</span></header>
+      <div class="table-wrap">
+        <table id="ops-table" th:unless="${#lists.isEmpty(view.ops)}"><caption class="visually-hidden">Model operations in range</caption>
+          <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">In tokens</th><th class="num">Cached</th><th class="num">Out</th><th class="num">Reasoning</th><th class="num">p50</th><th class="num">p95</th><th class="num">Errors</th><th class="num">Retries</th></tr></thead>
+          <tbody><tr th:each="o : ${view.ops}"><td class="mono nowrap" th:text="${o.model}">gpt-5.1</td><td class="num" th:text="${o.calls}">0</td><td class="num" th:text="${@fmt.cost(o.cost)}">$0.0000</td><td class="num" th:text="${#numbers.formatInteger(o.tokensIn, 1, 'COMMA')}">0</td><td class="num" th:text="${#numbers.formatInteger(o.tokensCached, 1, 'COMMA')}">0</td><td class="num" th:text="${#numbers.formatInteger(o.tokensOut, 1, 'COMMA')}">0</td><td class="num" th:text="${#numbers.formatInteger(o.tokensReasoning, 1, 'COMMA')}">0</td><td class="num" th:text="${@fmt.latency(o.latencyP50Ms)}">0 ms</td><td class="num" th:text="${@fmt.latency(o.latencyP95Ms)}">0 ms</td><td class="num" th:text="${o.errors}">0</td><td class="num" th:text="${o.retries}">0</td></tr></tbody>
+        </table>
+        <p class="chart-empty small muted" th:if="${#lists.isEmpty(view.ops)}">No model calls in range.</p>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="cmp-title" id="cmp-panel">
+      <header><h2 id="cmp-title">Prompt versions face to face</h2>
+        <form id="cmp-form" class="row small" method="get" th:action="@{/analytics}">
+          <input type="hidden" name="range" th:value="${filter.range}">
+          <input type="hidden" name="source" th:value="${filter.source}">
+          <input type="hidden" name="model" th:value="${filter.model}">
+          <input type="hidden" name="promptVersion" th:value="${filter.promptVersion}">
+          <label class="row small" for="cmp-a">Version <select id="cmp-a" name="a"><option th:each="v : ${page.versions}" th:value="${v}" th:text="${v}" th:selected="${v == page.compare.a}">v1</option></select></label>
+          <label class="row small" for="cmp-b">against <select id="cmp-b" name="b"><option th:each="v : ${page.versions}" th:value="${v}" th:text="${v}" th:selected="${v == page.compare.b}">v2</option></select></label>
+          <button id="cmp-apply" class="btn sm" type="submit">Compare</button>
+        </form>
+      </header>
+      <div th:replace="~{fragments/compare :: table(${page.compare})}"></div>
+    </section>
+
+    <div id="tooltip" class="tooltip" hidden role="status"></div>
+  </main>
+</body>
+</html>

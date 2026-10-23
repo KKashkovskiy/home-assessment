@@ -38,7 +38,7 @@
       <div class="empty-state" th:if="${view == null}">
         <h2>No conversation open</h2>
         <p class="muted">Pick one from the list, or start one with a seeded or custom lead. The opener is a fixed template; from the lead's first reply the agent decides.</p>
-        <a class="btn primary" th:href="${page.filter.url('/conversations', 'start', 'true')}" data-opens="start-panel">Start a conversation</a>
+        <a class="btn primary" th:href="${page.filter.startUrl()}" data-opens="start-panel">Start a conversation</a>
       </div>
     </section>
 

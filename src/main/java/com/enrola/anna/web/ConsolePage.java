@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Everything the Conversations page renders: the list for a filter, out of how many in all, the
+ * Everything the Conversations page renders: the list for a filter, out of how many match it, the
  * open conversation or null, the quick replies, the start panel and a notice or null. The rows'
  * summaries are already masked when the PII mask is on.
  */

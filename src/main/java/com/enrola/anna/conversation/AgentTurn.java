@@ -187,7 +187,9 @@ class AgentTurn {
     trace.record(
         turn,
         TraceLog.Entry.guard(
-            "closing-reply", sendable ? TraceOutcome.PASS : TraceOutcome.BLOCK, counts));
+            RoutingGuards.CLOSING_REPLY,
+            sendable ? TraceOutcome.PASS : TraceOutcome.BLOCK,
+            counts));
     if (sendable) {
       return TurnOutcome.decided(checked.text());
     }

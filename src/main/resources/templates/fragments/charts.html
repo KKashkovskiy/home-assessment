@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- One chart panel. The table is the view without the script; the script draws the chart from /analytics/data.json
+     into the empty box and the Chart/Table toggle switches what [data-shows] names. Each row links to its
+     conversations. The three heads name the table's columns; note is a line under both views, or null. -->
+<section th:fragment="panel(series, title, labelHead, valueHead, detailHead, note)" class="panel chart-panel" th:aria-labelledby="${series.key} + '-title'">
+  <header><h2 th:id="${series.key} + '-title'" th:text="${title}">Chart</h2>
+    <div class="segmented" role="group" aria-label="View" hidden th:unless="${#lists.isEmpty(series.rows)}"><button type="button" data-view="chart" aria-pressed="false">Chart</button><button type="button" data-view="table" aria-pressed="true">Table</button></div>
+  </header>
+  <div class="chart" th:data-chart="${series.key}" data-shows="chart" hidden></div>
+  <div class="legend chart-legend" data-shows="chart" hidden th:if="${series.segmented()}"><span><span class="swatch s1"></span>raised it</span><span><span class="swatch s2"></span>booked anyway</span></div>
+  <div class="table-wrap chart-table" data-shows="table">
+    <table th:unless="${#lists.isEmpty(series.rows)}"><caption class="visually-hidden" th:text="${title}">Chart</caption>
+      <thead><tr><th th:text="${labelHead}">Label</th><th class="num" th:text="${valueHead}">Value</th><th class="num" th:text="${detailHead}">Detail</th></tr></thead>
+      <tbody><tr th:each="row : ${series.rows}">
+        <td><a th:if="${row.href != null}" th:href="${row.href}" th:text="${row.label}">label</a><th:block th:if="${row.href == null}" th:text="${row.label}">label</th:block></td>
+        <td class="num" th:text="${row.shown}">0</td>
+        <td class="num muted" th:text="${row.note}">note</td>
+      </tr></tbody>
+    </table>
+    <p class="chart-empty small muted" th:if="${#lists.isEmpty(series.rows)}">Nothing in range.</p>
+  </div>
+  <p class="chart-note small muted" th:if="${note != null}" th:text="${note}">note</p>
+</section>
+</body>
+</html>

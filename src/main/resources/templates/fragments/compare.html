@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- Two prompt versions on the same figures; the script swaps this block in when a version select changes. -->
+<div th:fragment="table(compare)" id="cmp-body" class="panel-body table-wrap">
+  <p id="cmp-caption" class="small muted cmp-empty" th:if="${compare.empty()}" th:text="|No conversations started on ${compare.a} or on ${compare.b} in this range.|">No conversations.</p>
+  <table id="cmp-table" class="compare-table" th:unless="${compare.empty()}">
+    <caption id="cmp-caption" th:text="|Same figures for conversations started on ${compare.a} and on ${compare.b}, same range|">caption</caption>
+    <thead><tr><th>Figure</th>
+      <th class="num"><span class="swatch s1" aria-hidden="true"></span> <th:block th:text="|${compare.a} (n=${compare.startedA})|">v1</th:block><span th:replace="~{:: lowN(${compare.lowNOnA()})}"></span></th>
+      <th class="num"><span class="swatch s2" aria-hidden="true"></span> <th:block th:text="|${compare.b} (n=${compare.startedB})|">v2</th:block><span th:replace="~{:: lowN(${compare.lowNOnB()})}"></span></th>
+      <th class="num">Change</th></tr></thead>
+    <tbody>
+      <tr th:each="row : ${compare.rows}" th:data-key="${row.key}">
+        <td th:text="${row.label}">Reply rate</td>
+        <td class="num"><th:block th:replace="~{:: side(${row.a})}"/></td>
+        <td class="num"><th:block th:replace="~{:: side(${row.b})}"/></td>
+        <td th:class="${@fmt.deltaClass(row)}" th:text="${@fmt.delta(row)}">no change</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="small muted cmp-note" th:unless="${compare.empty()}">Conversations stay on the version they started on, so each column is a clean cohort. The eval pass rate is the latest eval run on that version, and reads "no runs" until one exists.<th:block th:if="${compare.lowN()}"> A base is under 30: the changes there are a direction only, so they stay uncoloured.</th:block></p>
+</div>
+
+<th:block th:fragment="side(k)"><th:block th:if="${k != null}"><a class="cmp-value" th:if="${k.href != null}" th:href="${k.href}" th:text="${@fmt.compared(k)}">0%</a><span class="cmp-value" th:if="${k.href == null}" th:text="${@fmt.compared(k)}">0%</span> <span class="muted small" th:text="${@fmt.fraction(k)}">0 of 0</span></th:block><span class="muted" th:if="${k == null}">no runs</span></th:block>
+<span th:fragment="lowN(low)" class="chip warn" th:if="${low}" title="Fewer than 30 conversations: read the changes as a direction, not a number">low n</span>
+</body>
+</html>

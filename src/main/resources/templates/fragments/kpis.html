@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- One tile per figure: the number links to the conversations it counted and the line under it says what it is
+     out of. The opt-out, handoff, latency and error tiles carry a second figure or a breakdown. -->
+<section th:fragment="grid(view)" id="kpis" class="kpi-grid" aria-label="Key figures">
+  <div th:replace="~{:: tile(${view.kpi('reply')}, null)}"></div>
+  <div th:replace="~{:: tile(${view.kpi('bookedOfStarted')}, 'A conversation booked and then opted out counts here and in the opt-out rate')}"></div>
+  <div th:replace="~{:: tile(${view.kpi('bookedOfReplied')}, null)}"></div>
+
+  <div class="panel kpi" id="kpi-optOut" th:with="k=${view.kpi('optOut')}, keyword=${view.kpi('optOutKeyword')}, model=${view.kpi('optOutModel')}" title="A conversation booked and then opted out counts here and in the booking rate">
+    <span class="label"><th:block th:text="${k.label}">Opt-out rate</th:block><span th:replace="~{:: lowN(${k})}"></span></span>
+    <a class="value num" th:href="${k.href}" th:text="${@fmt.kpi(k)}">n/a</a>
+    <span class="frac" th:text="${@fmt.fraction(k)}">0 of 0</span>
+    <span class="frac">STOP keyword <a th:href="${keyword.href}" th:text="${keyword.numerator}">0</a>, model intent <a th:href="${model.href}" th:text="${model.numerator}">0</a></span>
+    <span class="hyp" th:text="'hypothesis: ' + ${k.hypothesis}">hypothesis</span>
+  </div>
+
+  <div class="panel kpi" id="kpi-handoff" th:with="k=${view.kpi('handoff')}">
+    <span class="label"><th:block th:text="${k.label}">Handoff rate</th:block><span th:replace="~{:: lowN(${k})}"></span></span>
+    <a class="value num" th:href="${k.href}" th:text="${@fmt.kpi(k)}">n/a</a>
+    <span class="frac" th:text="${@fmt.fraction(k)}">0 of 0</span>
+    <span class="frac" th:if="${#lists.isEmpty(view.handoffReasonsSeen())}">no handoffs</span>
+    <span class="frac" th:unless="${#lists.isEmpty(view.handoffReasonsSeen())}"><th:block th:each="r, i : ${view.handoffReasonsSeen()}"><a th:href="${r.href}" th:text="${r.label} + ' ' + ${r.numerator}">REQUESTED 1</a><th:block th:unless="${i.last}">, </th:block></th:block></span>
+  </div>
+
+  <div class="panel kpi" id="kpi-violations" th:with="k=${view.kpi('violations')}" title="Turns on which a guard caught the model; the guardrail table names each guard">
+    <span class="label"><th:block th:text="${k.label}">Guardrail violations</th:block><span class="chip pass" th:if="${view.violationsAtTarget()}">✓ at target</span><span class="chip fail" th:if="${view.violationsAboveTarget()}">above target</span></span>
+    <a class="value num" th:href="${k.href}" th:text="${@fmt.kpi(k)}">0</a>
+    <span class="frac" th:text="${@fmt.fraction(k)}">in 0 conversations</span>
+    <span class="hyp" th:text="'hypothesis: ' + ${k.hypothesis} + ', any value is a blocking bug'">hypothesis</span>
+  </div>
+
+  <div th:replace="~{:: tile(${view.kpi('turnsToBook')}, 'Agent messages after the opener, median over booked conversations')}"></div>
+  <div th:replace="~{:: tile(${view.kpi('timeToBook')}, 'From the opener to the booking, median over booked conversations')}"></div>
+  <div th:replace="~{:: tile(${view.kpi('costPerConversation')}, null)}"></div>
+  <div th:replace="~{:: tile(${view.kpi('costPerBooking')}, null)}"></div>
+
+  <div class="panel kpi" id="kpi-latency" th:with="p50=${view.kpi('p50')}, p95=${view.kpi('p95')}">
+    <span class="label">Turn latency p50 / p95<span th:replace="~{:: lowN(${p50})}"></span></span>
+    <span class="value num" th:text="${@fmt.kpi(p50)} + ' / ' + ${@fmt.kpi(p95)}">n/a / n/a</span>
+    <span class="frac" th:text="${@fmt.fraction(p50)}">nearest rank of 0 model turns</span>
+  </div>
+
+  <div class="panel kpi" id="kpi-errors" th:with="e=${view.kpi('errors')}, r=${view.kpi('retries')}">
+    <span class="label">Error / retry rate<span th:replace="~{:: lowN(${e})}"></span></span>
+    <span class="value num"><a th:href="${e.href}" th:text="${@fmt.kpi(e)}" title="Conversations with a failed turn">n/a</a> / <a th:href="${r.href}" th:text="${@fmt.kpi(r)}" title="Conversations with a repaired or replaced reply">n/a</a></span>
+    <span class="frac" th:text="'errors ' + ${@fmt.fraction(e)} + ' turns, retries ' + ${@fmt.fraction(r)} + ' model turns'">errors 0 of 0 turns</span>
+  </div>
+
+  <div class="panel kpi" id="kpi-show">
+    <span class="label">Show rate</span>
+    <span class="value num muted">n/a</span>
+    <span class="frac">n/a until advisor outcome feed</span>
+  </div>
+</section>
+
+<div th:fragment="tile(k, hint)" class="panel kpi" th:id="'kpi-' + ${k.key}" th:title="${hint}">
+  <span class="label"><th:block th:text="${k.label}">Label</th:block><span th:replace="~{:: lowN(${k})}"></span></span>
+  <a class="value num" th:href="${k.href}" th:text="${@fmt.kpi(k)}">n/a</a>
+  <span class="frac" th:text="${@fmt.fraction(k)}">0 of 0</span>
+  <span class="hyp" th:if="${k.hypothesis != null}" th:text="'hypothesis: ' + ${k.hypothesis}">hypothesis</span>
+</div>
+
+<span th:fragment="lowN(k)" class="chip warn" th:if="${k.lowN()}" title="Fewer than 30 in the base: read it as a direction, not a number">low n</span>
+</body>
+</html>

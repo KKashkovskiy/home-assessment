@@ -59,7 +59,9 @@ class GuardOutcomes {
             trace.record(
                 turn,
                 TraceLog.Entry.guard(
-                    "reply-discarded", TraceOutcome.OVERRIDE, Map.of("lead_intent", intent))));
+                    RoutingGuards.REPLY_DISCARDED,
+                    TraceOutcome.OVERRIDE,
+                    Map.of("lead_intent", intent))));
     return outcome;
   }
 
@@ -83,7 +85,9 @@ class GuardOutcomes {
   /** Ends ABUSIVE with no reply, by requirement. */
   TurnOutcome endAbusive(RunningTurn turn, PreGuards.Detector detector) {
     trace.record(
-        turn, TraceLog.Entry.guard("abuse", TraceOutcome.BLOCK, Map.of("detector", detector)));
+        turn,
+        TraceLog.Entry.guard(
+            RoutingGuards.ABUSE, TraceOutcome.BLOCK, Map.of("detector", detector)));
     StateRules.end(turn.conversation(), EndReason.ABUSIVE, turn.now());
     return TurnOutcome.silent(NoReply.ENDED_NOW, "abuse by " + detector);
   }
@@ -136,7 +140,7 @@ class GuardOutcomes {
     trace.record(
         turn,
         TraceLog.Entry.guard(
-            "repair-failed", TraceOutcome.BLOCK, Map.of("status", outcome.status())));
+            RoutingGuards.REPAIR_FAILED, TraceOutcome.BLOCK, Map.of("status", outcome.status())));
     return outcome;
   }
 
