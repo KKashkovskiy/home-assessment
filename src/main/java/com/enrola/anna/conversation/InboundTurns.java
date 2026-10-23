@@ -1,6 +1,6 @@
 package com.enrola.anna.conversation;
 
-import java.time.Clock;
+import com.enrola.anna.AppClock;
 import java.time.Instant;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -30,7 +30,7 @@ public class InboundTurns {
   private final TurnPipeline pipeline;
   private final TransactionTemplate tx;
   private final JsonMapper json;
-  private final Clock clock;
+  private final AppClock clock;
 
   public InboundTurns(
       ConversationRepository conversations,
@@ -40,7 +40,7 @@ public class InboundTurns {
       TurnPipeline pipeline,
       PlatformTransactionManager transactions,
       JsonMapper json,
-      Clock clock) {
+      AppClock clock) {
     this.conversations = conversations;
     this.messages = messages;
     this.turns = turns;
@@ -101,11 +101,11 @@ public class InboundTurns {
                     messages.lastClaimedTurn(conversation.id) + 1,
                     text.strip(),
                     providerMessageId,
-                    clock.instant())));
+                    clock.now())));
   }
 
   private TurnResponse run(Conversation conversation, Message inbound) {
-    Instant now = clock.instant();
+    Instant now = clock.now();
     TurnOutcome outcome = pipeline.run(conversation, inbound, now);
     return tx.execute(_ -> persistTurn(conversation, inbound, outcome, now));
   }

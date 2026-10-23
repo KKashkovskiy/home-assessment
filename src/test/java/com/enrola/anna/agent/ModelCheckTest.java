@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import com.enrola.anna.config.AgentProperties;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
 
@@ -23,7 +24,8 @@ class ModelCheckTest {
             ModelResponse.Usage.ZERO,
             5,
             "{}",
-            "{}"));
+            "{}",
+            List.of()));
 
     new ModelCheck(model, agent(false)).run(null);
 
@@ -47,6 +49,6 @@ class ModelCheckTest {
   }
 
   private static AgentProperties agent(boolean strict) {
-    return new AgentProperties("gpt-5.1", "low", "auto", Duration.ofSeconds(1), 0, 16, strict);
+    return new AgentProperties("gpt-5.1", "low", "auto", Duration.ofSeconds(1), 0, 16, 4, strict);
   }
 }

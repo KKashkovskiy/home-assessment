@@ -7,10 +7,12 @@ import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Records one model call: the turn's model columns, priced from {@link PriceTable}, and its trace
- * events, a MODEL_CALL for every call and an ERROR for a failed one.
+ * Records one model call: the turn's model columns, priced from {@link PriceTable}, the function
+ * calls answered on the way, and its trace events, a MODEL_CALL for every call and an ERROR for a
+ * failed one. Each function call has its own TOOL_CALL event, written as it ran.
  */
 @Component
 class ModelCallRecorder {
@@ -18,11 +20,13 @@ class ModelCallRecorder {
   private final TraceLog trace;
   private final PriceTable prices;
   private final AgentProperties agent;
+  private final JsonMapper json;
 
-  ModelCallRecorder(TraceLog trace, PriceTable prices, AgentProperties agent) {
+  ModelCallRecorder(TraceLog trace, PriceTable prices, AgentProperties agent, JsonMapper json) {
     this.trace = trace;
     this.prices = prices;
     this.agent = agent;
+    this.json = json;
   }
 
   /** What the call returned for the turn row, beside what every call has. */
@@ -74,6 +78,7 @@ class ModelCallRecorder {
     ModelResponse.Usage usage = response.usage();
     return new Turn.ModelCall(
         output.decisionJson(),
+        response.toolCalls().isEmpty() ? null : json.writeValueAsString(response.toolCalls()),
         agent.model(),
         promptVersion,
         usage.in(),

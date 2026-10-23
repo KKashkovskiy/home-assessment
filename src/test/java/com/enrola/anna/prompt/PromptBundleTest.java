@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 import com.enrola.anna.config.PersonaProperties;
 import com.enrola.anna.config.SmsProperties;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -42,6 +43,7 @@ class PromptBundleTest {
         prompt,
         knowledge,
         JsonNodeFactory.instance.objectNode(),
+        List.of(),
         new Templates(new DefaultResourceLoader(), "classpath:prompts/v1/templates/", PERSONA),
         "canary-1");
   }

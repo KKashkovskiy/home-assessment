@@ -109,3 +109,8 @@ ALTER TABLE conversation ADD COLUMN IF NOT EXISTS agent_turns INT DEFAULT 0 NOT 
 ALTER TABLE conversation ADD COLUMN IF NOT EXISTS post_terminal_replies INT DEFAULT 0 NOT NULL;  -- messages sent on or after the ending turn
 ALTER TABLE conversation ADD COLUMN IF NOT EXISTS health_info_turn INT;  -- null until HEALTH_INFO; bodies from it on are hidden
 CREATE INDEX IF NOT EXISTS turn_cost_idx ON turn(conversation_id, cost_usd);   -- the spend caps sum it
+
+-- The latest availability offer, the tool-error streak, and each turn's answered function calls.
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS last_offered_slots_json CLOB;      -- [{slotId, startUtc, label}]
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS upstream_errors INT DEFAULT 0 NOT NULL;  -- tool errors in a row
+ALTER TABLE turn ADD COLUMN IF NOT EXISTS tool_calls_json CLOB;                      -- [{name, arguments_json, result_json}]

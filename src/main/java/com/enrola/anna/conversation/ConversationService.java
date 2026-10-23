@@ -1,10 +1,12 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.AppClock;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.Stage;
 import com.enrola.anna.config.AgentProperties;
+import com.enrola.anna.config.SchedulingProperties;
 import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
@@ -12,8 +14,8 @@ import com.enrola.anna.prompt.PromptBundle;
 import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
 import com.enrola.anna.scheduling.LeadZones;
-import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -44,8 +46,9 @@ public class ConversationService {
   private final Suppressions suppressions;
   private final TurnLocks locks;
   private final TransactionTemplate tx;
-  private final Clock clock;
+  private final AppClock clock;
   private final AgentProperties agent;
+  private final ZoneId advisorZone;
   private final String appVersion;
 
   public ConversationService(
@@ -56,8 +59,9 @@ public class ConversationService {
       Suppressions suppressions,
       TurnLocks locks,
       TransactionTemplate tx,
-      Clock clock,
+      AppClock clock,
       AgentProperties agent,
+      SchedulingProperties scheduling,
       @Value("${anna.app-version}") String appVersion) {
     this.leads = leads;
     this.conversations = conversations;
@@ -68,6 +72,7 @@ public class ConversationService {
     this.tx = tx;
     this.clock = clock;
     this.agent = agent;
+    this.advisorZone = scheduling.advisorZone();
     this.appVersion = appVersion;
   }
 
@@ -101,16 +106,14 @@ public class ConversationService {
         conversations.require(conversationId),
         null,
         messages.transcript(conversationId),
-        clock.instant());
+        clock.now());
   }
 
   /** Like {@link #view}, with every body shown, health information included. */
   @Transactional(readOnly = true)
   public TurnResponse viewWithHealth(String conversationId) {
     return TurnResponse.withHealth(
-        conversations.require(conversationId),
-        messages.transcript(conversationId),
-        clock.instant());
+        conversations.require(conversationId), messages.transcript(conversationId), clock.now());
   }
 
   private Lead requireLead(String leadId) {
@@ -159,7 +162,7 @@ public class ConversationService {
   }
 
   private TurnResponse open(Lead lead) {
-    Instant now = clock.instant();
+    Instant now = clock.now();
     PromptBundle bundle = prompts.active();
     Conversation conversation = conversations.save(newConversation(lead, bundle, now));
     Message opener = storeOpener(conversation, lead, bundle, now);
@@ -171,7 +174,7 @@ public class ConversationService {
    * prompt bundle, model, effort and build it starts on.
    */
   private Conversation newConversation(Lead lead, PromptBundle bundle, Instant now) {
-    LeadZones.Resolved zone = LeadZones.resolve(lead.state());
+    LeadZones.Resolved zone = LeadZones.resolve(lead.state(), advisorZone);
     Conversation conversation = new Conversation();
     conversation.id = "c-" + UUID.randomUUID();
     conversation.leadId = lead.id();

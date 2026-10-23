@@ -32,8 +32,10 @@ Root `com.enrola.anna`. Feature packages arrive with their features and stay fla
 `guard`, `scheduling`, `prompt`, `config`, `web`. Tests mirror main; the eval harness goes in
 `src/test/java/com/enrola/anna/eval`. No `common`, `util`, `core` or `shared` package, ever; a helper belongs to the
 feature that first needed it.
-Dependencies point one way: `conversation` to `agent` and `guard`, and `guard` to `agent` and `lead`; `agent` and
-`guard` never import `conversation`, so a guard takes plain values, never the conversation entity.
+Dependencies point one way: `conversation` to `agent`, `guard` and `scheduling`, `agent` to `scheduling`, and `guard`
+to `agent` and `lead`; `agent`, `guard` and `scheduling` never import `conversation`, so a guard or a tool takes plain
+values, never the conversation entity. The time comes from `AppClock` in the root package, which any package may use;
+nothing else reads the system clock.
 
 ## Running the gates
 

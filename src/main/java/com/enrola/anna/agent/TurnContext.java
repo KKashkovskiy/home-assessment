@@ -2,25 +2,30 @@ package com.enrola.anna.agent;
 
 import com.enrola.anna.config.LimitsProperties;
 import com.enrola.anna.lead.Lead;
+import com.enrola.anna.scheduling.Slot;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Per-turn facts the model needs beyond the transcript, rendered as the last input item: the time
- * on the lead's clock, the counters and limits the prompt refers to, the booking, and the lead
- * record in a delimited block labelled untrusted. Phone and email are never in it. {@code
- * repairNote} is null except on a repair call, where it names what the rejected reply broke.
+ * on the lead's clock and whether its zone was assumed, the counters and limits the prompt refers
+ * to, the booking, the latest offered slots with their ids, so a pick in a later turn can be
+ * booked, and the lead record in a delimited block labelled untrusted. Phone and email are never in
+ * it. {@code repairNote} is null except on a repair call, where it names what the rejected reply
+ * broke.
  */
 public record TurnContext(
     Lead lead,
     ZonedDateTime leadNow,
+    boolean zoneAssumed,
     Counters counters,
     LimitsProperties limits,
     String bookingLabel,
-    List<String> lastOfferedSlots,
+    List<Slot> lastOfferedSlots,
     boolean ended,
     EndReason endReason,
     String repairNote) {
@@ -34,10 +39,22 @@ public record TurnContext(
   private static final DateTimeFormatter DAY =
       DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.UK);
 
-  /** This context for the repair call: the same facts, then what the rejected reply broke. */
-  public TurnContext withRepairNote(String note) {
+  /**
+   * This context for the repair call: the same facts but the offer as it stands now, after this
+   * turn's tool calls, then what the rejected reply broke.
+   */
+  public TurnContext withRepair(String note, List<Slot> offeredNow) {
     return new TurnContext(
-        lead, leadNow, counters, limits, bookingLabel, lastOfferedSlots, ended, endReason, note);
+        lead,
+        leadNow,
+        zoneAssumed,
+        counters,
+        limits,
+        bookingLabel,
+        offeredNow,
+        ended,
+        endReason,
+        note);
   }
 
   public String render() {
@@ -70,7 +87,7 @@ public record TurnContext(
         .formatted(
             NOW.format(leadNow),
             DAY.format(leadNow.plusDays(1)),
-            leadNow.getZone().getId(),
+            leadNow.getZone().getId() + (zoneAssumed ? " (assumed)" : ""),
             counters.agentTurns(),
             limits.maxTurns(),
             counters.objectionsUsed(),
@@ -79,12 +96,21 @@ public record TurnContext(
             limits.offTopicLimit(),
             counters.postTerminalReplies(),
             Objects.requireNonNullElse(bookingLabel, "none"),
-            lastOfferedSlots.isEmpty() ? "none" : String.join("; ", lastOfferedSlots),
+            offered(),
             ended ? "ENDED (" + endReason + ")" : "open",
             leadField(lead.givenName()),
             leadField(lead.state()),
             leadField(lead.currentProvider()),
             leadField(lead.currentPremium()));
+  }
+
+  /** "Mon 27 Jul 12:00 PM AEST [sYjQx]; ...", or none. */
+  private String offered() {
+    return lastOfferedSlots.isEmpty()
+        ? "none"
+        : lastOfferedSlots.stream()
+            .map(slot -> slot.label() + " [" + slot.slotId() + "]")
+            .collect(Collectors.joining("; "));
   }
 
   /**

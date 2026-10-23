@@ -52,7 +52,7 @@ class ReplyRepair {
       return TurnOutcome.decided(first.text());
     }
     AgentCall.Answer repair =
-        calls.ask(turn, question.withRepairNote(ReplyGuards.note(first.violations())));
+        calls.ask(turn, calls.repairOf(turn, question, ReplyGuards.note(first.violations())));
     return rewriteOrReplacement(turn, repair).withRepairCall(repair.call());
   }
 
@@ -109,15 +109,15 @@ class ReplyRepair {
   }
 
   /**
-   * After an end, or on the turn that ends it, the reply closes the conversation. Nothing books or
-   * offers slots, so there are no labels and any clock time fails.
+   * The reply may name only times from the latest offer, this turn's tool calls included; there is
+   * no booking. After an end, or on the turn that ends it, the reply closes the conversation.
    */
   private ReplyContext contextFor(RunningTurn turn) {
     Conversation conversation = turn.conversation();
     return new ReplyContext(
         turn.lead(),
         prompts.load(conversation.promptVersion).canary(),
-        List.of(),
+        conversation.lastOfferedLabels(),
         null,
         conversation.goalMet,
         conversation.ended,

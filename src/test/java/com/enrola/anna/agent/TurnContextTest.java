@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.config.LimitsProperties;
 import com.enrola.anna.lead.Lead;
+import com.enrola.anna.scheduling.Slot;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -19,12 +20,45 @@ class TurnContextTest {
       ZonedDateTime.parse("2026-07-26T10:00+10:00")
           .withZoneSameInstant(ZoneId.of("Australia/Perth"));
 
+  static final List<Slot> OFFERED =
+      List.of(
+          new Slot("sA", Instant.parse("2026-07-27T01:00:00Z"), "Mon 27 Jul 9:00 AM AWST"),
+          new Slot("sB", Instant.parse("2026-07-27T01:30:00Z"), "Mon 27 Jul 9:30 AM AWST"));
+
   @Test
   void rendersLeadZoneAndTomorrow() {
     assertThat(context(john("John"), false).render())
         .contains("Now: Sunday 26 July 2026, 8:00 am AWST")
         .contains("Tomorrow: Monday 27 July")
-        .contains("Lead timezone: Australia/Perth");
+        .contains("Lead timezone: Australia/Perth.");
+  }
+
+  @Test
+  void assumedZoneSaysSo() {
+    TurnContext context = context(john("John"), false);
+    TurnContext assumed =
+        new TurnContext(
+            context.lead(),
+            context.leadNow(),
+            true,
+            context.counters(),
+            context.limits(),
+            null,
+            List.of(),
+            false,
+            EndReason.NONE,
+            null);
+
+    assertThat(assumed.render()).contains("Lead timezone: Australia/Perth (assumed).");
+  }
+
+  /** The ids let a pick in a later turn be booked without asking for availability again. */
+  @Test
+  void offeredSlotsCarryTheirIds() {
+    assertThat(context(john("John"), false).render()).contains("Last offered slots: none.");
+    assertThat(context(john("John"), false).withRepair("note", OFFERED).render())
+        .contains(
+            "Last offered slots: Mon 27 Jul 9:00 AM AWST [sA]; Mon 27 Jul 9:30 AM AWST [sB].");
   }
 
   @Test
@@ -65,7 +99,7 @@ class TurnContextTest {
   void repairNoteComesLastOnlyOnARepair() {
     TurnContext context = context(john("John"), false);
 
-    String repair = context.withRepairNote("length: reply is 341 chars, limit 320").render();
+    String repair = context.withRepair("length: reply is 341 chars, limit 320", List.of()).render();
 
     assertThat(repair).startsWith(context.render()).endsWith("limit 320\n");
     assertThat(repair.indexOf("length: reply is 341 chars"))
@@ -89,6 +123,7 @@ class TurnContextTest {
     return new TurnContext(
         lead,
         PERTH_NOW,
+        false,
         new TurnContext.Counters(1, 0, 0, 0),
         new LimitsProperties(15, 3, 1),
         null,

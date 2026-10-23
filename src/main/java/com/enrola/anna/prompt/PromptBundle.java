@@ -2,6 +2,7 @@ package com.enrola.anna.prompt;
 
 import com.enrola.anna.config.PersonaProperties;
 import com.enrola.anna.config.SmsProperties;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -10,15 +11,17 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * One prompt version's artifacts the turns read: the prompt, the knowledge pack, the decision
- * schema and the fixed templates. Immutable. {@code canary} is a random token per boot that the
- * prompt tells the model to keep secret, so a reply that contains it is a leak. A prompt with a
- * placeholder {@link #render} does not fill is rejected here, at boot.
+ * schema, the function tools ({@code tools.json}, one entry each) and the fixed templates.
+ * Immutable. {@code canary} is a random token per boot that the prompt tells the model to keep
+ * secret, so a reply that contains it is a leak. A prompt with a placeholder {@link #render} does
+ * not fill is rejected here, at boot.
  */
 public record PromptBundle(
     String id,
     String prompt,
     String knowledge,
     JsonNode schema,
+    List<JsonNode> tools,
     Templates templates,
     String canary) {
 
@@ -27,6 +30,7 @@ public record PromptBundle(
       Set.of("persona", "target_chars", "max_chars", "canary", "knowledge");
 
   public PromptBundle {
+    tools = List.copyOf(tools);
     Matcher found = PLACEHOLDER.matcher(prompt);
     while (found.find()) {
       if (!PLACEHOLDERS.contains(found.group(1))) {

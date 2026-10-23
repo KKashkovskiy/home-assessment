@@ -15,9 +15,10 @@ import tools.jackson.databind.JsonNode;
 /**
  * API response for every conversation call: one shape, snake_case on the wire by the app's Jackson
  * setting. Fields with nothing to report ({@code booking}, {@code extracted}) are null, not absent,
- * so the platform parses one contract. {@code trace_url} is the conversation's page path. Once a
- * turn carried health information, message bodies from that turn on are hidden unless asked for;
- * {@code reply} is always what is to be sent.
+ * so the platform parses one contract. {@code lastOfferedSlots} are the labels of the latest
+ * availability result, empty before the first. {@code trace_url} is the conversation's page path.
+ * Once a turn carried health information, message bodies from that turn on are hidden unless asked
+ * for; {@code reply} is always what is to be sent.
  */
 public record TurnResponse(
     String conversationId,
@@ -32,6 +33,7 @@ public record TurnResponse(
     List<Flag> flags,
     List<EndReasonEntry> endReasonHistory,
     BookingView booking,
+    List<String> lastOfferedSlots,
     JsonNode extracted,
     String leadLocalTime,
     String traceUrl,
@@ -117,6 +119,7 @@ public record TurnResponse(
         List.copyOf(conversation.flags()),
         conversation.endReasonHistory(),
         null,
+        conversation.lastOfferedLabels(),
         conversation.extracted(),
         now.atZone(ZoneId.of(conversation.leadZoneId)).format(LEAD_LOCAL_TIME),
         "/conversations/" + conversation.id,

@@ -2,6 +2,7 @@ package com.enrola.anna.conversation;
 
 import com.enrola.anna.agent.AgentService;
 import com.enrola.anna.agent.Decision;
+import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.ModelRequest;
 import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.TurnContext;
@@ -14,8 +15,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * One recorded model call for a running turn: the conversation's prompt bundle, the whole
- * transcript and the turn's context go in; a decision or a failure comes out, with the turn's model
- * columns either way. Output that is not a decision is recorded as a SCHEMA failure.
+ * transcript and the turn's context go in, the model's function calls are answered by {@link
+ * TurnToolCalls}, and a decision or a failure comes out, with the turn's model columns either way.
+ * Output that is not a decision is recorded as a SCHEMA failure.
  */
 @Component
 class AgentCall {
@@ -24,6 +26,7 @@ class AgentCall {
   private final PromptLoader prompts;
   private final MessageRepository messages;
   private final ModelCallRecorder modelCalls;
+  private final TurnToolCalls tools;
   private final LimitsProperties limits;
   private final SmsProperties sms;
 
@@ -32,24 +35,20 @@ class AgentCall {
       PromptLoader prompts,
       MessageRepository messages,
       ModelCallRecorder modelCalls,
+      TurnToolCalls tools,
       LimitsProperties limits,
       SmsProperties sms) {
     this.agent = agent;
     this.prompts = prompts;
     this.messages = messages;
     this.modelCalls = modelCalls;
+    this.tools = tools;
     this.limits = limits;
     this.sms = sms;
   }
 
   /** What the model is asked: the transcript and the turn's context, as of the turn's start. */
-  record Question(List<Message> transcript, TurnContext context) {
-
-    /** The same question with a note on what the rejected reply broke. */
-    Question withRepairNote(String note) {
-      return new Question(transcript, context.withRepairNote(note));
-    }
-  }
+  record Question(List<Message> transcript, TurnContext context) {}
 
   /** What one recorded call came to, with the turn's model columns either way. */
   sealed interface Answer {
@@ -69,12 +68,38 @@ class AgentCall {
     return new Question(messages.transcript(turn.conversation().id), contextFor(turn));
   }
 
+  /**
+   * {@code asked} again with a note on what the rejected reply broke, and the offer as it stands
+   * now: this turn's tool calls may have replaced the one the question started with.
+   */
+  Question repairOf(RunningTurn turn, Question asked, String note) {
+    return new Question(
+        asked.transcript(),
+        asked.context().withRepair(note, turn.conversation().lastOfferedSlots()));
+  }
+
+  /** A call that may use the scheduling tools, answered for this turn by {@link TurnToolCalls}. */
   Answer ask(RunningTurn turn, Question question) {
-    ModelResponse response =
+    return answerOf(
+        turn,
         agent.decide(
             prompts.load(turn.conversation().promptVersion),
             input(question.transcript()),
-            question.context());
+            question.context(),
+            (name, argumentsJson) -> tools.answer(turn, name, argumentsJson)));
+  }
+
+  /** A call with no tools, after an end, when the model only classifies the message. */
+  Answer classify(RunningTurn turn, Question question) {
+    return answerOf(
+        turn,
+        agent.classify(
+            prompts.load(turn.conversation().promptVersion),
+            input(question.transcript()),
+            question.context()));
+  }
+
+  private Answer answerOf(RunningTurn turn, ModelResponse response) {
     return switch (response) {
       case ModelResponse.Decided decided -> decisionOf(turn, decided);
       case ModelResponse.Failed failed -> failure(turn, failed);
@@ -112,14 +137,13 @@ class AgentCall {
         .toList();
   }
 
-  /**
-   * The lead's clock is in the zone fixed at start. Nothing books or offers slots: both are empty.
-   */
+  /** The lead's clock is in the zone fixed at start; book_call books nothing, so no booking. */
   private TurnContext contextFor(RunningTurn turn) {
     Conversation conversation = turn.conversation();
     return new TurnContext(
         turn.lead(),
         turn.now().atZone(ZoneId.of(conversation.leadZoneId)),
+        conversation.flags().contains(Flag.TZ_ASSUMED),
         new TurnContext.Counters(
             conversation.agentTurns,
             conversation.objectionsUsed,
@@ -127,7 +151,7 @@ class AgentCall {
             conversation.postTerminalReplies),
         limits,
         null,
-        List.of(),
+        conversation.lastOfferedSlots(),
         conversation.ended,
         conversation.endReason,
         null);

@@ -28,6 +28,7 @@ record StateSnapshot(Map<String, Object> fields) {
     fields.put("off_topic_streak", conversation.offTopicStreak);
     fields.put("agent_turns", conversation.agentTurns);
     fields.put("post_terminal_replies", conversation.postTerminalReplies);
+    fields.put("upstream_errors", conversation.upstreamErrors);
     return new StateSnapshot(fields);
   }
 

@@ -25,12 +25,14 @@ public record Turn(
     implements Persistable<String> {
 
   /**
-   * One model call: the decision JSON, the model and prompt version, tokens, USD cost, latency, the
-   * model's reasoning summary (never sent to the lead) and the raw request and response JSON. A
-   * turn that never reached the model has {@link #NONE}: zero counts and null texts.
+   * One model call: the decision JSON, the function calls answered on the way as a JSON array, the
+   * model and prompt version, tokens, USD cost, latency, the model's reasoning summary (never sent
+   * to the lead) and the raw request and response JSON. A turn that never reached the model has
+   * {@link #NONE}: zero counts and null texts.
    */
   public record ModelCall(
       String decisionJson,
+      String toolCallsJson,
       String model,
       String promptVersion,
       int tokensIn,
@@ -44,15 +46,17 @@ public record Turn(
       String rawResponseJson) {
 
     public static final ModelCall NONE =
-        new ModelCall(null, null, null, 0, 0, 0, 0, BigDecimal.ZERO, 0, null, null, null);
+        new ModelCall(null, null, null, null, 0, 0, 0, 0, BigDecimal.ZERO, 0, null, null, null);
 
     /**
      * This call with a second one on the same turn, the repair: tokens, cost and latency summed, so
-     * spend counts both; the decision, summary and raw JSON stay this call's, the one applied.
+     * spend counts both; the decision, tool calls, summary and raw JSON stay this call's, the one
+     * applied. The trace has every tool call either way.
      */
     public ModelCall plus(ModelCall repair) {
       return new ModelCall(
           decisionJson,
+          toolCallsJson,
           model,
           promptVersion,
           tokensIn + repair.tokensIn,

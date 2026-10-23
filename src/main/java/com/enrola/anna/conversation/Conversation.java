@@ -4,6 +4,7 @@ import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.Stage;
+import com.enrola.anna.scheduling.Slot;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
@@ -25,6 +26,7 @@ public class Conversation {
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
   private static final TypeReference<List<EndReasonEntry>> HISTORY = new TypeReference<>() {};
+  private static final TypeReference<List<Slot>> SLOTS = new TypeReference<>() {};
 
   @Id public String id;
   public String leadId;
@@ -71,6 +73,12 @@ public class Conversation {
   /** The turn that first carried HEALTH_INFO, null before; bodies from it on are hidden. */
   public Integer healthInfoTurn;
 
+  /** The latest availability result, whose labels are the only clock times a reply may name. */
+  public String lastOfferedSlotsJson;
+
+  /** Tool errors in a row, across turns; an answer resets it, and the second error hands off. */
+  public int upstreamErrors;
+
   public Instant createdAt;
   public Instant updatedAt;
   @Version public long version;
@@ -96,5 +104,20 @@ public class Conversation {
 
   public void setEndReasonHistory(List<EndReasonEntry> history) {
     endReasonHistoryJson = JSON.writeValueAsString(history);
+  }
+
+  /** The latest availability result's slots, in offer order; empty before the first. */
+  public List<Slot> lastOfferedSlots() {
+    return lastOfferedSlotsJson == null ? List.of() : JSON.readValue(lastOfferedSlotsJson, SLOTS);
+  }
+
+  /** The labels of {@link #lastOfferedSlots()}, what a reply may name. */
+  public List<String> lastOfferedLabels() {
+    return lastOfferedSlots().stream().map(Slot::label).toList();
+  }
+
+  /** Replaces the last offer, never adds to it: only the latest result may be offered. */
+  public void setLastOfferedSlots(List<Slot> slots) {
+    lastOfferedSlotsJson = JSON.writeValueAsString(slots);
   }
 }

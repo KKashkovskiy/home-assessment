@@ -55,13 +55,14 @@ class AgentTurn {
   }
 
   /**
-   * A soft-terminal conversation's turn: the model classifies. Code-owned intents act as on an open
-   * conversation; RESCHEDULE and HANDOFF_REQUEST break the silence once, because ignoring them is a
-   * compliance problem, not a loop; anything else gets at most one closing reply. A failed call
-   * hands off like one on an open conversation, since the message may be a request no one read.
+   * A soft-terminal conversation's turn: the model classifies, with no tools, since nothing is
+   * scheduled after an end. Code-owned intents act as on an open conversation; RESCHEDULE and
+   * HANDOFF_REQUEST break the silence once, because ignoring them is a compliance problem, not a
+   * loop; anything else gets at most one closing reply. A failed call hands off like one on an open
+   * conversation, since the message may be a request no one read.
    */
   TurnOutcome classifyOnly(RunningTurn turn) {
-    return switch (calls.ask(turn, calls.questionFor(turn))) {
+    return switch (calls.classify(turn, calls.questionFor(turn))) {
       case AgentCall.Answer.Decided(Decision decision, Turn.ModelCall call) ->
           classifyEnded(turn, decision).addModelCall(call);
       case AgentCall.Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->

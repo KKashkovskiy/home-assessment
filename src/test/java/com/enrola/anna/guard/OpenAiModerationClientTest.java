@@ -67,7 +67,8 @@ class OpenAiModerationClientTest {
             .withBean(
                 AgentProperties.class,
                 () ->
-                    new AgentProperties("gpt-5.1", null, null, Duration.ofSeconds(1), 0, 16, false))
+                    new AgentProperties(
+                        "gpt-5.1", null, null, Duration.ofSeconds(1), 0, 16, 4, false))
             .withBean(ModerationProperties.class, () -> MODERATION)
             .withUserConfiguration(OpenAiClientConfig.class, OpenAiModerationClient.class);
 

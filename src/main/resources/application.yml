@@ -25,6 +25,7 @@ anna:
     timeout: 30s                          # per HTTP attempt; a call makes up to 1 + max-retries attempts
     max-retries: 2                        # SDK retries on timeout and 5xx
     max-output-tokens: 1200               # the decision JSON is small; the cap protects the budget
+    max-tool-rounds: 4                    # tool-call rounds answered per model call; then the model must decide
     strict-model-check: false             # true fails boot when the model check fails
   prices:                                 # USD per 1M tokens by model id; the brackets keep the dot in the key
     "[gpt-5.1]": { input: 1.25, cached: 0.125, output: 10.00 }
@@ -47,3 +48,18 @@ anna:
     self-harm: 0.3                        # self-harm, self-harm/intent, self-harm/instructions send SELF_HARM_SAFETY
     timeout: 5s                           # per attempt; moderation has its own budget, shorter than the model's
     max-retries: 0                        # a failed screen is traced as unavailable and the turn goes on
+  scheduling:
+    advisor-zone: Australia/Melbourne     # calling hours are evaluated here; a lead with an unknown state gets it too
+    lead-time-min: 60                     # earliest offered slot is now plus this
+    horizon-days: 14                      # latest offered slot; the calendar's own range is 31
+    hours-from: "09:00"                   # Mon-Sat open
+    hours-to: "20:00"                     # Mon-Fri close; a call must end by then, so the last slot starts 19:30
+    sat-to: "17:00"                       # Saturday close; last slot 16:30. Sunday is closed
+    event-min: 15                         # advisor call length
+    grid-min: 30                          # slot grid
+    max-slots: 6                          # per get_availability result
+    calendar-preset: normal               # normal | fully_booked | slot_taken
+    state-holidays: []                    # the advisors' state, e.g. ["2026-11-03"] for VIC; national ones are built in
+  clock:
+    mode: REAL                            # REAL | FIXED
+    fixed-at: ""                          # ISO instant when FIXED, e.g. 2026-07-26T00:00:00Z

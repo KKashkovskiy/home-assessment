@@ -23,12 +23,9 @@ import com.enrola.anna.lead.LeadRepository;
 import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
 import com.enrola.anna.prompt.Templates;
-import com.enrola.anna.scheduling.LeadZones;
 import com.jayway.jsonpath.JsonPath;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -48,11 +45,7 @@ import org.skyscreamer.jsonassert.JSONCompareMode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -64,30 +57,26 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * The platform contract over the real H2 file and the seeded leads, on a clock pinned to Sunday 26
- * July 2026, 10:00 in Melbourne, with no model configured. Locks wait 100 ms so BUSY is quick. The
- * clock is imported, not just nested, so the {@code Nested} groups share this context.
+ * The platform contract over the real H2 file and the seeded leads, on a clock fixed on Sunday 26
+ * July 2026, 10:00 in Melbourne, with no model configured. Locks wait 100 ms so BUSY is quick.
  */
-@SpringBootTest(properties = {"anna.turns.lock-wait=100ms", "OPENAI_API_KEY="})
-@Import(ConversationApiTest.FixedClock.class)
+@SpringBootTest(
+    properties = {
+      "anna.turns.lock-wait=100ms",
+      "OPENAI_API_KEY=",
+      "anna.clock.mode=FIXED",
+      "anna.clock.fixed-at=" + ConversationApiTest.FIXED_AT
+    })
 class ConversationApiTest {
 
-  static final Instant NOW = Instant.parse("2026-07-26T00:00:00Z");
+  static final String FIXED_AT = "2026-07-26T00:00:00Z";
+  static final Instant NOW = Instant.parse(FIXED_AT);
 
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
   static void databaseInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + tempDir.resolve("anna"));
-  }
-
-  @TestConfiguration
-  static class FixedClock {
-    @Bean
-    @Primary
-    Clock fixedClock() {
-      return Clock.fixed(NOW, ZoneOffset.UTC);
-    }
   }
 
   @Autowired WebApplicationContext context;
@@ -127,6 +116,7 @@ class ConversationApiTest {
           .andExpect(jsonPath("$.end_reason").value("NONE"))
           .andExpect(jsonPath("$.flags").isEmpty())
           .andExpect(jsonPath("$.booking").value(nullValue()))
+          .andExpect(jsonPath("$.last_offered_slots").isEmpty())
           .andExpect(jsonPath("$.extracted").value(nullValue()))
           .andExpect(jsonPath("$.lead_local_time").value("Sun 26 Jul 10:00 AM AEST"))
           .andExpect(jsonPath("$.trace_url").value("/conversations/" + idOf(started)))
@@ -226,7 +216,7 @@ class ConversationApiTest {
       assertThat(
               jdbc.queryForObject(
                   "select lead_zone_id from conversation where id = ?", String.class, id))
-          .isEqualTo(LeadZones.ADVISOR.getId());
+          .isEqualTo("Australia/Melbourne");
     }
 
     @Test

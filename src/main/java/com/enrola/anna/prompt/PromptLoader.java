@@ -3,6 +3,7 @@ package com.enrola.anna.prompt;
 import com.enrola.anna.config.PersonaProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ResourceLoader;
@@ -30,6 +31,7 @@ public class PromptLoader {
             read(loader, dir + version + ".md"),
             read(loader, dir + "knowledge.md"),
             json.readTree(read(loader, dir + "agent-decision.schema.json")),
+            List.copyOf(json.readTree(read(loader, dir + "tools.json")).values()),
             new Templates(loader, dir + "templates/", persona),
             UUID.randomUUID().toString());
   }

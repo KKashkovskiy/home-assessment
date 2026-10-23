@@ -23,11 +23,11 @@ public final class Decisions {
   /** {@code decision} as a successful call's output, the way the client returns it. */
   public static ModelResponse.Decided decided(Decision decision) {
     return new ModelResponse.Decided(
-        ModelResponse.Decided.JSON.valueToTree(decision), null, USAGE, 5, "{}", "{}");
+        ModelResponse.Decided.JSON.valueToTree(decision), null, USAGE, 5, "{}", "{}", List.of());
   }
 
   public static ModelResponse.Failed failed(ModelResponse.Failure code) {
-    return new ModelResponse.Failed(code, "scripted", Usage.ZERO, 5, "{}", null);
+    return new ModelResponse.Failed(code, "scripted", Usage.ZERO, 5, "{}", null, List.of());
   }
 
   /** Mutable, test scope only. */

@@ -49,9 +49,9 @@ nothing. With a key, the model reads the whole transcript, replayed from the dat
 context, and returns one JSON decision under a strict schema: intent, stage, flags, facts gathered and a line for
 the advisor, then the reply. The reply comes back in the response; the decision, tokens, cost, latency, the model's
 reasoning summary (never sent to the lead) and the raw request and response JSON are stored on the turn, with trace
-events beside it. The model has no calendar to read, so it can ask for a call but cannot offer times. Without a key,
-or when a call still fails after the SDK's retries or returns something that is not a decision, an ordinary reply is
-stored, `needs_human` is set with `handoff_reason` `ERROR`, nothing is sent and the conversation stays open.
+events beside it. Any time it offers comes from the calendar described below. Without a key, or when a call still
+fails after the SDK's retries or returns something that is not a decision, an ordinary reply is stored, `needs_human`
+is set with `handoff_reason` `ERROR`, nothing is sent and the conversation stays open.
 
 A whole message of STOP, STOPALL, UNSUBSCRIBE, OPTOUT, CANCEL, END or QUIT, ignoring case, punctuation and spaces,
 ends the conversation `UNSUBSCRIBED`, returns the fixed confirmation and suppresses the phone: every later start for
@@ -100,7 +100,7 @@ what was measured. Every reply that would be sent writes one `GUARD` trace event
 | `exclamation`, `format`, `canary` | an exclamation mark; code, markdown or bullets; the prompt's secret token, which means the prompt leaked |
 | `url`, `pii` | a link off comparato.au or any email address; the lead's phone number or email |
 | `deny` | a rule in `guards/deny-list.yaml` matches a sentence with no negation before it in its clause: savings promises, "all funds", human claims, product advice, member results, superlatives, and any fund name or dollar amount for a lead with no fund |
-| `time-mention`, `max-slots` | a clock time that is not an offered slot or the booking, so with no calendar any time fails; more than three times |
+| `time-mention`, `max-slots` | a clock time that is not in the latest availability result or the booking; more than three times |
 
 A reply that fails goes back to the model once, with the same transcript and context plus a note naming the failed
 checks; the rejected reply never joins the transcript. A rewrite that passes is sent, marked `repaired` and flagged
@@ -111,6 +111,27 @@ over nothing is sent; after the goal nothing is sent and `needs_human` is set wi
 template goes. Nothing is ever truncated, because a cut SMS reads worse than a short fixed one. After an end the one
 closing reply gets the same checks and no repair, so one that fails is suppressed. The deny-list is loaded at boot, so a
 broken file stops the app, and the tests run every rule's examples and fail a pattern no example exercises.
+
+Anna reads a calendar: a deterministic fake and the only one there is (A5), with no HTTP client behind it. Slots
+come from the advisors' hours in Melbourne, Monday to Friday 09:00 to 20:00 and Saturday to 17:00, never a Sunday, a
+national public holiday or a date in `anna.scheduling.state-holidays` (the advisors' state), on a 30-minute grid for a
+15-minute call. The same weekday hours hold on the lead's clock, so a Perth lead's first call is at 9:00 AWST, never
+6:00. The model asks for dates on the lead's own clock through the `get_availability` tool and gets back at most six
+slots, each an opaque id and a label in the lead's zone with its abbreviation: "Mon 27 Jul 12:00 PM AEST", AWST for a
+Perth lead, still AEST for a Brisbane lead once Melbourne moves to AEDT on 4 October. All date arithmetic is
+`java.time` on wall time in a zone; nothing adds hours. Nothing is offered sooner than an hour from now or later than
+14 days out, and a request past that comes back empty with `BEYOND_HORIZON`, so the model has a fact to state. The
+latest result replaces the last one on the conversation, the next turn's context lists it with the slot ids, the API
+response shows its labels as `last_offered_slots`, and the `time-mention` check reads it.
+
+The OpenAI client answers the model's function calls inside the call, at most `anna.agent.max-tool-rounds` rounds of
+them, after which the call fails `TOOL_ROUNDS` and hands off; after an end the model is offered no tools. Each function
+call is a `TOOL_CALL` trace event with its arguments, result, slot count and latency, and the turn stores the calls in
+`tool_calls_json`. A bad call, or a tool that breaks, comes back to the model as a compact code (`BAD_ARGS`,
+`BAD_DATE`, `BAD_RANGE`, `TOOL_FAILED`), never a stack trace, and a second tool error in a row, across turns, sets
+`needs_human` with `ERROR`. `book_call` is offered, so the tool set matches the prompt, but answers `NOT_AVAILABLE_YET`
+and books nothing. `anna.clock.mode: FIXED` with `anna.clock.fixed-at` replays a conversation on a known day, and
+`anna.scheduling.calendar-preset: fully_booked` empties the calendar.
 
 Once a turn carries health information, message bodies from that turn on come back as `null` with
 `"redacted": "HEALTH_INFO"`, unless the GET asks with `?includeHealth=true`.

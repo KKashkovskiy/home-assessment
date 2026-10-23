@@ -1,6 +1,6 @@
 package com.enrola.anna.conversation;
 
-import java.time.Clock;
+import com.enrola.anna.AppClock;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
@@ -14,9 +14,9 @@ public class TraceLog {
 
   private final TraceEventRepository events;
   private final JsonMapper json;
-  private final Clock clock;
+  private final AppClock clock;
 
-  public TraceLog(TraceEventRepository events, JsonMapper json, Clock clock) {
+  public TraceLog(TraceEventRepository events, JsonMapper json, AppClock clock) {
     this.events = events;
     this.json = json;
     this.clock = clock;
@@ -48,6 +48,6 @@ public class TraceLog {
             entry.name(),
             entry.outcome(),
             json.writeValueAsString(entry.payload()),
-            clock.instant()));
+            clock.now()));
   }
 }

@@ -1,6 +1,6 @@
 package com.enrola.anna.lead;
 
-import java.time.Clock;
+import com.enrola.anna.AppClock;
 import java.time.Instant;
 import java.util.List;
 import org.slf4j.Logger;
@@ -16,9 +16,9 @@ public class LeadSeeder implements ApplicationRunner {
   private static final Logger log = LoggerFactory.getLogger(LeadSeeder.class);
 
   private final LeadRepository leads;
-  private final Clock clock;
+  private final AppClock clock;
 
-  public LeadSeeder(LeadRepository leads, Clock clock) {
+  public LeadSeeder(LeadRepository leads, AppClock clock) {
     this.leads = leads;
     this.clock = clock;
   }
@@ -28,7 +28,7 @@ public class LeadSeeder implements ApplicationRunner {
     if (leads.count() > 0) {
       return;
     }
-    List<Lead> seeded = seededLeads(clock.instant());
+    List<Lead> seeded = seededLeads(clock.now());
     leads.saveAll(seeded);
     log.info("seeded {} leads", seeded.size());
   }

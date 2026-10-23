@@ -7,8 +7,9 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Everything one call needs. {@code schema} is the JSON schema the output must fit strictly, named
- * {@code schemaName}. {@code reasoningEffort} null leaves reasoning at the model's default, and
- * {@code reasoningSummary} null asks for no summary.
+ * {@code schemaName}. {@code tools} are the functions the model may call on the way to its output.
+ * {@code reasoningEffort} null leaves reasoning at the model's default, and {@code
+ * reasoningSummary} null asks for no summary.
  */
 public record ModelRequest(
     String model,
@@ -16,11 +17,12 @@ public record ModelRequest(
     List<InputItem> input,
     String schemaName,
     JsonNode schema,
+    Tools tools,
     String reasoningEffort,
     String reasoningSummary,
     long maxOutputTokens) {
 
-  /** The boot-time check: a few tokens of {@code {"ok": true}}, no reasoning. */
+  /** The boot-time check: a few tokens of {@code {"ok": true}}, no tools, no reasoning. */
   public static ModelRequest ping(String model) {
     return new ModelRequest(
         model,
@@ -28,6 +30,7 @@ public record ModelRequest(
         List.of(new UserText("ping")),
         "ping",
         okSchema(),
+        Tools.NONE,
         null,
         null,
         64);
@@ -39,6 +42,22 @@ public record ModelRequest(
     schema.putArray("required").add("ok");
     schema.putObject("properties").putObject("ok").put("type", "boolean");
     return schema;
+  }
+
+  /**
+   * The function tools the model may call, one {@code tools.json} entry each, and who answers them.
+   * At most {@code maxRounds} rounds of calls are answered; the model must then decide.
+   */
+  public record Tools(List<JsonNode> definitions, ToolExecutor executor, int maxRounds) {
+
+    /** No tools to call, so no round is ever answered. */
+    public static final Tools NONE =
+        new Tools(
+            List.of(),
+            (name, argumentsJson) -> {
+              throw new IllegalStateException("no tools were offered, yet " + name + " ran");
+            },
+            0);
   }
 
   /** One input message, in transcript order. */

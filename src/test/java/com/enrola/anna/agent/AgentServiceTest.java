@@ -43,6 +43,7 @@ class AgentServiceTest {
               null,
               Instant.EPOCH),
           Instant.parse("2026-07-26T00:00:00Z").atZone(ZoneId.of("Australia/Melbourne")),
+          false,
           new TurnContext.Counters(0, 0, 0, 0),
           new LimitsProperties(15, 3, 1),
           null,
@@ -51,11 +52,16 @@ class AgentServiceTest {
           EndReason.NONE,
           null);
 
+  static final ToolExecutor NO_TOOL_RUNS =
+      (name, argumentsJson) -> {
+        throw new AssertionError("nothing scripted calls " + name);
+      };
+
   final ScriptedModelClient model = new ScriptedModelClient();
   final AgentService agent =
       new AgentService(
           new StaticListableBeanFactory(Map.of("model", model)).getBeanProvider(ModelClient.class),
-          new AgentProperties("gpt-5.1", "low", "auto", Duration.ofSeconds(30), 2, 1200, false),
+          new AgentProperties("gpt-5.1", "low", "auto", Duration.ofSeconds(30), 2, 1200, 4, false),
           PERSONA,
           SMS);
 
@@ -63,7 +69,7 @@ class AgentServiceTest {
   void transcriptIsReplayedWithTheContextLast() {
     model.decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT);
+    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, NO_TOOL_RUNS);
 
     assertThat(model.calls().getFirst().input())
         .containsExactly(
@@ -76,7 +82,7 @@ class AgentServiceTest {
   void requestCarriesTheRenderedPromptAndTheStrictSchema() {
     model.decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT);
+    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, NO_TOOL_RUNS);
 
     ModelRequest request = model.calls().getFirst();
     assertThat(request.model()).isEqualTo("gpt-5.1");
@@ -84,5 +90,30 @@ class AgentServiceTest {
     assertThat(request.schemaName()).isEqualTo("agent_decision");
     assertThat(request.schema()).isEqualTo(BUNDLE.schema().get("schema"));
     assertThat(request.reasoningEffort()).isEqualTo("low");
+  }
+
+  /** The bundle's two tools, answered by the caller's executor, capped by the configured rounds. */
+  @Test
+  void requestOffersTheBundlesToolsAnsweredByTheCaller() {
+    model.decide(Decisions.engaged().build());
+
+    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, (name, argumentsJson) -> name + " answered");
+
+    ModelRequest.Tools tools = model.calls().getFirst().tools();
+    assertThat(tools.definitions())
+        .extracting(definition -> definition.get("name").stringValue())
+        .containsExactly("get_availability", "book_call");
+    assertThat(tools.executor().execute("book_call", "{}")).isEqualTo("book_call answered");
+    assertThat(tools.maxRounds()).isEqualTo(4);
+  }
+
+  /** After an end the model only classifies; nothing it could call would be right. */
+  @Test
+  void classifyOffersNoTools() {
+    model.decide(Decisions.engaged().build());
+
+    agent.classify(BUNDLE, TRANSCRIPT, CONTEXT);
+
+    assertThat(model.calls().getFirst().tools()).isEqualTo(ModelRequest.Tools.NONE);
   }
 }

@@ -24,9 +24,6 @@ import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
 import java.math.BigDecimal;
 import java.nio.file.Path;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -48,7 +45,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -62,11 +58,17 @@ import tools.jackson.databind.node.ObjectNode;
  * decision applied, the call recorded on the turn and in the trace, a failure handed off, and the
  * guards, counters and terminal states that hold whatever the model says.
  */
-@SpringBootTest(properties = "OPENAI_API_KEY=")
+@SpringBootTest(
+    properties = {
+      "OPENAI_API_KEY=",
+      "anna.clock.mode=FIXED",
+      "anna.clock.fixed-at=" + InboundTurnsTest.NOW
+    })
 @Import(InboundTurnsTest.ScriptedModel.class)
 class InboundTurnsTest {
 
-  static final Instant NOW = Instant.parse("2026-07-26T00:00:00Z");
+  /** Sunday 26 July 2026, 10:00 in Melbourne. */
+  static final String NOW = "2026-07-26T00:00:00Z";
 
   @TempDir static Path tempDir;
 
@@ -85,12 +87,6 @@ class InboundTurnsTest {
     @Bean
     ScriptedModerationClient scriptedModeration() {
       return new ScriptedModerationClient();
-    }
-
-    @Bean
-    @Primary
-    Clock fixedClock() {
-      return Clock.fixed(NOW, ZoneOffset.UTC);
     }
   }
 
@@ -954,6 +950,164 @@ class InboundTurnsTest {
       return jdbc.queryForMap(
           "select text, char_count, repaired from message where conversation_id = ?"
               + " and turn_no = 1 and direction = 'OUT'",
+          id);
+    }
+  }
+
+  /** get_availability answered inside the model call, on the real calendar, for Lauren in VIC. */
+  @Nested
+  class ToolLoop {
+
+    static final String MONDAY =
+        "{\"date_from\":\"2026-07-27\",\"date_to\":\"2026-07-27\",\"part_of_day\":\"ANY\"}";
+    static final String NOT_A_DATE =
+        "{\"date_from\":\"next monday\",\"date_to\":\"2026-07-27\",\"part_of_day\":\"ANY\"}";
+    static final String OFFER = "I've got Monday at 9:00 or 9:30 AM. Would either of those work?";
+    static final String SORRY = "Sorry, I couldn't check that. Which day suits you?";
+
+    /** The offered times pass the time check, and the next turn's context still lists them. */
+    @Test
+    void availabilityThenDecision() {
+      model
+          .callTool("get_availability", MONDAY)
+          .decide(Decisions.engaged().stage(Stage.OFFER_TIMES).reply(OFFER).build())
+          .decide(Decisions.engaged().build());
+
+      TurnResponse response = turns.handle(id, "monday works", "p1");
+      turns.handle(id, "the first one", "p2");
+
+      assertThat(response.reply()).isEqualTo(OFFER);
+      assertThat(response.lastOfferedSlots())
+          .hasSize(6)
+          .startsWith("Mon 27 Jul 9:00 AM AEST", "Mon 27 Jul 9:30 AM AEST");
+      assertThat(toolCallEvents())
+          .singleElement()
+          .satisfies(
+              event -> {
+                assertThat(event)
+                    .containsEntry("NAME", "get_availability")
+                    .containsEntry("OUTCOME", "PASS");
+                assertThat(event.get("PAYLOAD_JSON").toString())
+                    .contains("2026-07-27", "\"slot_count\":6", "\"latency_ms\":");
+              });
+      assertThat(
+              jdbc.queryForObject(
+                  "select tool_calls_json from turn where conversation_id = ? and turn_no = 1",
+                  String.class,
+                  id))
+          .contains("\"name\":\"get_availability\"", "Mon 27 Jul 9:00 AM AEST");
+      assertThat(model.calls().get(1).input().getLast().text())
+          .containsPattern(
+              "Last offered slots: Mon 27 Jul 9:00 AM AEST \\[s[\\w-]+]; Mon 27 Jul 9:30 AM AEST \\[s");
+    }
+
+    /** The repair sees the offer this turn's tool call made, not the empty one it started with. */
+    @Test
+    void repairReadsTheOfferAsItStandsNow() {
+      model
+          .callTool("get_availability", MONDAY)
+          .decide(Decisions.engaged().reply("How about 3:00 PM?").build())
+          .decide(Decisions.engaged().reply(OFFER).build());
+
+      TurnResponse response = turns.handle(id, "monday works", "p1");
+
+      assertThat(response.reply()).isEqualTo(OFFER);
+      assertThat(model.calls().get(0).input().getLast().text())
+          .contains("Last offered slots: none.");
+      assertThat(model.calls().get(1).input().getLast().text())
+          .contains("Last offered slots: Mon 27 Jul 9:00 AM AEST [s", "time-mention:");
+    }
+
+    /** Nothing is scheduled after an end, so a classify-only call is offered no tools. */
+    @Test
+    void noToolsAfterAnEnd() {
+      model
+          .decide(Decisions.engaged().ends(EndReason.DECLINED).noReply().build())
+          .decide(Decisions.engaged().reply("Thanks, take care.").build());
+      turns.handle(id, "no thanks", "p1");
+
+      turns.handle(id, "ok thanks", "p2");
+
+      assertThat(model.calls().get(0).tools().definitions()).hasSize(2);
+      assertThat(model.calls().get(1).tools()).isEqualTo(ModelRequest.Tools.NONE);
+    }
+
+    /** Four rounds are answered, as anna.agent.max-tool-rounds says; the fifth call is not. */
+    @Test
+    void loopStopsAtCap() {
+      for (int round = 0; round < 5; round++) {
+        model.callTool("get_availability", MONDAY);
+      }
+
+      TurnResponse response = turns.handle(id, "monday?", "p1");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.needsHuman()).isTrue();
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.ERROR);
+      assertThat(toolCallEvents()).hasSize(4);
+      assertThat(turnStatus()).isEqualTo("ERROR");
+      assertThat(
+              jdbc.queryForObject(
+                  "select payload_json from trace_event where conversation_id = ?"
+                      + " and type = 'ERROR'",
+                  String.class,
+                  id))
+          .contains("\"code\":\"TOOL_ROUNDS\"");
+    }
+
+    /** The model reads a compact code; the second error in a row asks for a human. */
+    @Test
+    void secondErrorInARowHandsOff() {
+      model
+          .callTool("get_availability", NOT_A_DATE)
+          .decide(Decisions.engaged().reply(SORRY).build());
+      TurnResponse first = turns.handle(id, "next monday?", "p1");
+      model
+          .callTool("get_availability", NOT_A_DATE)
+          .decide(Decisions.engaged().reply(SORRY).build());
+
+      TurnResponse second = turns.handle(id, "tuesday then?", "p2");
+
+      assertThat(first.needsHuman()).isFalse();
+      assertThat(
+              jdbc.queryForObject(
+                  "select payload_json from trace_event where conversation_id = ?"
+                      + " and turn_no = 1 and type = 'STATE_DIFF'",
+                  String.class,
+                  id))
+          .contains("\"upstream_errors\":{\"from\":0,\"to\":1}");
+      assertThat(toolCallEvents())
+          .extracting(event -> event.get("OUTCOME"))
+          .containsExactly("BLOCK", "BLOCK");
+      assertThat(toolCallEvents().getFirst().get("PAYLOAD_JSON").toString())
+          .contains("\\\"status\\\":\\\"ERROR\\\"", "\\\"code\\\":\\\"BAD_DATE\\\"");
+      assertThat(second.needsHuman()).isTrue();
+      assertThat(second.handoffReason()).isEqualTo(HandoffReason.ERROR);
+      assertThat(second.conversationEnded()).isFalse();
+      assertThat(second.reply()).isEqualTo(SORRY);
+    }
+
+    @Test
+    void answerBetweenErrorsResetsTheStreak() {
+      model
+          .callTool("get_availability", NOT_A_DATE)
+          .decide(Decisions.engaged().reply(SORRY).build())
+          .callTool("get_availability", MONDAY)
+          .decide(Decisions.engaged().reply(OFFER).build())
+          .callTool("get_availability", NOT_A_DATE)
+          .decide(Decisions.engaged().reply(SORRY).build());
+      turns.handle(id, "next monday?", "p1");
+      turns.handle(id, "monday the 27th", "p2");
+
+      TurnResponse third = turns.handle(id, "or next monday?", "p3");
+
+      assertThat(third.needsHuman()).isFalse();
+    }
+
+    private List<Map<String, Object>> toolCallEvents() {
+      return jdbc.queryForList(
+          "select name, outcome, payload_json from trace_event where conversation_id = ?"
+              + " and type = 'TOOL_CALL' order by turn_no, seq",
           id);
     }
   }
