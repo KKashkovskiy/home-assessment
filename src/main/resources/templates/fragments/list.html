@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<aside th:fragment="pane(page)" class="panel pane-list" aria-label="Conversation list" th:with="filter=${page.filter}">
+  <header>
+    <h2>Conversations <span id="conv-count" class="muted small" th:text="${#lists.size(page.rows)} + ' of ' + ${page.total}">0 of 0</span></h2>
+    <a id="start-btn" class="btn primary sm" th:href="${filter.url('/conversations', 'start', 'true')}" data-opens="start-panel">Start a conversation</a>
+  </header>
+  <form id="filter-controls" class="list-tools" method="get" th:action="@{/conversations}" aria-label="Filters">
+    <label class="visually-hidden" for="conv-search">Search by name, id or summary</label>
+    <input id="conv-search" name="q" type="search" th:value="${filter.q}" placeholder="Search name, conversation id or summary">
+    <div class="filter-controls" th:with="statuses=${@fmt.statuses()}, endReasons=${@fmt.endReasons()}, stages=${@fmt.stages()}, flags=${@fmt.flags()}, sources=${@fmt.sources()}, status=${filter.status}, endReason=${filter.endReason}, stage=${filter.stage}, flag=${filter.flag}, source=${filter.source}">
+      <label th:replace="~{fragments/parts :: filterSelect('status', 'State', ${statuses}, ${status})}"></label>
+      <label th:replace="~{fragments/parts :: filterSelect('endReason', 'End reason', ${endReasons}, ${endReason})}"></label>
+      <label th:replace="~{fragments/parts :: filterSelect('stage', 'Stage', ${stages}, ${stage})}"></label>
+      <label th:replace="~{fragments/parts :: filterSelect('flag', 'Flag', ${flags}, ${flag})}"></label>
+      <label th:replace="~{fragments/parts :: filterSelect('source', 'Source', ${sources}, ${source})}"></label>
+      <label class="toggle"><input type="checkbox" name="needsHuman" value="true" th:checked="${filter.needsHuman == true}"> needs human</label>
+    </div>
+    <button class="btn sm apply-filters" type="submit">Apply filters</button>
+    <div id="active-filters" class="active-filters" aria-label="Active filters" th:unless="${#lists.isEmpty(filter.chips())}">
+      <a th:each="chip : ${filter.chips()}" class="chip" th:href="${chip.removeUrl}" th:title="'Remove the ' + ${chip.label} + ' filter'"><span aria-hidden="true">✕</span> <th:block th:text="${chip.label} + ': ' + ${chip.value}"/></a>
+    </div>
+  </form>
+  <ul id="conv-list" class="conv-list">
+    <li th:if="${#lists.isEmpty(page.rows)}" class="empty" th:text="${filter.isEmpty()} ? 'No conversations yet. Start one to play the lead.' : 'No conversations match these filters. Remove a filter above.'">No conversations.</li>
+    <li th:each="row : ${page.rows}">
+      <a class="conv-row" th:href="${filter.url('/conversations/' + row.id)}" th:aria-current="${page.selected != null and page.selected.conversation.id == row.id} ? 'true'">
+        <div class="top"><span class="name"><th:block th:text="${row.givenName}">Lead</th:block> <span class="muted small" th:if="${row.leadState != null}" th:text="${row.leadState}">VIC</span></span><span class="when" th:text="${@fmt.when(row.updatedAt)}">now</span></div>
+        <div class="meta">
+          <span th:class="'chip ' + ${@fmt.statusClass(row.status)}"><span aria-hidden="true" th:text="${@fmt.statusIcon(row.status)}">◌</span> <th:block th:text="${@fmt.words(row.status)}">ACTIVE</th:block></span>
+          <span class="chip ghost" th:text="${@fmt.stage(row.stage)}">Engage</span>
+          <span class="chip warn" th:if="${row.needsHuman}">⚑ needs human</span>
+          <th:block th:each="flag : ${row.flags()}"><span th:replace="~{fragments/parts :: flag(${flag})}"></span></th:block>
+          <span class="chip ghost" th:text="${row.source}">SIM</span>
+        </div>
+        <div class="summary" th:title="${row.summary}" th:text="${row.summary} ?: 'No summary yet.'">summary</div>
+      </a>
+    </li>
+  </ul>
+</aside>
+</body>
+</html>

@@ -12,11 +12,11 @@ import org.springframework.stereotype.Component;
  * Everything decided before the main model call, in an order that is the specification: a lone
  * CANCEL after a booking first, because it asks to change the call, not to stop the messages; a
  * STOP keyword second, because it works with no model and overrides everything; self-harm third,
- * because the safety template goes out once whatever the state; hard-terminal silence fourth, so
- * nothing more is spent on that conversation; abuse fifth, so a distressed lead who swears gets
- * Lifeline, not a cut-off; then whether the model can be called at all; then the soft-terminal
- * classify-only path; then the turn cap. Pure: it reads plain values and returns an {@link
- * Outcome}, and the caller acts on it.
+ * because the safety template goes out once whatever the state; silence after a hard end or a
+ * console reset fourth, so nothing more is spent on that conversation; abuse fifth, so a distressed
+ * lead who swears gets Lifeline, not a cut-off; then whether the model can be called at all; then
+ * the soft-terminal classify-only path; then the turn cap. Pure: it reads plain values and returns
+ * an {@link Outcome}, and the caller acts on it.
  */
 @Component
 public class PreGuards {
@@ -32,7 +32,8 @@ public class PreGuards {
           SafetyReply,
           FixedClose,
           HandoffNoModel,
-          Silence {}
+          Silence,
+          Reset {}
 
   /** Call the model and act on its decision. */
   public record Proceed() implements Outcome {}
@@ -64,6 +65,12 @@ public class PreGuards {
   /** The conversation ended hard with {@code endReason}: store the inbound and nothing else. */
   public record Silence(EndReason endReason) implements Outcome {}
 
+  /**
+   * The console started over with this lead, so this conversation is history: store the inbound and
+   * nothing else.
+   */
+  public record Reset() implements Outcome {}
+
   /** What recognised abuse: the moderation endpoint, or the model's own ABUSIVE intent. */
   public enum Detector {
     MODERATION,
@@ -82,12 +89,13 @@ public class PreGuards {
   }
 
   /**
-   * The conversation before this turn: its end reason, NONE while open; whether the safety template
-   * already went out; the agent turns used; whether a call is booked; and the latest handoff
-   * reason.
+   * The conversation before this turn: its end reason, NONE while open; whether the console reset
+   * it; whether the safety template already went out; the agent turns used; whether a call is
+   * booked; and the latest handoff reason.
    */
   public record Standing(
       EndReason endReason,
+      boolean reset,
       boolean safetySent,
       int agentTurns,
       boolean booked,
@@ -134,6 +142,9 @@ public class PreGuards {
     }
     if (standing.endReason().isHardTerminal()) {
       return new Silence(standing.endReason());
+    }
+    if (standing.reset()) {
+      return new Reset();
     }
     if (abusive(verdict)) {
       return new EndAbusive(Detector.MODERATION);

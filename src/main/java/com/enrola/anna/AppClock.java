@@ -14,18 +14,25 @@ import org.springframework.stereotype.Component;
 @Component
 public final class AppClock {
 
+  private static final Clock SYSTEM = Clock.systemUTC();
+
   private volatile Clock clock;
 
   public AppClock(ClockProperties props) {
     clock =
         switch (props.mode()) {
-          case REAL -> Clock.systemUTC();
+          case REAL -> SYSTEM;
           case FIXED -> Clock.fixed(props.fixedAt(), ZoneOffset.UTC);
         };
   }
 
   public Instant now() {
     return clock.instant();
+  }
+
+  /** True while the clock stands still, set so at boot or by {@link #fixAt}. */
+  public boolean fixed() {
+    return !clock.equals(SYSTEM);
   }
 
   /** Stops the clock at {@code at}. */

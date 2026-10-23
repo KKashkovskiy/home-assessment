@@ -11,5 +11,9 @@ import jakarta.validation.constraints.Size;
  * anna.sms.max-inbound-chars} is accepted, stored whole and flagged.
  */
 public record InboundRequest(
-    @NotBlank(message = "must not be blank") @Size(max = 4000, message = "must be at most 4000 characters") String text,
-    @Pattern(regexp = "\\S{1,80}", message = "must be 1 to 80 characters with no spaces") String providerMessageId) {}
+    @NotBlank(message = "must not be blank") @Size(max = MAX_TEXT, message = "must be at most 4000 characters") String text,
+    @Pattern(regexp = "\\S{1,80}", message = "must be 1 to 80 characters with no spaces") String providerMessageId) {
+
+  /** The transport cap on one inbound; the console's composer is held to it too. */
+  static final int MAX_TEXT = 4000;
+}

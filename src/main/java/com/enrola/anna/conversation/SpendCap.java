@@ -1,6 +1,7 @@
 package com.enrola.anna.conversation;
 
 import com.enrola.anna.config.BudgetsProperties;
+import java.math.BigDecimal;
 import org.springframework.stereotype.Component;
 
 /**
@@ -8,7 +9,7 @@ import org.springframework.stereotype.Component;
  * second one to drift from them.
  */
 @Component
-class SpendCap {
+public class SpendCap {
 
   private final TurnRepository turns;
   private final BudgetsProperties budgets;
@@ -18,8 +19,13 @@ class SpendCap {
     this.budgets = budgets;
   }
 
+  /** USD spent on model calls across every conversation, what the app cap is measured against. */
+  public BigDecimal appSpend() {
+    return turns.totalCost();
+  }
+
   boolean appCapReached() {
-    return turns.totalCost().compareTo(budgets.appCapUsd()) >= 0;
+    return appSpend().compareTo(budgets.appCapUsd()) >= 0;
   }
 
   boolean conversationCapReached(String conversationId) {

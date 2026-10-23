@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page(${title}, ${#strings.toLowerCase(title)}, ~{:: main})}">
+<body>
+  <main id="main" class="page" tabindex="-1">
+    <section class="panel placeholder-panel" aria-labelledby="placeholder-title">
+      <header><h1 id="placeholder-title" th:text="${title}">Page</h1></header>
+      <div class="panel-body">
+        <p class="muted" th:text="${title} + ' has no page in this build.'">No page in this build.</p>
+        <a class="btn" th:href="@{/conversations}">Back to conversations</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

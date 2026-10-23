@@ -176,6 +176,7 @@ class TurnPipeline {
             verdict,
             new PreGuards.Standing(
                 conversation.endReason,
+                conversation.status == ConversationStatus.RESET,
                 safetySent(conversation),
                 conversation.agentTurns,
                 turn.bookedAtStart(),
@@ -206,7 +207,8 @@ class TurnPipeline {
           PreGuards.SafetyReply _,
           PreGuards.FixedClose _,
           PreGuards.HandoffNoModel _,
-          PreGuards.Silence _ ->
+          PreGuards.Silence _,
+          PreGuards.Reset _ ->
           TraceOutcome.BLOCK;
     };
   }
@@ -223,7 +225,9 @@ class TurnPipeline {
       case PreGuards.FixedClose close ->
           outcomes.fixedClose(turn, close.template(), close.reason());
       case PreGuards.HandoffNoModel handoff -> outcomes.handoffWithoutModel(turn, handoff.reason());
-      case PreGuards.Silence silence -> TurnOutcome.silent("ended " + silence.endReason());
+      case PreGuards.Silence silence ->
+          TurnOutcome.silent(NoReply.ENDED_BEFORE, "ended " + silence.endReason());
+      case PreGuards.Reset _ -> TurnOutcome.silent(NoReply.RESET, "reset");
     };
   }
 

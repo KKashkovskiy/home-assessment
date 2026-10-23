@@ -3,6 +3,7 @@ package com.enrola.anna.scheduling;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import com.enrola.anna.conversation.ConversationService;
+import com.enrola.anna.conversation.Source;
 import java.nio.file.Path;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ class BookingRepositoryTest {
 
   @Test
   void secondRowForSameConversationFailsInDatabase() {
-    String conversationId = conversations.start("lauren").conversationId();
+    String conversationId = conversations.start("lauren", Source.API).conversationId();
     bookings.save(booking("cal-1", conversationId, NOON_MONDAY));
 
     assertThatExceptionOfType(DuplicateKeyException.class)

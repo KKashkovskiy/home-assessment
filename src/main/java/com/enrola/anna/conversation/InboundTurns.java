@@ -126,7 +126,7 @@ public class InboundTurns {
                 conversation,
                 bookings.findByConversationId(conversation.id).orElse(null),
                 messages.transcript(conversation.id)),
-            outcome.reply(),
+            new TurnResponse.Answer(outcome.reply(), outcome.noReply()),
             now);
     turns.save(Turn.of(inbound, outcome, json.writeValueAsString(response), now));
     log.info(

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page('Conversations', 'conversations', ~{:: main})}">
+<body>
+  <main id="main" class="console" tabindex="-1" th:with="view=${page.selected}">
+    <aside th:replace="~{fragments/list :: pane(${page})}"></aside>
+
+    <section class="panel pane-chat" aria-label="Chat">
+      <h1 class="visually-hidden">Conversation</h1>
+      <th:block th:if="${view != null}" th:with="conversation=${view.conversation}">
+        <div class="chat-head">
+          <div id="lead-line" class="lead-line">
+            <strong th:text="${view.lead.givenName}">Lead</strong>
+            <span th:text="${view.provider()}">provider</span>
+            <span th:text="${view.premium()}">premium</span>
+            <span th:text="${view.state()}">state</span>
+            <span title="The lead's own clock, from the app clock" th:text="${view.leadLocalTime}">clock</span>
+            <span class="mono small" th:title="${shell.piiMask} ? 'Masked: turn the PII mask off to see it' : 'Unmasked for this session'" th:text="${view.lead.phone} + ', ' + (${view.lead.email} ?: 'no email')">phone</span>
+            <span class="conv-id"><span class="mono muted small" th:title="${conversation.id}" th:text="${@fmt.shortId(conversation.id)}">c-…</span> <button type="button" class="btn quiet sm" th:data-copy="${conversation.id}" hidden>copy id</button></span>
+            <span class="chip ghost" title="Which client opened it" th:text="${conversation.source}">SIM</span>
+            <span class="chip ghost" title="Pinned when the conversation started" th:text="'prompt ' + ${conversation.promptVersion}">prompt v1</span>
+          </div>
+        </div>
+        <div th:replace="~{fragments/thread :: thread(${view})}"></div>
+        <form id="composer-form" class="composer" method="post" th:action="@{/conversations/{id}/send(id=${conversation.id})}">
+          <div id="quick-replies" class="quick-replies" role="group" aria-label="Quick replies">
+            <button th:each="reply : ${page.quickReplies}" type="submit" class="chip" name="quick" th:value="${reply.text}" th:title="${reply.text} + ' (Alt+click puts it in the box)'" th:text="${reply.label}">STOP</button>
+          </div>
+          <div class="composer-row">
+            <label class="visually-hidden" for="composer-text">Message as the lead</label>
+            <textarea id="composer-text" name="text" rows="1" placeholder="Type as the lead" aria-describedby="composer-hint"></textarea>
+            <span id="composer-count" class="counter num" th:data-max="${view.maxInboundChars}" th:text="'0 / ' + ${view.maxInboundChars}">0 / 1600</span>
+            <button id="send-btn" class="btn primary" type="submit">Send</button>
+            <button id="reset-btn" class="btn" type="submit" th:formaction="@{/conversations/{id}/reset(id=${conversation.id})}" title="Start over with the same lead; this conversation is kept">Reset</button>
+          </div>
+          <p id="composer-hint" class="small muted composer-hint" role="status" th:data-kind="${view.hint()}" th:text="${@fmt.hint(view)}">hint</p>
+        </form>
+      </th:block>
+      <div class="empty-state" th:if="${view == null}">
+        <h2>No conversation open</h2>
+        <p class="muted">Pick one from the list, or start one with a seeded or custom lead. The opener is a fixed template; from the lead's first reply the agent decides.</p>
+        <a class="btn primary" th:href="${page.filter.url('/conversations', 'start', 'true')}" data-opens="start-panel">Start a conversation</a>
+      </div>
+    </section>
+
+    <aside class="panel pane-inspector" aria-label="State and inspector">
+      <div class="scroll" th:if="${view != null}">
+        <div th:replace="~{fragments/state :: head(${view})}"></div>
+        <th:block th:replace="~{fragments/inspector :: pane(${view})}"/>
+      </div>
+      <p class="empty" th:if="${view == null}">The open conversation's stage, badges, counters, facts and booking show here.</p>
+    </aside>
+
+    <div th:replace="~{fragments/start :: panel(${page.start})}"></div>
+  </main>
+</body>
+</html>

@@ -85,7 +85,7 @@ class GuardOutcomes {
     trace.record(
         turn, TraceLog.Entry.guard("abuse", TraceOutcome.BLOCK, Map.of("detector", detector)));
     StateRules.end(turn.conversation(), EndReason.ABUSIVE, turn.now());
-    return TurnOutcome.silent("abuse by " + detector);
+    return TurnOutcome.silent(NoReply.ENDED_NOW, "abuse by " + detector);
   }
 
   /**
@@ -124,7 +124,7 @@ class GuardOutcomes {
   /** The lead repeats a request already acknowledged: no reply, so no loop of acknowledgements. */
   TurnOutcome suppressRepeat(RunningTurn turn) {
     turn.conversation().addFlag(Flag.LOOP_SUPPRESSED);
-    return TurnOutcome.silent("repeat suppressed");
+    return TurnOutcome.silent(NoReply.REPEAT, "repeat suppressed");
   }
 
   /**
@@ -155,7 +155,7 @@ class GuardOutcomes {
       return closeFor(turn, conversation.endReason);
     }
     if (conversation.needsHuman) {
-      return TurnOutcome.silent("reply rejected during a handoff");
+      return TurnOutcome.silent(NoReply.HANDOFF, "reply rejected during a handoff");
     }
     return TurnOutcome.fallback(render(turn, Template.FALLBACK));
   }
@@ -166,7 +166,7 @@ class GuardOutcomes {
       case DECLINED -> TurnOutcome.fallback(render(turn, Template.DECLINED_CLOSE));
       case HANDOFF -> TurnOutcome.fallback(render(turn, Template.HANDOFF_ACK));
       case NONE, BOOKED, UNSUBSCRIBED, ABUSIVE, OFF_TOPIC_LIMIT, MAX_TURNS, SAFETY ->
-          TurnOutcome.silent("closing reply rejected");
+          TurnOutcome.silent(NoReply.CLOSING_SUPPRESSED, "closing reply rejected");
     };
   }
 
@@ -175,7 +175,7 @@ class GuardOutcomes {
    */
   TurnOutcome handoffWithoutModel(RunningTurn turn, PreGuards.NoModelReason reason) {
     StateRules.handoff(turn.conversation(), HandoffReason.ERROR);
-    return TurnOutcome.silent("no model call: " + reason);
+    return TurnOutcome.silent(NoReply.HANDOFF, "no model call: " + reason);
   }
 
   private TurnOutcome fixed(RunningTurn turn, Template template, String decidedBy) {

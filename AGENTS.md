@@ -37,6 +37,18 @@ Dependencies point one way: `conversation` to `agent`, `guard` and `scheduling`,
 guard or a tool takes plain values, never the conversation entity. The time comes from `AppClock` in the root package,
 which any package may use; nothing else reads the system clock.
 
+## Console pages
+
+- Templates live in `src/main/resources/templates/`, one file per page and shared pieces in `fragments/`;
+  `app.css` and `app.js` in `static/`. `web` is a leaf: nothing imports it.
+- A page controller carries `@Console`, which gives it the status strip and the console's error page; it binds,
+  calls a service, and puts one view record on the model.
+- Templates hold no rules: words, icons, CSS classes and option lists come from `@fmt` (`ViewFormats`), decisions
+  from methods on the view records. No `T(...)`, no `name()` comparisons.
+- `app.js` never renders domain HTML: the server renders every bubble and fragment and the script swaps them in.
+  Every action also works as a plain form post.
+- With the PII mask on, view records hold masked text only; masking happens where the records are built.
+
 ## Running the gates
 
 ```

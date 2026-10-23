@@ -9,7 +9,10 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
 
-/** A failed boot check warns, unless strict mode asks for a failed boot. */
+/**
+ * A failed boot check warns, unless strict mode asks for a failed boot; either way the console can
+ * read how it went.
+ */
 class ModelCheckTest {
 
   final ScriptedModelClient model = new ScriptedModelClient();
@@ -25,16 +28,22 @@ class ModelCheckTest {
             "{}",
             "{}"));
 
-    new ModelCheck(model, agent(false)).run(null);
+    ModelCheck check = new ModelCheck(model, agent(false));
+    assertThat(check.result()).isEqualTo(ModelCheck.Result.PENDING);
+
+    check.run(null);
 
     assertThat(model.calls()).singleElement().extracting(ModelRequest::model).isEqualTo("gpt-5.1");
+    assertThat(check.result()).isEqualTo(ModelCheck.Result.PASSED);
   }
 
   @Test
   void failedCheckWarnsAndContinues() {
     model.enqueue(Decisions.failed(ModelResponse.Failure.HTTP_5XX));
+    ModelCheck check = new ModelCheck(model, agent(false));
 
-    assertThatCode(() -> new ModelCheck(model, agent(false)).run(null)).doesNotThrowAnyException();
+    assertThatCode(() -> check.run(null)).doesNotThrowAnyException();
+    assertThat(check.result()).isEqualTo(ModelCheck.Result.FAILED);
   }
 
   @Test

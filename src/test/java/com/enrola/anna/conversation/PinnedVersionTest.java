@@ -79,7 +79,7 @@ class PinnedVersionTest {
     versions.activate("v1");
     model.reset();
     moderation.reset();
-    laurenOnV1 = conversations.start("lauren").conversationId();
+    laurenOnV1 = conversations.start("lauren", Source.API).conversationId();
   }
 
   @Test
@@ -97,7 +97,7 @@ class PinnedVersionTest {
   void newConversationUsesActive() {
     prompts.activate(saveV1WithMarker());
 
-    TurnResponse started = conversations.start("john");
+    TurnResponse started = conversations.start("john", Source.API);
     model.decide(Decisions.engaged().build());
     turns.handle(started.conversationId(), "save money", "j1");
 

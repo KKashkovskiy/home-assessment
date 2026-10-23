@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- Small pieces more than one fragment renders. -->
+
+<span th:fragment="flag(flag)" th:class="'chip ' + ${@fmt.flagClass(flag)}" th:text="'⚑ ' + ${@fmt.words(flag)}">⚑ FLAG</span>
+
+<label th:fragment="filterSelect(name, label, options, selected)" class="small"><th:block th:text="${label}">Label</th:block>
+  <select th:name="${name}"><option value="">any</option>
+    <option th:each="option : ${options}" th:value="${option}" th:text="${@fmt.words(option)}" th:selected="${option == selected}">value</option></select></label>
+
+<div th:fragment="field(name, id, label, type, value, placeholder, errors)" class="field" th:classappend="${errors.containsKey(name)} ? 'invalid'">
+  <label th:for="${id}" th:text="${label}">Label</label>
+  <input th:id="${id}" th:name="'custom.' + ${name}" th:type="${type}" th:value="${value}" th:placeholder="${placeholder}" th:aria-invalid="${errors.containsKey(name)} ? 'true'" th:aria-describedby="${errors.containsKey(name)} ? ${id} + '-error'">
+  <span class="error" th:if="${errors.containsKey(name)}" th:id="${id} + '-error'" th:text="${errors.get(name)}"></span>
+</div>
+</body>
+</html>

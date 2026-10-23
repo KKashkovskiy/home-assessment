@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="thread(view)" id="thread" class="thread" role="log" aria-live="polite" aria-label="Messages" tabindex="-1">
+  <th:block th:each="item : ${view.thread}" th:with="fragment=${item.fragment()}"><th:block th:replace="~{fragments/turn :: __${fragment}__(${item})}"/></th:block>
+</div>
+</body>
+</html>

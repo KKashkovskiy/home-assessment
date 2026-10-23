@@ -21,9 +21,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public class Conversation {
 
-  /** The source of a conversation the platform started through the API. */
-  public static final String SOURCE_API = "API";
-
   private static final JsonMapper JSON = JsonMapper.builder().build();
   private static final TypeReference<List<EndReasonEntry>> HISTORY = new TypeReference<>() {};
   private static final TypeReference<List<Slot>> SLOTS = new TypeReference<>() {};
@@ -54,7 +51,7 @@ public class Conversation {
   public String reasoningEffort;
   public String appVersion;
 
-  public String source;
+  public Source source;
 
   /** What the model has gathered about the lead, as a JSON object; null before its first turn. */
   public String extractedJson;
@@ -91,6 +88,11 @@ public class Conversation {
     EnumSet<Flag> flags = flags();
     flags.add(flag);
     flagsJson = Flags.write(flags);
+  }
+
+  /** True for a message from the first HEALTH_INFO turn on, whose body is hidden by default. */
+  public boolean hidesBody(int turnNo) {
+    return healthInfoTurn != null && turnNo >= healthInfoTurn;
   }
 
   public JsonNode extracted() {

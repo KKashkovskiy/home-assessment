@@ -28,8 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Starts conversations and reads them back; {@link InboundTurns} runs their turns. Throws {@link
- * NotFoundException} and {@link ConflictException}; status codes are the API's business.
+ * Starts conversations, resets them from the console and reads them back; {@link InboundTurns} runs
+ * their turns. Throws {@link NotFoundException} and {@link ConflictException}; status codes are the
+ * caller's business.
  *
  * <p>A start holds the lead's {@link TurnLocks} lock and commits inside it, so the next start for
  * that lead sees the new row; that is why it uses a {@link TransactionTemplate} and not
@@ -84,20 +85,35 @@ public class ConversationService {
    * Creates the conversation and stores the template opener as turn 0. An opted-out phone gets a
    * SUPPRESSED conflict; a lead with an open conversation gets an ACTIVE conflict naming it, and
    * one whose last conversation ended ABUSIVE an ABUSIVE conflict naming that, so only a deliberate
-   * {@link #forceStart} texts them again.
+   * {@link #forceStart} texts them again. {@code source} names the client that asked.
    */
-  public TurnResponse start(String leadId) {
+  public TurnResponse start(String leadId, Source source) {
     Lead lead = requireLead(leadId);
-    return locks.forLead(leadId, () -> tx.execute(_ -> openIfNoneOpen(lead)));
+    return locks.forLead(leadId, () -> tx.execute(_ -> openIfNoneOpen(lead, source)));
   }
 
   /**
-   * Like {@link #start}, but opens a second conversation beside an open one, or after an abusive
-   * end. An opted-out phone is still refused: nothing overrides an opt-out.
+   * The platform's override: like {@link #start}, but opens a second conversation beside an open
+   * one, or after an abusive end. An opted-out phone is still refused: nothing overrides an
+   * opt-out.
    */
   public TurnResponse forceStart(String leadId) {
     Lead lead = requireLead(leadId);
     return locks.forLead(leadId, () -> tx.execute(_ -> openUnlessSuppressed(lead)));
+  }
+
+  /**
+   * Console reset: a new conversation for the same lead, the old one kept for history. An open old
+   * conversation is closed as RESET; an ended one keeps its reason and booking. Nothing is deleted,
+   * and the new start runs every check {@link #start} does, so a reset never bypasses an opt-out.
+   * Both locks are held and one transaction covers both rows, so a refused start leaves the old
+   * conversation as it was and a turn in flight finishes first or the reset gets BUSY.
+   */
+  public TurnResponse reset(String conversationId) {
+    Lead lead = requireLead(conversations.require(conversationId).leadId);
+    return locks.forConversation(
+        conversationId,
+        () -> locks.forLead(lead.id(), () -> tx.execute(_ -> resetAndOpen(conversationId, lead))));
   }
 
   /**
@@ -106,7 +122,7 @@ public class ConversationService {
    */
   @Transactional(readOnly = true)
   public TurnResponse view(String conversationId) {
-    return TurnResponse.of(rowsOf(conversationId), null, clock.now());
+    return TurnResponse.of(rowsOf(conversationId), TurnResponse.Answer.NONE, clock.now());
   }
 
   /** Like {@link #view}, with every body shown, health information included. */
@@ -126,16 +142,26 @@ public class ConversationService {
     return leads.findById(leadId).orElseThrow(() -> new NotFoundException("lead", leadId));
   }
 
-  private TurnResponse openIfNoneOpen(Lead lead) {
+  private TurnResponse openIfNoneOpen(Lead lead, Source source) {
     rejectIfSuppressed(lead);
     rejectIfOpen(lead);
     rejectIfLastEndedAbusive(lead);
-    return open(lead);
+    return open(lead, source);
   }
 
   private TurnResponse openUnlessSuppressed(Lead lead) {
     rejectIfSuppressed(lead);
-    return open(lead);
+    return open(lead, Source.API);
+  }
+
+  private TurnResponse resetAndOpen(String conversationId, Lead lead) {
+    Conversation old = conversations.require(conversationId);
+    if (!old.ended) {
+      StateRules.reset(old);
+      old.updatedAt = clock.now();
+      conversations.save(old);
+    }
+    return openIfNoneOpen(lead, Source.SIM);
   }
 
   private void rejectIfSuppressed(Lead lead) {
@@ -168,20 +194,22 @@ public class ConversationService {
   }
 
   /** The only place the active prompt version is read: the conversation pins it for good. */
-  private TurnResponse open(Lead lead) {
+  private TurnResponse open(Lead lead, Source source) {
     Instant now = clock.now();
     PromptBundle bundle = prompts.bundle(prompts.activeId());
-    Conversation conversation = conversations.save(newConversation(lead, bundle, now));
+    Conversation conversation = conversations.save(newConversation(lead, bundle, source, now));
     Message opener = storeOpener(conversation, lead, bundle, now);
     return TurnResponse.of(
-        new TurnResponse.Rows(conversation, null, List.of(opener)), opener.text(), now);
+        new TurnResponse.Rows(conversation, null, List.of(opener)),
+        TurnResponse.Answer.sent(opener.text()),
+        now);
   }
 
   /**
    * An unguessable id, because it reaches URLs; version 0 makes {@code save} insert. It records the
    * prompt version, model, effort and build it starts on.
    */
-  private Conversation newConversation(Lead lead, PromptBundle bundle, Instant now) {
+  private Conversation newConversation(Lead lead, PromptBundle bundle, Source source, Instant now) {
     LeadZones.Resolved zone = LeadZones.resolve(lead.state(), advisorZone);
     Conversation conversation = new Conversation();
     conversation.id = "c-" + UUID.randomUUID();
@@ -198,7 +226,7 @@ public class ConversationService {
     conversation.model = agent.model();
     conversation.reasoningEffort = agent.reasoningEffort();
     conversation.appVersion = appVersion;
-    conversation.source = Conversation.SOURCE_API;
+    conversation.source = source;
     conversation.createdAt = now;
     conversation.updatedAt = now;
     return conversation;

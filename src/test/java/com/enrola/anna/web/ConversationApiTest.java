@@ -17,6 +17,7 @@ import com.enrola.anna.AnnaApplication;
 import com.enrola.anna.conversation.ConflictException;
 import com.enrola.anna.conversation.ConversationService;
 import com.enrola.anna.conversation.InboundTurns;
+import com.enrola.anna.conversation.Source;
 import com.enrola.anna.conversation.TurnLocks;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
@@ -135,9 +136,10 @@ class ConversationApiTest {
 
       assertThat(
               jdbc.queryForMap(
-                  "select prompt_version, model, reasoning_effort, app_version from conversation"
-                      + " where id = ?",
+                  "select prompt_version, model, reasoning_effort, app_version, source"
+                      + " from conversation where id = ?",
                   id))
+          .containsEntry("SOURCE", "API")
           .containsEntry("PROMPT_VERSION", "v1")
           .containsEntry("MODEL", "gpt-5.1")
           .containsEntry("REASONING_EFFORT", "low")
@@ -304,6 +306,7 @@ class ConversationApiTest {
           .andExpect(jsonPath("$.conversation_id").value(id))
           .andExpect(jsonPath("$.prompt_version").value("v1"))
           .andExpect(jsonPath("$.reply").value(nullValue()))
+          .andExpect(jsonPath("$.no_reply").value(nullValue()))
           .andExpect(jsonPath("$.transcript.length()").value(1))
           .andExpect(jsonPath("$.transcript[0].source").value("TEMPLATE"));
     }
@@ -364,6 +367,7 @@ class ConversationApiTest {
       inbound(id, "save money", "p1")
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.reply").value(nullValue()))
+          .andExpect(jsonPath("$.no_reply").value("HANDOFF"))
           .andExpect(jsonPath("$.needs_human").value(true))
           .andExpect(jsonPath("$.handoff_reason").value("ERROR"))
           .andExpect(jsonPath("$.conversation_ended").value(false))
@@ -588,6 +592,7 @@ class ConversationApiTest {
       inbound(id, "hello?", "p3")
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.reply").value(nullValue()))
+          .andExpect(jsonPath("$.no_reply").value("ENDED_BEFORE"))
           .andExpect(jsonPath("$.end_reason").value("ABUSIVE"))
           .andExpect(jsonPath("$.handoff_reason").value("NONE"))
           .andExpect(jsonPath("$.transcript[?(@.direction == 'OUT')]").value(hasSize(1)));
@@ -661,7 +666,7 @@ class ConversationApiTest {
       String url = "jdbc:h2:file:" + dir.resolve("anna");
       String id;
       try (ConfigurableApplicationContext first = boot(url)) {
-        id = first.getBean(ConversationService.class).start("jane").conversationId();
+        id = first.getBean(ConversationService.class).start("jane", Source.API).conversationId();
         first.getBean(InboundTurns.class).handle(id, "STOP", "r1");
       }
       try (ConfigurableApplicationContext second = boot(url)) {

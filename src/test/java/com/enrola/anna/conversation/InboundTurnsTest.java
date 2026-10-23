@@ -121,7 +121,7 @@ class InboundTurnsTest {
     jdbc.update("delete from suppression");
     model.reset();
     moderation.reset();
-    id = conversations.start("lauren").conversationId();
+    id = conversations.start("lauren", Source.API).conversationId();
   }
 
   @Test
@@ -1562,7 +1562,7 @@ class InboundTurnsTest {
 
     @Test
     void appCapCountsEveryConversation() {
-      String john = conversations.start("john").conversationId();
+      String john = conversations.start("john", Source.API).conversationId();
       model.decide(Decisions.engaged().build());
       turns.handle(john, "save money", "j1");
       jdbc.update("update turn set cost_usd = 10.00 where conversation_id = ?", john);

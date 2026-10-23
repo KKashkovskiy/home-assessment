@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.enrola.anna.AppClock;
 import com.enrola.anna.config.SchedulingProperties.CalendarPreset;
 import com.enrola.anna.conversation.ConversationService;
+import com.enrola.anna.conversation.Source;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
 import java.nio.file.Path;
@@ -60,7 +61,7 @@ class BookCallToolTest {
     jdbc.update("delete from conversation");
     tool = new BookCallTool(bookings, calendar, clock);
     lauren = leads.findById("lauren").orElseThrow();
-    context = offeredTo(conversations.start("lauren").conversationId(), lauren);
+    context = offeredTo(conversations.start("lauren", Source.API).conversationId(), lauren);
   }
 
   @Test

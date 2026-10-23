@@ -166,6 +166,31 @@ class SchedulingToolsTest {
     assertThat(answer.get("hint").stringValue()).doesNotContain("Exception");
   }
 
+  /** Each answer the model reads comes back as the console's one line. */
+  @ParameterizedTest(name = "{1}")
+  @MethodSource("answers")
+  void summaryReadsBackEachAnswer(ToolResult result, String summary) {
+    assertThat(SchedulingTools.summary(SchedulingTools.modelJson(result))).isEqualTo(summary);
+  }
+
+  static Stream<Arguments> answers() {
+    Slot noon = new Slot("s1", Instant.parse("2026-07-27T02:00:00Z"), "Mon 27 Jul 12:00 PM AEST");
+    return Stream.of(
+        Arguments.of(new ToolResult.Slots("AEST", List.of(noon), null), "1 slot"),
+        Arguments.of(
+            new ToolResult.Slots("AEST", List.of(noon, noon), ToolResult.Note.CLAMPED_TO_HORIZON),
+            "2 slots, CLAMPED_TO_HORIZON"),
+        Arguments.of(
+            new ToolResult.Slots("AEST", List.of(), ToolResult.Note.NO_SLOTS_IN_WINDOW),
+            "0 slots, NO_SLOTS_IN_WINDOW"),
+        Arguments.of(
+            new ToolResult.Booked("cal-1", "Mon 27 Jul 12:00 PM AEST"),
+            "booked Mon 27 Jul 12:00 PM AEST"),
+        Arguments.of(new ToolResult.Failure("SLOT_TAKEN", "taken"), "SLOT_TAKEN"),
+        Arguments.of(new ToolResult.Rejected("UNKNOWN_SLOT", "ask again"), "UNKNOWN_SLOT"),
+        Arguments.of(new ToolResult.BookingUnknown("check"), "UNKNOWN_BOOKING"));
+  }
+
   /** A tool that breaks still answers, so the turn goes on; the cause stays in the log. */
   @Test
   void brokenToolIsACompactError() {

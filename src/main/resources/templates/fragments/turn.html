@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- One turn as the composer's script receives it: the items join #thread, data-hint replaces #composer-hint. -->
+<div th:fragment="turn" class="turn-items" th:with="hint=${@fmt.hint(view)}" th:data-hint="${hint}" th:data-hint-kind="${view.hint()}">
+  <th:block th:each="item : ${items}" th:with="fragment=${item.fragment()}"><th:block th:replace="~{fragments/turn :: __${fragment}__(${item})}"/></th:block>
+</div>
+
+<!-- A send that ran no turn: an empty or oversized message (400) or another turn running (409). -->
+<div th:fragment="problem" class="system-line problem" th:data-hint="${message}" th:text="${message}">problem</div>
+
+<th:block th:fragment="bubble(item)">
+  <div th:class="'bubble ' + (${item.lead()} ? 'lead' : 'agent')"><span class="visually-hidden" th:text="${item.lead()} ? 'Lead: ' : 'Anna: '"></span><th:block th:text="${item.text}"/></div>
+  <div class="bubble-meta lead" th:if="${item.lead()}">
+    <span th:text="${item.at}">00:00</span>
+    <span th:text="'turn ' + ${item.turnNo}">turn 1</span>
+  </div>
+  <div class="bubble-meta agent" th:unless="${item.lead()}">
+    <span th:class="${item.near} ? 'num near' : 'num'" th:title="${item.near} ? 'Over the target length the prompt asks for' : 'Characters of the 320 limit'" th:text="${item.chars} + '/' + ${item.maxChars} + (${item.near} ? ' near limit' : '')">0/320</span>
+    <span th:text="${item.at}">00:00</span>
+    <span class="chip warn" th:if="${item.repaired}" title="A reply guard rejected the first draft; one repair call fixed it">↻ repaired</span>
+    <span th:class="${@fmt.sourceClass(item.source)}" title="What wrote this reply" th:text="${item.source}">TEMPLATE</span>
+  </div>
+</th:block>
+
+<div th:fragment="toolChip(item)" class="tool-line"><span aria-hidden="true">⚙</span> <span th:text="${item.name} + ': ' + ${item.summary}">tool</span></div>
+
+<div th:fragment="systemLine(item)" class="system-line" th:data-reason="${item.reason}" th:text="${@fmt.systemLine(item)}">no reply sent</div>
+</body>
+</html>

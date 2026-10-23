@@ -4,7 +4,8 @@ import com.enrola.anna.agent.EndReason;
 
 /**
  * The one column a list filters on: ACTIVE, HANDOFF while a human is needed and the conversation is
- * open, or the {@link EndReason} of the same name once it has ended.
+ * open, the {@link EndReason} of the same name once it has ended, or RESET when the console started
+ * over with the same lead before this one ended.
  */
 public enum ConversationStatus {
   ACTIVE,
@@ -15,5 +16,6 @@ public enum ConversationStatus {
   OFF_TOPIC_LIMIT,
   MAX_TURNS,
   HANDOFF,
-  SAFETY
+  SAFETY,
+  RESET
 }

@@ -19,10 +19,11 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
- * Maps the service's typed exceptions and rejected requests to status codes and {@link ApiError}.
- * Messages name fields as they appear on the wire and never repeat framework text or raw input.
+ * Maps the service's typed exceptions and rejected requests to status codes and {@link ApiError}
+ * for the platform API; the console renders its own errors inside the page. Messages name fields as
+ * they appear on the wire and never repeat framework text or raw input.
  */
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = ConversationApi.class)
 class ApiErrors {
 
   @ExceptionHandler(NotFoundException.class)

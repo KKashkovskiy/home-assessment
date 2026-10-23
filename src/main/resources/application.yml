@@ -10,6 +10,12 @@ spring:
     baseline-version: 0                   # at 0, so V1, the old schema.sql, adds what it lacks
   jackson:
     property-naming-strategy: SNAKE_CASE  # one wire convention for every request and response body
+server:
+  servlet:
+    session:
+      tracking-modes: cookie              # the PII mask toggle lives in the session; never a jsessionid in a URL
+      cookie:
+        same-site: strict                 # with CrossSiteGuard, the console's cross-site protection
 anna:
   app-version: "@project.version@"       # filtered in from the pom at build time; stamped on each conversation
   persona:

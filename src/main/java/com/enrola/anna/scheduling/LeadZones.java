@@ -2,6 +2,7 @@ package com.enrola.anna.scheduling;
 
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -46,6 +47,16 @@ public final class LeadZones {
   public static Resolved resolve(String state, ZoneId advisorZone) {
     ZoneId zone = state == null ? null : ZONES.get(state.strip().toUpperCase(Locale.ROOT));
     return zone == null ? new Resolved(advisorZone, true) : new Resolved(zone, false);
+  }
+
+  /** The eight states and territories, in alphabetical order, as a form offers them. */
+  public static List<String> states() {
+    return ZONES.keySet().stream().sorted().toList();
+  }
+
+  /** True for one of the eight states and territories, ignoring case and whitespace. */
+  public static boolean known(String state) {
+    return state != null && ZONES.containsKey(state.strip().toUpperCase(Locale.ROOT));
   }
 
   /** The zone's name at {@code at}; a zone outside the table shows its offset, such as +13:00. */

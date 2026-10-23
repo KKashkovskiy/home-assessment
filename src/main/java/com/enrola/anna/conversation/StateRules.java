@@ -92,6 +92,15 @@ final class StateRules {
     }
   }
 
+  /**
+   * Closes an open conversation the console started over from: ended with no end reason, status
+   * RESET, so it leaves the one-open-per-lead check and later messages to it go unanswered.
+   */
+  static void reset(Conversation conversation) {
+    conversation.ended = true;
+    conversation.status = ConversationStatus.RESET;
+  }
+
   /** True while no closing reply has gone out and {@code reply} is short and asks nothing. */
   static boolean closingReplyAllowed(Conversation conversation, String reply) {
     return conversation.postTerminalReplies == 0

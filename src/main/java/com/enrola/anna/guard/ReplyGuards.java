@@ -26,7 +26,12 @@ public final class ReplyGuards {
   private static final Pattern MARKDOWN =
       Pattern.compile("^#{1,6}\\s|\\*\\*|\\[[^\\]]+\\]\\([^)]+\\)|^\\s*[-*]\\s", Pattern.MULTILINE);
 
-  private static final Pattern PHONE_LIKE = Pattern.compile("\\+?\\d[\\d\\s().-]{6,}\\d");
+  /**
+   * A run of eight or more digits and phone punctuation, digits at both ends; the PII mask reuses
+   * it.
+   */
+  public static final Pattern PHONE_LIKE = Pattern.compile("\\+?\\d[\\d\\s().-]{6,}\\d");
+
   private static final Pattern NOT_DIGIT = Pattern.compile("\\D");
 
   private final DenyList denyList = DenyList.bundled();

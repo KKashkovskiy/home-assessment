@@ -26,8 +26,8 @@ own, and git ignores it. With `OPENAI_API_KEY` set, the app makes one small requ
 `model check ok: gpt-5.1`; a failure is a warning unless `anna.agent.strict-model-check` is true. Without it the log
 says `model check skipped`. The key travels as a request header; the key itself is in no stored row or log line.
 
-The server has no pages yet, so the root URL answers with a 404. The platform API is there: three leads are seeded
-on first boot (`lauren`, `john`, `jane`). Start a conversation and read it back:
+Open `http://localhost:8080/` for the console, described at the end of this section. The platform API sits beside
+it: three leads are seeded on first boot (`lauren`, `john`, `jane`). Start a conversation and read it back:
 
 ```
 curl -s -X POST localhost:8080/api/conversations -H 'content-type: application/json' -d '{"lead_id":"lauren"}'
@@ -45,7 +45,8 @@ curl -s -X POST localhost:8080/api/conversations/<conversation_id>/messages -H '
 ```
 
 Each inbound is stored once: a retry with the same `provider_message_id` gets the first response back and writes
-nothing. With a key, the model reads the whole transcript, replayed from the database on every turn, plus the turn's
+nothing. A turn that sends nothing says why in `no_reply` (`ENDED_BEFORE`, `ENDED_NOW`, `RESET`, `REPEAT`,
+`CLOSING_SUPPRESSED`, `MODEL_SILENT` or `HANDOFF`); it is null when there is a reply. With a key, the model reads the whole transcript, replayed from the database on every turn, plus the turn's
 context, and returns one JSON decision under a strict schema: intent, stage, flags, facts gathered and a line for
 the advisor, then the reply. The reply comes back in the response; the decision, tokens, cost, latency, the model's
 reasoning summary (never sent to the lead) and the raw request and response JSON are stored on the turn, with trace
@@ -179,6 +180,27 @@ suppressions are rows, so a restart loses nothing.
 The schema is a set of Flyway migrations under `src/main/resources/db/migration/`, applied on boot, and an existing
 `data/` keeps its rows: one from before the migrations gets the first of them, the old `schema.sql`, which adds the
 tables and columns it lacks.
+
+The console is one server-rendered page over the services the API calls, with the markup and stylesheet of the
+clickable prototype; Configuration, Analytics and Evals are tabs with no page in this build. The left pane lists
+conversations, newest activity first, with six filters carried as GET parameters and combined with AND, each shown as
+a chip that removes it, and a search over name, id and summary. The middle pane is the SMS thread: the lead on the
+left, Anna on the right with a `n/320` count and a chip naming what wrote the reply (`TEMPLATE`, `LLM`, `FIXED`, or
+`FALLBACK` when the reply guards fell back), a repaired marker, the turn's tool calls between the bubbles, and a dashed
+line wherever a turn sent nothing, saying why from the reason stored with the turn. The composer sends as the lead with no provider message id, shows the
+lead's bubble at once, swaps in the turn the server rendered, and stays enabled after an end so the silence can be
+checked; the chips above it come from `src/main/resources/quick-replies.txt`. The right pane shows the stage
+tracker with skipped stages struck through, badges that say yes or no, the counters against their limits, the facts
+the model extracted and the booking as the booking row has it. Start opens a seeded lead, or a custom one with its
+consent evidence; a phone that already has a lead starts that lead, says so and saves nothing typed, and an
+opted-out phone is refused. Reset closes an open
+conversation as `RESET`, whose later messages are stored without a reply, and starts a new one through the same
+checks; nothing is deleted. The status strip shows the clock, app spend against its cap, the model with the active
+prompt version, and the PII mask, which works on the server: phone numbers and emails are masked wherever they
+appear, and once a conversation carries health information its summary, cover note and message bodies from that
+turn on are hidden. The mask is on unless the session turned it off. Every action is a form post, so the page works
+without JavaScript. The console has no login, so its protection against other sites is a strict same-site session
+cookie, a 403 for any page post that does not come from the console's own origin, and a refusal to be framed.
 
 ## What Anna does
 

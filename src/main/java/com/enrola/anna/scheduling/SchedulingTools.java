@@ -1,5 +1,7 @@
 package com.enrola.anna.scheduling;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -14,7 +16,8 @@ import tools.jackson.databind.json.JsonMapper;
  * The model's function calls, by the names in {@code tools.json}: get_availability runs {@link
  * AvailabilityTool} and book_call {@link BookCallTool}. Arguments that are not the declared JSON
  * are BAD_ARGS, and a tool that breaks is TOOL_FAILED, so a call always gets an answer and the turn
- * goes on. {@link #modelJson} renders any result as the compact JSON the model reads.
+ * goes on. {@link #modelJson} renders any result as the compact JSON the model reads, and {@link
+ * #summary} reads that JSON back as one line for the console.
  */
 @Component
 public class SchedulingTools {
@@ -87,6 +90,21 @@ public class SchedulingTools {
         });
   }
 
+  /**
+   * One line for an answer {@link #modelJson} wrote: "3 slots", "3 slots, CLAMPED_TO_HORIZON",
+   * "booked Mon 27 Jul 12:00 PM AEST", or the error code.
+   */
+  public static String summary(String modelJson) {
+    return switch (JSON.readValue(modelJson, Answer.class)) {
+      case SlotsJson slots ->
+          slots.slots().size()
+              + (slots.slots().size() == 1 ? " slot" : " slots")
+              + (slots.note() == null ? "" : ", " + slots.note());
+      case BookedJson booked -> "booked " + booked.label();
+      case FailureJson failure -> failure.code();
+    };
+  }
+
   /** The arguments as {@code type}, or empty when they are not that JSON or are {@code null}. */
   private static <T> Optional<T> args(String argumentsJson, Class<T> type) {
     try {
@@ -96,13 +114,23 @@ public class SchedulingTools {
     }
   }
 
-  private record SlotsJson(String timezone, List<SlotJson> slots, ToolResult.Note note) {}
+  /** The shapes of an answer, told apart on reading by the fields each has. */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION)
+  @JsonSubTypes({
+    @JsonSubTypes.Type(SlotsJson.class),
+    @JsonSubTypes.Type(BookedJson.class),
+    @JsonSubTypes.Type(FailureJson.class)
+  })
+  private sealed interface Answer permits SlotsJson, BookedJson, FailureJson {}
+
+  private record SlotsJson(String timezone, List<SlotJson> slots, ToolResult.Note note)
+      implements Answer {}
 
   @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
   private record SlotJson(String slotId, String localLabel) {}
 
   @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-  private record BookedJson(String status, String bookingId, String label) {}
+  private record BookedJson(String status, String bookingId, String label) implements Answer {}
 
-  private record FailureJson(String status, String code, String hint) {}
+  private record FailureJson(String status, String code, String hint) implements Answer {}
 }

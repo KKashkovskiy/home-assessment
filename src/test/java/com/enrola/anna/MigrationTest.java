@@ -37,7 +37,8 @@ class MigrationTest {
 
     try (ConfigurableApplicationContext app = boot()) {
       JdbcTemplate jdbc = app.getBean(JdbcTemplate.class);
-      assertThat(history(jdbc)).containsExactly("0 BASELINE TRUE", "1 SQL TRUE", "2 SQL TRUE");
+      assertThat(history(jdbc))
+          .containsExactly("0 BASELINE TRUE", "1 SQL TRUE", "2 SQL TRUE", "2.1 SQL TRUE");
       assertThat(app.getBean(ConversationService.class).view("c-old").promptVersion())
           .isEqualTo("v1");
       assertThat(

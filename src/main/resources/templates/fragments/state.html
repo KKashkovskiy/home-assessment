@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="head(view)" class="state-head" th:with="conversation=${view.conversation}">
+  <ol id="stage-tracker" class="stage-tracker" aria-label="Script stage">
+    <li th:each="step : ${view.stages()}" th:class="${@fmt.stepClass(step.state)}" th:aria-current="${step.current()} ? 'step'"><span class="visually-hidden" th:text="${@fmt.stepSpoken(step.state)}"></span><th:block th:text="${@fmt.stage(step.stage)}"/></li>
+  </ol>
+  <div id="badges" class="badges">
+    <span th:each="badge : ${view.badges()}" th:class="${@fmt.badgeClass(badge)}"><th:block th:text="${badge.label} + ':'"/> <b th:text="${@fmt.yesNo(badge.on)}">no</b><th:block th:if="${badge.detail != null}" th:text="' (' + ${badge.detail} + ')'"/></span>
+    <th:block th:each="flag : ${conversation.flags()}"><span th:replace="~{fragments/parts :: flag(${flag})}"></span></th:block>
+    <span class="chip ghost" th:if="${#lists.size(conversation.endReasonHistory()) > 1}" title="end_reason only moves up; every transition is kept">history: <th:block th:each="entry, position : ${conversation.endReasonHistory()}" th:text="(${position.first} ? '' : ' → ') + ${entry.reason}"/></span>
+  </div>
+  <div id="counters" class="counters" aria-label="Counters against their limits">
+    <span th:each="counter : ${view.counters}" th:classappend="${counter.atLimit} ? 'at-limit'" th:data-at-limit="${counter.atLimit}"><th:block th:text="${counter.label}"/> <b th:text="${counter.value} + '/' + ${counter.limit}">0/15</b></span>
+  </div>
+  <div class="two-cards">
+    <section id="facts-card" class="card" aria-labelledby="facts-title">
+      <h3 id="facts-title">Lead facts</h3>
+      <th:block th:if="${view.facts != null}" th:with="facts=${view.facts}">
+        <dl class="kv">
+          <dt>Coverage goal</dt><dd th:text="${facts.coverageGoal} ?: 'unknown'">unknown</dd>
+          <dt>Cover type</dt><dd th:text="${facts.coverType} ?: 'unknown'">unknown</dd>
+          <dt>Current cover</dt><dd th:text="${facts.currentCoverNote} ?: 'unknown'">unknown</dd>
+          <dt>Preferred</dt><dd th:text="(${facts.preferredDay} ?: 'no day') + ', ' + (${facts.preferredTimeOfDay} ?: 'any time')">no day</dd>
+        </dl>
+      </th:block>
+      <p class="muted small card-note" th:if="${view.facts == null}">No model call yet, nothing extracted.</p>
+      <p class="small muted card-note" th:if="${view.summary != null}" th:text="${view.summary}">summary</p>
+      <dl class="kv small card-note">
+        <dt>Lead record</dt><dd><th:block th:text="${view.leadRecord()}"/> <span class="chip warn" th:if="${view.tzAssumed()}">⚑ TZ ASSUMED</span></dd>
+        <dt>Consent</dt><dd th:text="${view.lead.consentSource} ?: 'none recorded'">consent</dd>
+      </dl>
+      <p class="small card-note" th:if="${view.healthInfo()}"><span class="chip warn">⚑ HEALTH INFO</span> volunteered, not kept in the facts. With the PII mask on, the summary, the cover note and message bodies from that turn on are hidden.</p>
+    </section>
+    <section id="booking-card" class="card" aria-labelledby="booking-title">
+      <h3 id="booking-title">Booking</h3>
+      <th:block th:if="${view.booking != null}" th:with="booking=${view.booking}">
+        <p class="notice warn small card-note" th:if="${view.bookingReview()}">BOOKING REVIEW: the lead opted out or was abusive after booking. The booking is kept for a person to decide.</p>
+        <dl class="kv">
+          <dt>Status</dt><dd><span class="chip pass">✓ BOOKED</span></dd>
+          <dt>Lead time</dt><dd th:text="${booking.leadTime}">Mon 27 Jul 12:00 PM AEST</dd>
+          <dt>Advisor time</dt><dd th:text="${booking.advisorTime}">Mon 27 Jul 12:00 PM AEST</dd>
+          <dt>Duration</dt><dd th:text="${booking.minutes} + ' min'">15 min</dd>
+          <dt>UTC</dt><dd class="mono small" th:text="${booking.startUtc}">utc</dd>
+          <dt>Event id</dt><dd class="mono small" th:text="${booking.eventId}">id</dd>
+        </dl>
+      </th:block>
+      <th:block th:if="${view.booking == null}">
+        <p class="muted small card-note">No booking yet.</p>
+        <th:block th:unless="${#lists.isEmpty(conversation.lastOfferedLabels())}">
+          <p class="small muted card-note">Last offered</p>
+          <ul class="small offered"><li th:each="label : ${conversation.lastOfferedLabels()}" th:text="${label}">slot</li></ul>
+        </th:block>
+      </th:block>
+    </section>
+  </div>
+</div>
+</body>
+</html>

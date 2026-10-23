@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="panel(start)" id="start-panel" class="start-panel" th:hidden="${!start.open}" th:with="form=${start.form}, errors=${start.errors}, custom=${start.form.custom}">
+  <form id="start-form" class="panel" method="post" th:action="@{/conversations/start}" role="dialog" aria-modal="true" aria-labelledby="start-title">
+    <header><h2 id="start-title">Start a conversation</h2><a id="start-cancel" class="btn quiet sm" th:href="@{/conversations}">Cancel</a></header>
+    <div class="panel-body stack">
+      <div class="field" th:classappend="${errors.containsKey('lead')} ? 'invalid'"><label for="start-lead">Lead</label>
+        <select id="start-lead" name="lead">
+          <option value="lauren" th:selected="${form.lead == 'lauren'}">Lauren, VIC, Bupa, premium unknown</option>
+          <option value="john" th:selected="${form.lead == 'john'}">John, WA, HBF, $350-$450</option>
+          <option value="jane" th:selected="${form.lead == 'jane'}">Jane, NSW, no provider</option>
+          <option value="custom" th:selected="${form.customSelected()}">Custom lead</option>
+        </select>
+        <span class="error" th:if="${errors.containsKey('lead')}" th:text="${errors.get('lead')}"></span></div>
+      <fieldset id="custom-lead" class="inline-fields custom-lead">
+        <legend>Custom lead details</legend>
+        <div th:replace="~{fragments/parts :: field('givenName', 'c-name', 'Given name', 'text', ${custom?.givenName}, '', ${errors})}"></div>
+        <div th:replace="~{fragments/parts :: field('phone', 'c-phone', 'Phone (Australian)', 'tel', ${custom?.phone}, '0412 345 678', ${errors})}"></div>
+        <div th:replace="~{fragments/parts :: field('email', 'c-email', 'Email', 'email', ${custom?.email}, '', ${errors})}"></div>
+        <div class="field" th:classappend="${errors.containsKey('state')} ? 'invalid'"><label for="c-state">State</label>
+          <select id="c-state" name="custom.state">
+            <option th:each="state : ${@fmt.states()}" th:value="${state}" th:text="${state}" th:selected="${state == custom?.state}"></option>
+            <option value="" th:selected="${custom?.state == null or custom?.state == ''}">unknown</option>
+          </select>
+          <span class="error" th:if="${errors.containsKey('state')}" th:text="${errors.get('state')}"></span></div>
+        <div class="field" th:classappend="${errors.containsKey('currentProvider')} ? 'invalid'"><label for="c-provider">Current provider</label>
+          <select id="c-provider" name="custom.currentProvider">
+            <option value="">none</option>
+            <option th:each="provider : ${@fmt.providers()}" th:value="${provider}" th:text="${provider}" th:selected="${provider == custom?.currentProvider}"></option>
+          </select>
+          <span class="error" th:if="${errors.containsKey('currentProvider')}" th:text="${errors.get('currentProvider')}"></span></div>
+        <div th:replace="~{fragments/parts :: field('currentPremium', 'c-premium', 'Premium range', 'text', ${custom?.currentPremium}, '$350-$450', ${errors})}"></div>
+        <div th:replace="~{fragments/parts :: field('consentSource', 'c-consent', 'Consent evidence', 'text', ${custom?.consentSource}, 'enquiry form, 2 Aug', ${errors})}"></div>
+      </fieldset>
+      <p class="small muted">The opener is a fixed template chosen from the lead record. An opted-out phone cannot start a conversation, a lead with an open one is shown instead, and a phone that already has a lead starts that lead. The Lead API and the calendar are fakes.</p>
+      <div class="form-actions"><button class="btn primary" type="submit">Send opener</button></div>
+    </div>
+  </form>
+</div>
+</body>
+</html>

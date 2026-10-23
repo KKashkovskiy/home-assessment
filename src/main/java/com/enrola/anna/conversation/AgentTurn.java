@@ -118,7 +118,7 @@ class AgentTurn {
       return replies.send(turn, decision.reply(), question, rounds);
     }
     if (conversation.ended) {
-      return TurnOutcome.silent("model ended without a reply");
+      return TurnOutcome.silent(NoReply.ENDED_NOW, "model ended without a reply");
     }
     trace.record(
         turn,
@@ -175,7 +175,7 @@ class AgentTurn {
   private TurnOutcome closingReply(RunningTurn turn, Decision decision) {
     Conversation conversation = turn.conversation();
     if (!decision.sendReply()) {
-      return TurnOutcome.silent("model chose silence");
+      return TurnOutcome.silent(NoReply.MODEL_SILENT, "model chose silence");
     }
     ReplyGuards.Checked checked = replies.checkClosing(turn, decision.reply());
     boolean sendable =
@@ -194,6 +194,6 @@ class AgentTurn {
       return TurnOutcome.decided(checked.text());
     }
     conversation.addFlag(Flag.LOOP_SUPPRESSED);
-    return TurnOutcome.silent("closing reply suppressed");
+    return TurnOutcome.silent(NoReply.CLOSING_SUPPRESSED, "closing reply suppressed");
   }
 }

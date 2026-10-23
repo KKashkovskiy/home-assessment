@@ -20,12 +20,14 @@ import tools.jackson.databind.JsonNode;
  * the platform parses one contract. {@code lastOfferedSlots} are the labels of the latest
  * availability result, empty before the first. {@code trace_url} is the conversation's page path.
  * Once a turn carried health information, message bodies from that turn on are hidden unless asked
- * for; {@code reply} is always what is to be sent.
+ * for; {@code reply} is always what is to be sent, and {@code noReply} says why a turn sent
+ * nothing.
  */
 public record TurnResponse(
     String conversationId,
     String promptVersion,
     String reply,
+    NoReply noReply,
     Stage stage,
     boolean goalMet,
     boolean unsubscribed,
@@ -88,6 +90,16 @@ public record TurnResponse(
     }
   }
 
+  /** What the call answers: the reply to send, or why there is none; both null for a view. */
+  record Answer(String reply, NoReply noReply) {
+
+    static final Answer NONE = new Answer(null, null);
+
+    static Answer sent(String reply) {
+      return new Answer(reply, null);
+    }
+  }
+
   /** The rows a response is built from: the conversation, its booking or null, its transcript. */
   record Rows(Conversation conversation, Booking booking, List<Message> transcript) {}
 
@@ -96,15 +108,15 @@ public record TurnResponse(
       DateTimeFormatter.ofPattern("EEE d MMM h:mm a z", Locale.ENGLISH);
 
   /** Bodies from the conversation's HEALTH_INFO turn on are hidden. */
-  static TurnResponse of(Rows rows, String reply, Instant now) {
-    Integer hiddenFrom = rows.conversation().healthInfoTurn;
+  static TurnResponse of(Rows rows, Answer answer, Instant now) {
+    Conversation conversation = rows.conversation();
     return build(
         rows,
-        reply,
+        answer,
         rows.transcript().stream()
             .map(
                 message ->
-                    hiddenFrom != null && message.turnNo() >= hiddenFrom
+                    conversation.hidesBody(message.turnNo())
                         ? MessageView.hidden(message)
                         : MessageView.of(message))
             .toList(),
@@ -113,16 +125,17 @@ public record TurnResponse(
 
   /** Every body shown, health information included; there is no reply. */
   static TurnResponse withHealth(Rows rows, Instant now) {
-    return build(rows, null, rows.transcript().stream().map(MessageView::of).toList(), now);
+    return build(rows, Answer.NONE, rows.transcript().stream().map(MessageView::of).toList(), now);
   }
 
   private static TurnResponse build(
-      Rows rows, String reply, List<MessageView> transcript, Instant now) {
+      Rows rows, Answer answer, List<MessageView> transcript, Instant now) {
     Conversation conversation = rows.conversation();
     return new TurnResponse(
         conversation.id,
         conversation.promptVersion,
-        reply,
+        answer.reply(),
+        answer.noReply(),
         conversation.stage,
         conversation.goalMet,
         conversation.unsubscribed,

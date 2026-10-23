@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:fragment="page(title, tab, content)">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title th:text="${title} + ', Anna console'">Anna console</title>
+  <link rel="stylesheet" th:href="@{/app.css}">
+  <link rel="icon" href="data:,">
+  <script>try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) { /* private window */ }</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the content</a>
+  <header class="topbar">
+    <div class="brand"><strong>Anna</strong><span>Comparato SMS agent</span></div>
+    <nav aria-label="Main"><ul class="tabs">
+      <li><a th:href="@{/conversations}" th:aria-current="${tab == 'conversations'} ? 'page'">Conversations</a></li>
+      <li><a th:href="@{/configuration}" th:aria-current="${tab == 'configuration'} ? 'page'">Configuration</a></li>
+      <li><a th:href="@{/analytics}" th:aria-current="${tab == 'analytics'} ? 'page'">Analytics</a></li>
+      <li><a th:href="@{/evals}" th:aria-current="${tab == 'evals'} ? 'page'">Evals</a></li>
+    </ul></nav>
+    <div id="status-strip" class="status-strip">
+      <span class="chip" th:title="${shell.fixedAt != null} ? 'Fixed clock: the fake calendar and lead-local times read it' : 'System clock'">Clock <b th:text="${shell.clockMode}">REAL</b> <span class="muted" th:if="${shell.fixedAt != null}" th:text="${shell.fixedAt}"></span></span>
+      <span class="meter" title="App spend against the hard cap; eval spend is a separate ledger"><span class="track" aria-hidden="true"><span class="fill" th:style="'width:' + ${shell.spendPercent()} + '%'"></span></span><span class="num" th:text="${shell.meterLabel()}">$0.00 of $10.00</span></span>
+      <span th:class="${shell.agentAvailable()} ? 'chip accent' : 'chip fail'" th:data-agent="${shell.agent}" title="Model, reasoning effort and the prompt version new conversations start on"><b th:text="${shell.model}">gpt-5.1</b> <th:block th:text="${shell.agentAvailable()} ? ${shell.effort} : 'unavailable'">low</th:block> <span th:text="'prompt ' + ${shell.promptVersion}">prompt v1</span></span>
+      <form class="inline-form" method="post" th:action="@{/ui/pii-mask}">
+        <input type="hidden" name="on" th:value="${!shell.piiMask}">
+        <button id="pii-toggle" class="chip" type="submit" th:aria-pressed="${shell.piiMask}" title="Masks phones, emails and health details on the server. Fails closed: on unless this session turned it off.">PII mask: <b th:text="${shell.piiMask} ? 'on' : 'off'">on</b></button>
+      </form>
+      <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+    </div>
+  </header>
+  <th:block th:with="notice=${page?.notice}">
+    <div id="banners" th:unless="${shell.agentReady() and notice == null}">
+      <div th:if="${shell.agentMissingKey()}" class="notice fail" role="alert" data-banner="NO_KEY"><b>Agent unavailable:</b> OPENAI_API_KEY is not set. STOP still works; every other message is stored and handed to a human with no reply.</div>
+      <div th:if="${shell.agentCheckFailed()}" class="notice fail" role="alert" data-banner="MODEL_FAILED"><b>Agent unavailable:</b> model <span class="mono" th:text="${shell.model}">gpt-5.1</span> failed its boot check, so turns will likely hand off to a human. The log says why.</div>
+      <div th:if="${shell.agentChecking()}" class="notice info" role="status" data-banner="CHECKING">Checking model <span class="mono" th:text="${shell.model}">gpt-5.1</span>; reload in a few seconds.</div>
+      <div th:if="${notice != null}" th:class="${@fmt.noticeClass(notice)}" role="alert" th:data-notice="${notice.code}" th:text="${notice.text}">notice</div>
+    </div>
+  </th:block>
+  <th:block th:replace="${content}"/>
+  <script th:src="@{/app.js}"></script>
+</body>
+</html>

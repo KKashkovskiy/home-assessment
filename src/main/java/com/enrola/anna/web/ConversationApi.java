@@ -2,6 +2,7 @@ package com.enrola.anna.web;
 
 import com.enrola.anna.conversation.ConversationService;
 import com.enrola.anna.conversation.InboundTurns;
+import com.enrola.anna.conversation.Source;
 import com.enrola.anna.conversation.TurnResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
@@ -23,7 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/conversations")
 public class ConversationApi {
 
-  private static final String ID = "[A-Za-z0-9-]{1,40}";
+  /** A conversation id as a path segment; the console checks its own paths against it too. */
+  static final String ID = "[A-Za-z0-9-]{1,40}";
+
   private static final String ID_RULE = "must be 1 to 40 letters, digits or '-'";
 
   private final ConversationService conversations;
@@ -42,7 +45,7 @@ public class ConversationApi {
       @RequestParam(defaultValue = "false") boolean force) {
     return force
         ? conversations.forceStart(request.leadId())
-        : conversations.start(request.leadId());
+        : conversations.start(request.leadId(), Source.API);
   }
 
   @PostMapping("/{id}/messages")

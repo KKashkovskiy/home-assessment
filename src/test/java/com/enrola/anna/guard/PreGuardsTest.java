@@ -28,8 +28,12 @@ class PreGuardsTest {
       new PreGuards(
           new LimitsProperties(15, 3, 1),
           new ModerationProperties(0.5, 0.5, 0.3, Duration.ofSeconds(5), 0));
-  static final Standing OPEN = new Standing(EndReason.NONE, false, 0, false, HandoffReason.NONE);
-  static final Standing BOOKED = new Standing(EndReason.BOOKED, false, 4, true, HandoffReason.NONE);
+  static final Standing OPEN =
+      new Standing(EndReason.NONE, false, false, 0, false, HandoffReason.NONE);
+  static final Standing BOOKED =
+      new Standing(EndReason.BOOKED, false, false, 4, true, HandoffReason.NONE);
+  static final Standing RESET =
+      new Standing(EndReason.NONE, true, false, 1, false, HandoffReason.NONE);
   static final ModelAccess MODEL = new ModelAccess(true, true, false, false);
   static final ModerationVerdict CLEAN = ScriptedModerationClient.CLEAN;
   static final ModerationVerdict SELF_HARM = scores(0, 0, 0.9);
@@ -56,14 +60,24 @@ class PreGuardsTest {
             "self-harm over a hard end",
             "...",
             SELF_HARM,
-            new Standing(EndReason.ABUSIVE, false, 1, false, HandoffReason.NONE),
+            new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE),
             MODEL,
             new PreGuards.SafetyReply()),
+        Arguments.of(
+            "STOP over a reset",
+            "STOP",
+            CLEAN,
+            RESET,
+            MODEL,
+            new PreGuards.Unsubscribe(Suppression.Reason.KEYWORD)),
+        Arguments.of(
+            "self-harm over a reset", "...", SELF_HARM, RESET, MODEL, new PreGuards.SafetyReply()),
+        Arguments.of("a reset over abuse", "...", HARASSMENT, RESET, MODEL, new PreGuards.Reset()),
         Arguments.of(
             "a hard end over abuse",
             "...",
             HARASSMENT,
-            new Standing(EndReason.ABUSIVE, false, 1, false, HandoffReason.NONE),
+            new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE),
             MODEL,
             new PreGuards.Silence(EndReason.ABUSIVE)),
         Arguments.of(
@@ -98,21 +112,21 @@ class PreGuardsTest {
             "the conversation cap over a soft end",
             "hi",
             CLEAN,
-            new Standing(EndReason.DECLINED, false, 1, false, HandoffReason.NONE),
+            new Standing(EndReason.DECLINED, false, false, 1, false, HandoffReason.NONE),
             new ModelAccess(true, true, false, true),
             new PreGuards.HandoffNoModel(NoModelReason.SPEND_CAP_CONVERSATION)),
         Arguments.of(
             "a soft end over the turn cap",
             "ok thanks",
             CLEAN,
-            new Standing(EndReason.DECLINED, false, 15, false, HandoffReason.NONE),
+            new Standing(EndReason.DECLINED, false, false, 15, false, HandoffReason.NONE),
             MODEL,
             new PreGuards.ClassifyOnly()),
         Arguments.of(
             "the turn cap over a model call",
             "and?",
             CLEAN,
-            new Standing(EndReason.NONE, false, 15, false, HandoffReason.NONE),
+            new Standing(EndReason.NONE, false, false, 15, false, HandoffReason.NONE),
             MODEL,
             new PreGuards.FixedClose(Template.MAX_TURNS_CLOSE, EndReason.MAX_TURNS)));
   }
@@ -132,7 +146,7 @@ class PreGuardsTest {
   @Test
   void stopAfterAnOptOutIsNotANewOne() {
     Standing unsubscribed =
-        new Standing(EndReason.UNSUBSCRIBED, false, 1, false, HandoffReason.NONE);
+        new Standing(EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE);
 
     assertThat(GUARDS.decide("STOP", CLEAN, unsubscribed, MODEL))
         .isEqualTo(new PreGuards.Silence(EndReason.UNSUBSCRIBED));
@@ -152,18 +166,19 @@ class PreGuardsTest {
         Arguments.of("no booking", OPEN, new PreGuards.Unsubscribe(Suppression.Reason.KEYWORD)),
         Arguments.of(
             "booked, then abusive",
-            new Standing(EndReason.ABUSIVE, false, 4, true, HandoffReason.NONE),
+            new Standing(EndReason.ABUSIVE, false, false, 4, true, HandoffReason.NONE),
             new PreGuards.Unsubscribe(Suppression.Reason.KEYWORD)),
         Arguments.of(
             "booked, then opted out",
-            new Standing(EndReason.UNSUBSCRIBED, false, 4, true, HandoffReason.NONE),
+            new Standing(EndReason.UNSUBSCRIBED, false, false, 4, true, HandoffReason.NONE),
             new PreGuards.Silence(EndReason.UNSUBSCRIBED)));
   }
 
   /** The change was acknowledged once; CANCEL again gets silence, not a second SMS. */
   @Test
   void repeatedLoneCancelAfterTheChangeIsSuppressed() {
-    Standing changing = new Standing(EndReason.BOOKED, false, 5, true, HandoffReason.RESCHEDULE);
+    Standing changing =
+        new Standing(EndReason.BOOKED, false, false, 5, true, HandoffReason.RESCHEDULE);
 
     assertThat(GUARDS.decide("CANCEL", CLEAN, changing, MODEL))
         .isEqualTo(new PreGuards.SuppressRepeat());
@@ -181,14 +196,14 @@ class PreGuardsTest {
             GUARDS.decide(
                 "...",
                 SELF_HARM,
-                new Standing(EndReason.UNSUBSCRIBED, false, 1, false, HandoffReason.NONE),
+                new Standing(EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE),
                 MODEL))
         .isEqualTo(new PreGuards.SafetyReply());
     assertThat(
             GUARDS.decide(
                 "...",
                 SELF_HARM,
-                new Standing(EndReason.UNSUBSCRIBED, true, 2, false, HandoffReason.NONE),
+                new Standing(EndReason.UNSUBSCRIBED, false, true, 2, false, HandoffReason.NONE),
                 MODEL))
         .isEqualTo(new PreGuards.Silence(EndReason.UNSUBSCRIBED));
   }
@@ -216,7 +231,7 @@ class PreGuardsTest {
             GUARDS.decide(
                 "and?",
                 CLEAN,
-                new Standing(EndReason.NONE, false, 14, false, HandoffReason.NONE),
+                new Standing(EndReason.NONE, false, false, 14, false, HandoffReason.NONE),
                 MODEL))
         .isEqualTo(new PreGuards.Proceed());
   }
