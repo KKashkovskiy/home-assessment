@@ -7,7 +7,6 @@ import com.enrola.anna.guard.ReplyCheck;
 import com.enrola.anna.guard.ReplyContext;
 import com.enrola.anna.guard.ReplyGuards;
 import com.enrola.anna.guard.Violation;
-import com.enrola.anna.prompt.PromptLoader;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,7 +27,6 @@ class ReplyRepair {
   private final TurnQuestions questions;
   private final AgentCall calls;
   private final GuardOutcomes outcomes;
-  private final PromptLoader prompts;
   private final TraceLog trace;
   private final SmsProperties sms;
 
@@ -37,14 +35,12 @@ class ReplyRepair {
       TurnQuestions questions,
       AgentCall calls,
       GuardOutcomes outcomes,
-      PromptLoader prompts,
       TraceLog trace,
       SmsProperties sms) {
     this.guards = guards;
     this.questions = questions;
     this.calls = calls;
     this.outcomes = outcomes;
-    this.prompts = prompts;
     this.trace = trace;
     this.sms = sms;
   }
@@ -131,7 +127,7 @@ class ReplyRepair {
     Conversation conversation = turn.conversation();
     return new ReplyContext(
         turn.lead(),
-        prompts.load(conversation.promptVersion).canary(),
+        turn.prompt().canary(),
         conversation.lastOfferedLabels(),
         questions.bookingLabel(conversation),
         conversation.goalMet,

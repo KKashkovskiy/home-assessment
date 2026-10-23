@@ -23,7 +23,7 @@ import com.enrola.anna.guard.ModerationVerdict;
 import com.enrola.anna.guard.ReplyCheck;
 import com.enrola.anna.guard.ScriptedModerationClient;
 import com.enrola.anna.lead.LeadRepository;
-import com.enrola.anna.prompt.PromptLoader;
+import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.Template;
 import com.enrola.anna.scheduling.Booking;
 import com.enrola.anna.scheduling.BookingRepository;
@@ -103,7 +103,7 @@ class InboundTurnsTest {
   @Autowired ScriptedModerationClient moderation;
   @Autowired ConversationRepository rows;
   @Autowired LeadRepository leads;
-  @Autowired PromptLoader prompts;
+  @Autowired PromptStore prompts;
   @Autowired WebApplicationContext context;
   @Autowired JdbcTemplate jdbc;
   @Autowired BookingRepository bookings;
@@ -1643,7 +1643,10 @@ class InboundTurnsTest {
   }
 
   private String rendered(Template template) {
-    return prompts.active().templates().render(template, leads.findById("lauren").orElseThrow());
+    return prompts
+        .bundle("v1")
+        .templates()
+        .render(template, leads.findById("lauren").orElseThrow());
   }
 
   private static ModerationVerdict verdict(double harassment, double threat, double selfHarm) {

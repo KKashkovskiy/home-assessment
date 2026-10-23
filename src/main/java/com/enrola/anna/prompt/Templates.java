@@ -2,30 +2,27 @@ package com.enrola.anna.prompt;
 
 import com.enrola.anna.config.PersonaProperties;
 import com.enrola.anna.lead.Lead;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 
 /**
- * The ten fixed SMS templates of one prompt bundle, loaded by {@link PromptLoader}. Construction
- * fails on a missing file, a character outside {@link Gsm7}, an unknown placeholder or a rendering
- * over the template's cap, so a bad edit fails boot before the first lead sees it.
+ * The ten fixed SMS templates of one prompt version, keyed by {@link Template} name. {@link
+ * PromptValidation} refuses a version with a template {@link #problem} names, so every template of
+ * a loaded version renders for every lead the table can store.
  */
 public class Templates {
 
   private static final Pattern PLACEHOLDER = Pattern.compile("\\{(\\w+)}");
 
   /**
-   * The widest lead schema.sql can store: an 80-char {@code given_name} and a 40-char {@code
-   * current_provider}. Every template renders it at boot, so no stored lead can exceed a cap.
+   * The widest lead the lead table can store: an 80-char {@code given_name} and a 40-char {@code
+   * current_provider}. A template that fits its cap for this lead fits it for any stored lead.
    */
   static final Lead WIDEST_STORABLE_LEAD =
       new Lead(
@@ -43,13 +40,19 @@ public class Templates {
   private final Map<Template, String> texts = new EnumMap<>(Template.class);
   private final PersonaProperties persona;
 
-  /** Loads {@code prefix + NAME.txt} for every template; {@code prefix} ends in a slash. */
-  public Templates(ResourceLoader loader, String prefix, PersonaProperties persona) {
+  /** {@code texts} maps every {@link Template} name to its text; surrounding space is dropped. */
+  public Templates(Map<String, String> texts, PersonaProperties persona) {
     this.persona = persona;
     for (Template template : Template.values()) {
-      texts.put(template, load(template, loader.getResource(prefix + template.name() + ".txt")));
-      render(template, WIDEST_STORABLE_LEAD);
+      this.texts.put(
+          template,
+          Objects.requireNonNull(texts.get(template.name()), () -> template + " missing").strip());
     }
+  }
+
+  /** The stored text with its placeholders, as the designer wrote it. */
+  public String text(Template template) {
+    return texts.get(template);
   }
 
   /**
@@ -57,22 +60,49 @@ public class Templates {
    * like a placeholder stays literal. Throws when the result is over the template's cap.
    */
   public String render(Template template, Lead lead) {
-    Map<String, String> values =
-        Map.of(
-            "name_part", namePart(lead),
-            "persona", persona.name(),
-            "disclosure", disclosure(),
-            "provider", Objects.requireNonNullElse(lead.currentProvider(), "").strip());
-    String text =
-        PLACEHOLDER
-            .matcher(texts.get(template))
-            .replaceAll(
-                found -> Matcher.quoteReplacement(placeholderValue(template, found, values)));
+    String text = fill(template, values(lead));
     if (text.length() > template.maxChars) {
-      throw new IllegalStateException(
-          template + " renders to " + text.length() + " chars, cap " + template.maxChars);
+      throw new IllegalStateException(overCap(template, text.length()));
     }
     return text;
+  }
+
+  /**
+   * Why {@code template} cannot go to every storable lead: a placeholder {@link #render} does not
+   * know, or a rendering for the widest storable lead over the cap. Empty when it can.
+   */
+  Optional<String> problem(Template template) {
+    Map<String, String> values = values(WIDEST_STORABLE_LEAD);
+    Optional<String> unknown =
+        PLACEHOLDER
+            .matcher(texts.get(template))
+            .results()
+            .filter(found -> !values.containsKey(found.group(1)))
+            .map(MatchResult::group)
+            .findFirst();
+    if (unknown.isPresent()) {
+      return Optional.of(template + " has unknown placeholder " + unknown.get());
+    }
+    int length = fill(template, values).length();
+    return length > template.maxChars ? Optional.of(overCap(template, length)) : Optional.empty();
+  }
+
+  private Map<String, String> values(Lead lead) {
+    return Map.of(
+        "name_part", namePart(lead),
+        "persona", persona.name(),
+        "disclosure", disclosure(),
+        "provider", Objects.requireNonNullElse(lead.currentProvider(), "").strip());
+  }
+
+  private String fill(Template template, Map<String, String> values) {
+    return PLACEHOLDER
+        .matcher(texts.get(template))
+        .replaceAll(found -> Matcher.quoteReplacement(placeholderValue(template, found, values)));
+  }
+
+  private static String overCap(Template template, int length) {
+    return template + " renders to " + length + " chars, over " + template.maxChars;
   }
 
   private static String namePart(Lead lead) {
@@ -93,19 +123,5 @@ public class Templates {
       throw new IllegalStateException(template + " has unknown placeholder " + found.group());
     }
     return value;
-  }
-
-  private static String load(Template template, Resource resource) {
-    String text;
-    try {
-      text = resource.getContentAsString(StandardCharsets.UTF_8).strip();
-    } catch (IOException e) {
-      throw new IllegalStateException(
-          template + " template unreadable: " + resource.getDescription(), e);
-    }
-    if (!Gsm7.isClean(text)) {
-      throw new IllegalStateException(template + " has non-GSM-7 characters");
-    }
-    return text;
   }
 }

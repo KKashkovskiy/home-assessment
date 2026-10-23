@@ -15,14 +15,16 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * API response for every conversation call: one shape, snake_case on the wire by the app's Jackson
- * setting. Fields with nothing to report ({@code booking} before book_call, {@code extracted}) are
- * null, not absent, so the platform parses one contract. {@code lastOfferedSlots} are the labels of
- * the latest availability result, empty before the first. {@code trace_url} is the conversation's
- * page path. Once a turn carried health information, message bodies from that turn on are hidden
- * unless asked for; {@code reply} is always what is to be sent.
+ * setting. {@code promptVersion} is the version the conversation pinned at start. Fields with
+ * nothing to report ({@code booking} before book_call, {@code extracted}) are null, not absent, so
+ * the platform parses one contract. {@code lastOfferedSlots} are the labels of the latest
+ * availability result, empty before the first. {@code trace_url} is the conversation's page path.
+ * Once a turn carried health information, message bodies from that turn on are hidden unless asked
+ * for; {@code reply} is always what is to be sent.
  */
 public record TurnResponse(
     String conversationId,
+    String promptVersion,
     String reply,
     Stage stage,
     boolean goalMet,
@@ -119,6 +121,7 @@ public record TurnResponse(
     Conversation conversation = rows.conversation();
     return new TurnResponse(
         conversation.id,
+        conversation.promptVersion,
         reply,
         conversation.stage,
         conversation.goalMet,

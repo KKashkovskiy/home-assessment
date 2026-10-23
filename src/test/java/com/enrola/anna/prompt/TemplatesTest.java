@@ -2,77 +2,62 @@ package com.enrola.anna.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import com.enrola.anna.config.PersonaProperties;
 import com.enrola.anna.lead.Lead;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.DefaultResourceLoader;
 
 /**
- * The shipped templates against their caps and the boot checks, and what every opener must carry
- * whatever the designer's wording.
+ * What a template can be refused for, and what every opener must carry whatever the designer's
+ * wording.
  */
 class TemplatesTest {
 
-  static final String PREFIX = "classpath:prompts/v1/templates/";
-  static final Templates DISCLOSED = templates(PREFIX, true);
+  static final Map<String, String> SHIPPED =
+      new PromptLoader(new DefaultResourceLoader())
+          .load("v1", Instant.EPOCH)
+          .parse()
+          .templates()
+          .orElseThrow();
+  static final Templates DISCLOSED = templates(SHIPPED, true);
 
-  @ParameterizedTest
-  @EnumSource(names = {"OPENER_PROVIDER", "OPENER_NO_PROVIDER"})
-  void openersFitTwoSegmentsForTheWidestStorableLead(Template template) {
-    assertThat(DISCLOSED.render(template, Templates.WIDEST_STORABLE_LEAD))
-        .hasSizeLessThanOrEqualTo(320);
-  }
-
-  @ParameterizedTest
-  @EnumSource(
-      mode = EnumSource.Mode.EXCLUDE,
-      names = {"OPENER_PROVIDER", "OPENER_NO_PROVIDER"})
-  void otherTemplatesFitOneSegmentForTheWidestStorableLead(Template template) {
-    assertThat(DISCLOSED.render(template, Templates.WIDEST_STORABLE_LEAD))
-        .hasSizeLessThanOrEqualTo(160);
-  }
-
-  static Stream<String> badFallbacks() {
+  /** The widest storable lead is the measure: the last text fits Lauren but not an 80-char name. */
+  static Stream<Arguments> refusedFallbacks() {
     return Stream.of(
-        "Sorry, I didn’t quite get that.", // curly apostrophe: not GSM-7
-        "Sorry {nickname}, say that again?", // placeholder the renderer does not know
-        "x".repeat(161)); // over the one-segment cap
+        arguments(
+            "Sorry {nickname}, say that again?", "FALLBACK has unknown placeholder {nickname}"),
+        arguments("x".repeat(161), "FALLBACK renders to 161 chars, over 160"),
+        arguments("Hi{name_part}, " + "x".repeat(80), "FALLBACK renders to 165 chars, over 160"));
   }
 
   @ParameterizedTest
-  @MethodSource("badFallbacks")
-  void badTemplateFailsBoot(String fallback, @TempDir Path dir) throws IOException {
-    copyShippedTemplates(dir);
-    Files.writeString(dir.resolve("FALLBACK.txt"), fallback);
-
-    assertThatIllegalStateException()
-        .isThrownBy(() -> templates(dir.toUri().toString(), true))
-        .withMessageContaining("FALLBACK");
+  @MethodSource("refusedFallbacks")
+  void problemNamesWhatRenderWouldRefuse(String fallback, String problem) {
+    assertThat(fallback(fallback).problem(Template.FALLBACK)).contains(problem);
   }
 
   @Test
-  void missingTemplateFailsBoot(@TempDir Path dir) throws IOException {
-    copyShippedTemplates(dir);
-    Files.delete(dir.resolve("FALLBACK.txt"));
+  void fallbackThatFitsEveryLeadHasNoProblem() {
+    assertThat(fallback("Hi{name_part}, " + "x".repeat(75)).problem(Template.FALLBACK)).isEmpty();
+  }
 
+  @Test
+  void renderRefusesATextOverItsCap() {
     assertThatIllegalStateException()
-        .isThrownBy(() -> templates(dir.toUri().toString(), true))
-        .withMessageContaining("FALLBACK");
+        .isThrownBy(() -> fallback("x".repeat(161)).render(Template.FALLBACK, lead("Jo", null)))
+        .withMessage("FALLBACK renders to 161 chars, over 160");
   }
 
   @ParameterizedTest
@@ -101,7 +86,7 @@ class TemplatesTest {
 
   @Test
   void disclosureOffSaysFromCompany() {
-    assertThat(templates(PREFIX, false).render(Template.OPENER_PROVIDER, lead("Lauren", "Bupa")))
+    assertThat(templates(SHIPPED, false).render(Template.OPENER_PROVIDER, lead("Lauren", "Bupa")))
         .contains("Anna from Comparato")
         .doesNotContain("AI assistant");
   }
@@ -121,21 +106,15 @@ class TemplatesTest {
         .contains("{persona}", "{disclosure}");
   }
 
-  private static Templates templates(String prefix, boolean disclosureInOpener) {
-    return new Templates(
-        new DefaultResourceLoader(),
-        prefix,
-        new PersonaProperties("Anna", "Comparato", disclosureInOpener));
+  private static Templates templates(Map<String, String> texts, boolean disclosureInOpener) {
+    return new Templates(texts, new PersonaProperties("Anna", "Comparato", disclosureInOpener));
   }
 
-  private static void copyShippedTemplates(Path dir) throws IOException {
-    for (Template template : Template.values()) {
-      String file = template.name() + ".txt";
-      String text =
-          new ClassPathResource("prompts/v1/templates/" + file)
-              .getContentAsString(StandardCharsets.UTF_8);
-      Files.writeString(dir.resolve(file), text);
-    }
+  /** The shipped templates with {@code text} as FALLBACK. */
+  private static Templates fallback(String text) {
+    Map<String, String> texts = new HashMap<>(SHIPPED);
+    texts.put(Template.FALLBACK.name(), text);
+    return templates(texts, true);
   }
 
   private static Lead lead(String name, String provider) {

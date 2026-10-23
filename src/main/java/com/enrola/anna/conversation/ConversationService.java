@@ -11,7 +11,7 @@ import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
 import com.enrola.anna.prompt.PromptBundle;
-import com.enrola.anna.prompt.PromptLoader;
+import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.Template;
 import com.enrola.anna.scheduling.BookingRepository;
 import com.enrola.anna.scheduling.LeadZones;
@@ -44,7 +44,7 @@ public class ConversationService {
   private final ConversationRepository conversations;
   private final MessageRepository messages;
   private final BookingRepository bookings;
-  private final PromptLoader prompts;
+  private final PromptStore prompts;
   private final Suppressions suppressions;
   private final TurnLocks locks;
   private final TransactionTemplate tx;
@@ -58,7 +58,7 @@ public class ConversationService {
       ConversationRepository conversations,
       MessageRepository messages,
       BookingRepository bookings,
-      PromptLoader prompts,
+      PromptStore prompts,
       Suppressions suppressions,
       TurnLocks locks,
       TransactionTemplate tx,
@@ -167,9 +167,10 @@ public class ConversationService {
             });
   }
 
+  /** The only place the active prompt version is read: the conversation pins it for good. */
   private TurnResponse open(Lead lead) {
     Instant now = clock.now();
-    PromptBundle bundle = prompts.active();
+    PromptBundle bundle = prompts.bundle(prompts.activeId());
     Conversation conversation = conversations.save(newConversation(lead, bundle, now));
     Message opener = storeOpener(conversation, lead, bundle, now);
     return TurnResponse.of(
@@ -178,7 +179,7 @@ public class ConversationService {
 
   /**
    * An unguessable id, because it reaches URLs; version 0 makes {@code save} insert. It records the
-   * prompt bundle, model, effort and build it starts on.
+   * prompt version, model, effort and build it starts on.
    */
   private Conversation newConversation(Lead lead, PromptBundle bundle, Instant now) {
     LeadZones.Resolved zone = LeadZones.resolve(lead.state(), advisorZone);

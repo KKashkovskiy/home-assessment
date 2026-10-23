@@ -5,9 +5,9 @@ spring:
     url: jdbc:h2:file:./data/anna
     hikari:
       connection-init-sql: SET TIME ZONE 'UTC'  # instants round-trip, even in a repeated DST hour
-  sql:
-    init:
-      mode: always                        # schema.sql on every boot; IF NOT EXISTS keeps it idempotent
+  flyway:
+    baseline-on-migrate: true             # a data/ from before migrations is adopted, not failed,
+    baseline-version: 0                   # at 0, so V1, the old schema.sql, adds what it lacks
   jackson:
     property-naming-strategy: SNAKE_CASE  # one wire convention for every request and response body
 anna:
@@ -16,8 +16,6 @@ anna:
     name: Anna                            # {persona} in the templates, {{persona}} in the prompt
     company: Comparato                    # named in the opener and the disclosure
     disclosure-in-opener: true            # ", Comparato's AI assistant" vs " from Comparato"
-  prompt:
-    version: v1                           # the bundle under prompts/; stamped on each conversation
   agent:
     model: gpt-5.1                        # non-mini; checked at boot when a key is set
     reasoning-effort: low                 # low | medium | high; sent as reasoning.effort

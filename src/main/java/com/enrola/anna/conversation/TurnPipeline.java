@@ -11,6 +11,9 @@ import com.enrola.anna.guard.StopKeywords;
 import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
+import com.enrola.anna.prompt.PromptBundle;
+import com.enrola.anna.prompt.PromptStore;
+import com.enrola.anna.prompt.PromptUnavailable;
 import com.enrola.anna.scheduling.BookingRepository;
 import java.time.Instant;
 import java.util.Map;
@@ -18,18 +21,19 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * The steps of one claimed turn, in order: a phone that opted out leaves the conversation
- * unsubscribed, moderation screens the inbound, the {@link PreGuards} pick one outcome, the outcome
- * runs, and a STATE_DIFF event records what the turn changed. Moderation and the pre-guards write a
- * GUARD event every turn, pass or not. A STOP is never screened, so it cannot wait on moderation.
- * Without a key there is no moderation endpoint, so every verdict is unavailable and the trace
- * shows the gap.
+ * The steps of one claimed turn, in order: the prompt version the conversation pinned is loaded, a
+ * phone that opted out leaves the conversation unsubscribed, moderation screens the inbound, the
+ * {@link PreGuards} pick one outcome, the outcome runs, and a STATE_DIFF event records what the
+ * turn changed. Moderation and the pre-guards write a GUARD event every turn, pass or not. A STOP
+ * is never screened, so it cannot wait on moderation. Without a key there is no moderation
+ * endpoint, so every verdict is unavailable and the trace shows the gap.
  */
 @Component
 class TurnPipeline {
 
   private final LeadRepository leads;
   private final BookingRepository bookings;
+  private final PromptStore prompts;
   private final Suppressions suppressions;
   private final ModerationClient moderation;
   private final PreGuards preGuards;
@@ -43,6 +47,7 @@ class TurnPipeline {
   TurnPipeline(
       LeadRepository leads,
       BookingRepository bookings,
+      PromptStore prompts,
       Suppressions suppressions,
       ObjectProvider<ModerationClient> moderation,
       PreGuards preGuards,
@@ -54,6 +59,7 @@ class TurnPipeline {
       SmsProperties sms) {
     this.leads = leads;
     this.bookings = bookings;
+    this.prompts = prompts;
     this.suppressions = suppressions;
     this.moderation = moderation.getIfAvailable(() -> ModerationClient.NONE);
     this.preGuards = preGuards;
@@ -77,7 +83,8 @@ class TurnPipeline {
             leadOf(conversation),
             inbound,
             now,
-            bookings.findByConversationId(conversation.id).isPresent());
+            bookings.findByConversationId(conversation.id).isPresent(),
+            promptFor(conversation, inbound.turnNo()));
     if (inbound.charCount() > sms.maxInboundChars()) {
       conversation.addFlag(Flag.INPUT_TRUNCATED);
     }
@@ -94,6 +101,36 @@ class TurnPipeline {
             TraceOutcome.INFO,
             before.changesTo(StateSnapshot.of(conversation))));
     return outcome;
+  }
+
+  /**
+   * The version the conversation started on, never the active one. When that version is gone or no
+   * longer loads, the active one stands in for its fixed templates only, so STOP, the safety reply
+   * and a booking change still work; the pre-guards keep the model out and the trace says why.
+   */
+  private PromptBundle promptFor(Conversation conversation, int turnNo) {
+    try {
+      return prompts.bundle(conversation.promptVersion);
+    } catch (PromptUnavailable e) {
+      String active = prompts.activeId();
+      trace.record(
+          conversation.id,
+          turnNo,
+          new TraceLog.Entry(
+              TraceEventType.ERROR,
+              "prompt-load",
+              TraceOutcome.BLOCK,
+              Map.of(
+                  "code",
+                  "PROMPT",
+                  "version",
+                  conversation.promptVersion,
+                  "detail",
+                  e.getMessage(),
+                  "templates_from",
+                  active)));
+      return prompts.bundle(active);
+    }
   }
 
   /**
@@ -144,6 +181,7 @@ class TurnPipeline {
                 turn.bookedAtStart(),
                 conversation.handoffReason),
             new PreGuards.ModelAccess(
+                turn.onPinnedPrompt(),
                 agent.available(),
                 spend.appCapReached(),
                 spend.conversationCapReached(conversation.id)));

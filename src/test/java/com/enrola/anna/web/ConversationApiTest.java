@@ -20,7 +20,7 @@ import com.enrola.anna.conversation.InboundTurns;
 import com.enrola.anna.conversation.TurnLocks;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
-import com.enrola.anna.prompt.PromptLoader;
+import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.Template;
 import com.enrola.anna.prompt.Templates;
 import com.jayway.jsonpath.JsonPath;
@@ -82,7 +82,7 @@ class ConversationApiTest {
   @Autowired WebApplicationContext context;
   @Autowired JdbcTemplate jdbc;
   @Autowired LeadRepository leads;
-  @Autowired PromptLoader prompts;
+  @Autowired PromptStore prompts;
   Templates templates;
   @Autowired TurnLocks locks;
   MockMvc mvc;
@@ -90,7 +90,7 @@ class ConversationApiTest {
   @BeforeEach
   void noConversations() {
     mvc = MockMvcBuilders.webAppContextSetup(context).build();
-    templates = prompts.active().templates();
+    templates = prompts.bundle("v1").templates();
     jdbc.update("delete from trace_event");
     jdbc.update("delete from turn");
     jdbc.update("delete from message");
@@ -111,6 +111,7 @@ class ConversationApiTest {
       started
           .andExpect(status().isCreated())
           .andExpect(jsonPath("$.conversation_id").value(matchesPattern("c-[0-9a-f-]{36}")))
+          .andExpect(jsonPath("$.prompt_version").value("v1"))
           .andExpect(jsonPath("$.reply").value(opener))
           .andExpect(jsonPath("$.stage").value("ENGAGE"))
           .andExpect(jsonPath("$.end_reason").value("NONE"))
@@ -301,6 +302,7 @@ class ConversationApiTest {
       mvc.perform(get("/api/conversations/{id}", id))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.conversation_id").value(id))
+          .andExpect(jsonPath("$.prompt_version").value("v1"))
           .andExpect(jsonPath("$.reply").value(nullValue()))
           .andExpect(jsonPath("$.transcript.length()").value(1))
           .andExpect(jsonPath("$.transcript[0].source").value("TEMPLATE"));

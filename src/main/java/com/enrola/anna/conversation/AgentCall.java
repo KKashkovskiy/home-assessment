@@ -5,11 +5,10 @@ import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.ToolLoopCallbacks;
 import com.enrola.anna.config.AgentProperties;
-import com.enrola.anna.prompt.PromptLoader;
 import org.springframework.stereotype.Component;
 
 /**
- * One recorded model call for a running turn: the conversation's prompt bundle and a {@link
+ * One recorded model call for a running turn: the turn's pinned prompt and a {@link
  * TurnQuestions.Question} go in, each round is traced as it ends, the model's function calls are
  * answered by {@link TurnToolCalls} while the turn has tool rounds left, and a decision or a
  * failure comes out, with the turn's model columns either way. Output that is not a decision is
@@ -19,7 +18,6 @@ import org.springframework.stereotype.Component;
 class AgentCall {
 
   private final AgentService agent;
-  private final PromptLoader prompts;
   private final TurnQuestions questions;
   private final ModelCallRecorder modelCalls;
   private final TurnToolCalls tools;
@@ -27,13 +25,11 @@ class AgentCall {
 
   AgentCall(
       AgentService agent,
-      PromptLoader prompts,
       TurnQuestions questions,
       ModelCallRecorder modelCalls,
       TurnToolCalls tools,
       AgentProperties agentProps) {
     this.agent = agent;
-    this.prompts = prompts;
     this.questions = questions;
     this.modelCalls = modelCalls;
     this.tools = tools;
@@ -60,11 +56,7 @@ class AgentCall {
   Answer ask(RunningTurn turn, TurnQuestions.Question question, ToolRounds rounds) {
     return answerOf(
         turn,
-        agent.decide(
-            prompts.load(turn.conversation().promptVersion),
-            questions.transcriptOf(question),
-            question.context(),
-            rounds));
+        agent.decide(turn.prompt(), questions.transcriptOf(question), question.context(), rounds));
   }
 
   /**
@@ -76,10 +68,7 @@ class AgentCall {
     return answerOf(
         turn,
         agent.classify(
-            prompts.load(turn.conversation().promptVersion),
-            questions.transcriptOf(question),
-            question.context(),
-            rounds));
+            turn.prompt(), questions.transcriptOf(question), question.context(), rounds));
   }
 
   private Answer answerOf(RunningTurn turn, AgentService.TurnResult result) {

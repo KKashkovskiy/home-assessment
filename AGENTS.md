@@ -53,7 +53,11 @@ compile and every warning fails the build, so a suppression needs a reason. It r
 
 ## Where things go
 
-- Prompt bundles (prompt, knowledge pack, templates, schema, tools) go in `src/main/resources/prompts/vN/`.
+- Prompt bundles (prompt, knowledge pack, templates, schema, tools) go in `src/main/resources/prompts/vN/`, seeded
+  into the `prompt_version` table at boot; `prompts/CHANGELOG.md` says what changed in each and how a saved version
+  gets back into the repo.
+- Schema changes go in a new Flyway migration under `src/main/resources/db/migration/`; an applied migration is never
+  edited.
 - Eval scenarios, rubrics and the runner go in `evals/`; run output goes in `evals/runs/` (ignored).
 - Runtime data and settings overrides go in `data/` (ignored).
 - Secrets come from the environment only; `.env.example` names them with blank values, other `.env*` files are

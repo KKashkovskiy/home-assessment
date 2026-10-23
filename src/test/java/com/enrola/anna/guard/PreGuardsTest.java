@@ -30,7 +30,7 @@ class PreGuardsTest {
           new ModerationProperties(0.5, 0.5, 0.3, Duration.ofSeconds(5), 0));
   static final Standing OPEN = new Standing(EndReason.NONE, false, 0, false, HandoffReason.NONE);
   static final Standing BOOKED = new Standing(EndReason.BOOKED, false, 4, true, HandoffReason.NONE);
-  static final ModelAccess MODEL = new ModelAccess(true, false, false);
+  static final ModelAccess MODEL = new ModelAccess(true, true, false, false);
   static final ModerationVerdict CLEAN = ScriptedModerationClient.CLEAN;
   static final ModerationVerdict SELF_HARM = scores(0, 0, 0.9);
   static final ModerationVerdict HARASSMENT = scores(0.9, 0, 0);
@@ -67,32 +67,39 @@ class PreGuardsTest {
             MODEL,
             new PreGuards.Silence(EndReason.ABUSIVE)),
         Arguments.of(
-            "abuse over no model",
+            "abuse over a prompt that does not load",
             "...",
             HARASSMENT,
             OPEN,
-            new ModelAccess(false, true, true),
+            new ModelAccess(false, false, true, true),
             new PreGuards.EndAbusive(Detector.MODERATION)),
+        Arguments.of(
+            "a prompt that does not load over no model",
+            "hi",
+            CLEAN,
+            OPEN,
+            new ModelAccess(false, false, true, true),
+            new PreGuards.HandoffNoModel(NoModelReason.PROMPT)),
         Arguments.of(
             "no model over the app cap",
             "hi",
             CLEAN,
             OPEN,
-            new ModelAccess(false, true, true),
+            new ModelAccess(true, false, true, true),
             new PreGuards.HandoffNoModel(NoModelReason.NO_MODEL)),
         Arguments.of(
             "the app cap over the conversation cap",
             "hi",
             CLEAN,
             OPEN,
-            new ModelAccess(true, true, true),
+            new ModelAccess(true, true, true, true),
             new PreGuards.HandoffNoModel(NoModelReason.SPEND_CAP_APP)),
         Arguments.of(
             "the conversation cap over a soft end",
             "hi",
             CLEAN,
             new Standing(EndReason.DECLINED, false, 1, false, HandoffReason.NONE),
-            new ModelAccess(true, false, true),
+            new ModelAccess(true, true, false, true),
             new PreGuards.HandoffNoModel(NoModelReason.SPEND_CAP_CONVERSATION)),
         Arguments.of(
             "a soft end over the turn cap",

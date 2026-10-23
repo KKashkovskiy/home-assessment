@@ -1,5 +1,6 @@
--- Schema for the embedded H2 file database. Every statement is IF NOT EXISTS so boot is idempotent.
--- A changed column is not picked up by an existing database: delete data/ after pulling a schema change.
+-- The baseline: schema.sql as every database was created before migrations, statement for statement.
+-- Every statement is IF NOT EXISTS, so on a data/ from before migrations, adopted at version 0, it adds
+-- only the tables and columns that database lacks. Never edit it: a schema change is a new migration.
 
 CREATE TABLE IF NOT EXISTS lead (
   id               VARCHAR(40)  PRIMARY KEY,

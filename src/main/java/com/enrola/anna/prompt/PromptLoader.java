@@ -1,62 +1,87 @@
 package com.enrola.anna.prompt;
 
-import com.enrola.anna.config.PersonaProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
+import java.util.Map;
+import java.util.stream.Stream;
+import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.io.support.ResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternUtils;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Loads the bundle {@code anna.prompt.version} names from {@code classpath:prompts/<version>/} once
- * at boot; a missing or unreadable file fails boot. It is the only bundle this process has.
+ * Reads the {@code prompts/vN/} directories on the classpath into version rows for {@link
+ * PromptStore} to seed. The directory in the repo is the record of what shipped; the table is what
+ * runs. A missing or unreadable file fails the seed, and with it the boot.
  */
 @Component
 public class PromptLoader {
 
-  private final PromptBundle bundle;
+  private final ResourcePatternResolver resources;
 
-  public PromptLoader(
-      ResourceLoader loader,
-      PersonaProperties persona,
-      JsonMapper json,
-      @Value("${anna.prompt.version}") String version) {
-    String dir = "classpath:prompts/" + version + "/";
-    this.bundle =
-        new PromptBundle(
-            version,
-            read(loader, dir + version + ".md"),
-            read(loader, dir + "knowledge.md"),
-            json.readTree(read(loader, dir + "agent-decision.schema.json")),
-            List.copyOf(json.readTree(read(loader, dir + "tools.json")).values()),
-            new Templates(loader, dir + "templates/", persona),
-            UUID.randomUUID().toString());
+  public PromptLoader(ResourceLoader loader) {
+    this.resources = ResourcePatternUtils.getResourcePatternResolver(loader);
   }
 
-  /** The bundle new conversations start on. */
-  public PromptBundle active() {
-    return bundle;
+  /** The ids with a directory under {@code prompts/}, lowest first. */
+  public List<String> availableVersions() {
+    Resource[] prompts;
+    try {
+      prompts = resources.getResources("classpath*:prompts/v*/v*.md");
+    } catch (IOException e) {
+      throw new IllegalStateException("prompts/ unreadable", e);
+    }
+    return Stream.of(prompts)
+        .map(PromptLoader::directoryOf)
+        .distinct()
+        .sorted(Comparator.comparingInt(PromptVersion::number))
+        .toList();
   }
 
   /**
-   * The bundle a conversation is pinned to. A version this process does not have throws rather than
-   * answering with another prompt.
+   * The five artifacts of {@code prompts/<id>/} as an inactive row made by the repo at {@code now}.
    */
-  public PromptBundle load(String version) {
-    if (!bundle.id().equals(version)) {
-      throw new IllegalArgumentException("prompt version " + version + " is not loaded");
+  public PromptVersion load(String id, Instant now) {
+    String dir = "classpath:prompts/" + id + "/";
+    Map<String, String> templates = new LinkedHashMap<>();
+    for (Template template : Template.values()) {
+      templates.put(template.name(), read(dir + "templates/" + template.name() + ".txt"));
     }
-    return bundle;
+    return new PromptVersion(
+        id,
+        now,
+        PromptVersion.REPO,
+        "seeded from prompts/" + id,
+        false,
+        read(dir + id + ".md"),
+        read(dir + "knowledge.md"),
+        read(dir + "agent-decision.schema.json"),
+        read(dir + "tools.json"),
+        PromptVersion.templatesJsonOf(templates));
   }
 
-  private static String read(ResourceLoader loader, String location) {
+  /** The name of the directory {@code prompt} sits in: {@code v1} for {@code prompts/v1/v1.md}. */
+  private static String directoryOf(Resource prompt) {
     try {
-      return loader.getResource(location).getContentAsString(StandardCharsets.UTF_8);
+      String path = prompt.getURL().getPath();
+      String directory = path.substring(0, path.lastIndexOf('/'));
+      return directory.substring(directory.lastIndexOf('/') + 1);
     } catch (IOException e) {
-      throw new IllegalStateException("prompt file unreadable: " + location, e);
+      throw new IllegalStateException("prompt file unreadable: " + prompt.getDescription(), e);
+    }
+  }
+
+  private String read(String location) {
+    Resource resource = resources.getResource(location);
+    try {
+      return resource.getContentAsString(StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new IllegalStateException("prompt file unreadable: " + resource.getDescription(), e);
     }
   }
 }

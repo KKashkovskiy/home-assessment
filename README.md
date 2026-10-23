@@ -72,7 +72,7 @@ turn; the rows after the call act on the model's decision.
 | Moderation self-harm score at or above `anna.moderation.self-harm` | the Lifeline template once per conversation, flag `VULNERABLE`, handoff `SELF_HARM`; ends `SAFETY`, or after a hard end adds `SAFETY` to the history only |
 | Ended hard: `UNSUBSCRIBED`, `ABUSIVE`, `SAFETY`, `OFF_TOPIC_LIMIT` | stored, no model call, no reply |
 | Moderation harassment or threat score at or above its threshold | ends `ABUSIVE`, no reply, no model call |
-| No key, or spend at `anna.budgets.app-cap-usd` or `conversation-cap-usd` | no model call, `needs_human` with `ERROR`, stays open |
+| The conversation's prompt version does not load, no key, or spend at `anna.budgets.app-cap-usd` or `conversation-cap-usd` | no model call, `needs_human` with `ERROR`, stays open |
 | Ended soft: `BOOKED`, `DECLINED`, `MAX_TURNS`, `HANDOFF` | the model only classifies; RESCHEDULE or HANDOFF_REQUEST gets one `HANDOFF_ACK`, or after a booking RESCHEDULE gets `BOOKING_CHANGE_HANDOFF` with the booking kept; anything else at most one closing reply of 160 characters or fewer with no question mark, then silence flagged `LOOP_SUPPRESSED` |
 | `anna.limits.max-turns` messages sent | `MAX_TURNS_CLOSE`, ends `MAX_TURNS` |
 | After the call: intent OPT_OUT, ABUSIVE or SELF_HARM | the model's reply is discarded for the outcome of the matching row above; an opt-out is suppressed as `MODEL` |
@@ -155,14 +155,30 @@ the `time-mention` check accepts. After a booking, a request to move or cancel t
 `BOOKING_CHANGE_HANDOFF` once with `handoff_reason` `RESCHEDULE`, keeps the booking and never books again; a lone CANCEL
 after that is stored, flagged `LOOP_SUPPRESSED` and answered with nothing.
 
+The prompt is a versioned artifact in the database. A version is one row holding the prompt, the knowledge pack, the
+decision schema, the tool definitions and the ten templates, with an id `v1`, `v2` and so on. On first boot
+`src/main/resources/prompts/v1/` is copied in as `v1`, byte for byte, and made active; a later `prompts/v2/`
+directory is copied in the same way, inactive. Exactly one version is active, and only a new conversation reads it: the
+id is stored on the conversation at start, every response carries it as `prompt_version`, and every later turn loads
+that version, so activating `v2` (one statement, `UPDATE prompt_version SET active = (id = 'v2')`) never changes a
+conversation that began on `v1`, and each turn row records the version the model saw. Saving creates the next id and
+never overwrites; the only update the table gets is the one that moves `active`. A save is checked first, by the rules
+in `src/main/resources/prompts/CHANGELOG.md`, which also says what changed in each version and how a saved one gets
+back into the repo. A version that does not load cannot be activated, and the active one is loaded at boot, so a
+setting that breaks it, a longer company name pushing an opener past 320 characters, stops the app before any lead
+sees it. When a conversation's own version is gone or no longer loads, an `ERROR` trace event names it and the turn
+runs without the model: STOP, the safety reply and a booking change still go out, with the active version's
+templates, and anything else hands off with `ERROR` and leaves the conversation open.
+
 Once a turn carries health information, message bodies from that turn on come back as `null` with
 `"redacted": "HEALTH_INFO"`, unless the GET asks with `?includeHealth=true`.
 
 A message for a conversation that is mid-turn waits two seconds, then gets 409 `BUSY`. Conversations, turns and
 suppressions are rows, so a restart loses nothing.
 
-`schema.sql` adds missing tables and columns but never changes existing ones, so delete `data/` after pulling a change
-to one.
+The schema is a set of Flyway migrations under `src/main/resources/db/migration/`, applied on boot, and an existing
+`data/` keeps its rows: one from before the migrations gets the first of them, the old `schema.sql`, which adds the
+tables and columns it lacks.
 
 ## What Anna does
 
@@ -240,10 +256,11 @@ No Docker Compose, CI configuration or second Maven module: one reviewer, one la
 MapStruct, Guava or Commons Lang: records and the standard library cover the project, and Lombok would hide fields
 from Error Prone and from the reader.
 
-Flyway is not there from the start. Until the database holds something a person typed, the designer's saved prompt
-versions, every row can be replayed and a `schema.sql` of `IF NOT EXISTS` statements is enough. Dependencies join
-the build with the code that first uses them, so the OpenAI SDK arrives with the first model call and Thymeleaf with
-the first page.
+Flyway was not there from the start. Until the database held something a person typed, the designer's saved prompt
+versions, every row could be replayed, and a `schema.sql` of `IF NOT EXISTS` statements was enough at the price of
+deleting `data/` after a column changed. Saved versions cannot be replayed, so from then on the schema is a baseline
+migration, the schema as it stood, plus one migration per change. Dependencies join the build with the code that first
+uses them, so the OpenAI SDK arrived with the first model call and Thymeleaf arrives with the first page.
 
 ## Trade-offs
 

@@ -70,8 +70,12 @@ public class PreGuards {
     MODEL
   }
 
-  /** Why the model cannot be called: no key, or a spend cap reached. */
+  /**
+   * Why the model cannot be called: the conversation's prompt version does not load, no key, or a
+   * spend cap reached.
+   */
   public enum NoModelReason {
+    PROMPT,
     NO_MODEL,
     SPEND_CAP_APP,
     SPEND_CAP_CONVERSATION
@@ -89,9 +93,15 @@ public class PreGuards {
       boolean booked,
       HandoffReason handoffReason) {}
 
-  /** Whether the main model can be called: a key is configured and neither spend cap is reached. */
+  /**
+   * Whether the main model can be called: the conversation's pinned prompt loaded, a key is
+   * configured and neither spend cap is reached.
+   */
   public record ModelAccess(
-      boolean configured, boolean appCapReached, boolean conversationCapReached) {}
+      boolean promptLoaded,
+      boolean configured,
+      boolean appCapReached,
+      boolean conversationCapReached) {}
 
   private final LimitsProperties limits;
   private final ModerationProperties thresholds;
@@ -127,6 +137,9 @@ public class PreGuards {
     }
     if (abusive(verdict)) {
       return new EndAbusive(Detector.MODERATION);
+    }
+    if (!model.promptLoaded()) {
+      return new HandoffNoModel(NoModelReason.PROMPT);
     }
     if (!model.configured()) {
       return new HandoffNoModel(NoModelReason.NO_MODEL);

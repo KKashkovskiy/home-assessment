@@ -2,19 +2,20 @@ package com.enrola.anna.prompt;
 
 import com.enrola.anna.config.PersonaProperties;
 import com.enrola.anna.config.SmsProperties;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
 /**
- * One prompt version's artifacts the turns read: the prompt, the knowledge pack, the decision
- * schema, the function tools ({@code tools.json}, one entry each) and the fixed templates.
- * Immutable. {@code canary} is a random token per boot that the prompt tells the model to keep
- * secret, so a reply that contains it is a leak. A prompt with a placeholder {@link #render} does
- * not fill is rejected here, at boot.
+ * One prompt version's artifacts, parsed for a turn: the prompt, the knowledge pack, the decision
+ * schema, the function tools ({@code tools.json}, one entry each) and the fixed templates. Built by
+ * {@link PromptStore#bundle} from a row that passed {@link PromptValidation}; string work only.
+ * {@code canary} is a random token per boot that the prompt tells the model to keep secret, so a
+ * reply that contains it is a leak.
  */
 public record PromptBundle(
     String id,
@@ -26,18 +27,38 @@ public record PromptBundle(
     String canary) {
 
   private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{(\\w+)}}");
-  private static final Set<String> PLACEHOLDERS =
-      Set.of("persona", "target_chars", "max_chars", "canary", "knowledge");
+
+  /** What {@link #render} fills each placeholder with; the names a prompt must use, and only. */
+  private static final Map<String, Function<Fill, String>> PLACEHOLDERS =
+      Map.of(
+          "persona", fill -> fill.persona().name(),
+          "target_chars", fill -> String.valueOf(fill.sms().targetChars()),
+          "max_chars", fill -> String.valueOf(fill.sms().maxChars()),
+          "canary", fill -> fill.bundle().canary(),
+          "knowledge", fill -> fill.bundle().knowledge());
 
   public PromptBundle {
     tools = List.copyOf(tools);
-    Matcher found = PLACEHOLDER.matcher(prompt);
-    while (found.find()) {
-      if (!PLACEHOLDERS.contains(found.group(1))) {
-        throw new IllegalArgumentException(
-            "prompt " + id + " has unknown placeholder " + found.group());
+  }
+
+  private record Fill(PromptBundle bundle, PersonaProperties persona, SmsProperties sms) {}
+
+  /**
+   * What {@link #render} needs of a prompt: every placeholder present, and none it would not fill.
+   */
+  static List<String> placeholderProblems(String prompt) {
+    List<String> problems = new ArrayList<>();
+    for (String name : PLACEHOLDERS.keySet().stream().sorted().toList()) {
+      if (!prompt.contains("{{" + name + "}}")) {
+        problems.add("prompt is missing placeholder {{" + name + "}}");
       }
     }
+    PLACEHOLDER
+        .matcher(prompt)
+        .results()
+        .filter(found -> !PLACEHOLDERS.containsKey(found.group(1)))
+        .forEach(found -> problems.add("prompt has unknown placeholder " + found.group()));
+    return problems;
   }
 
   /**
@@ -45,15 +66,10 @@ public record PromptBundle(
    * in a value that looks like a placeholder stays literal.
    */
   public String render(PersonaProperties persona, SmsProperties sms) {
-    Map<String, String> values =
-        Map.of(
-            "persona", persona.name(),
-            "target_chars", String.valueOf(sms.targetChars()),
-            "max_chars", String.valueOf(sms.maxChars()),
-            "canary", canary,
-            "knowledge", knowledge);
+    Fill fill = new Fill(this, persona, sms);
     return PLACEHOLDER
         .matcher(prompt)
-        .replaceAll(found -> Matcher.quoteReplacement(values.get(found.group(1))));
+        .replaceAll(
+            found -> Matcher.quoteReplacement(PLACEHOLDERS.get(found.group(1)).apply(fill)));
   }
 }

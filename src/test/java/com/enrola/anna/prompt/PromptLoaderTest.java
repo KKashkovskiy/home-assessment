@@ -1,26 +1,22 @@
 package com.enrola.anna.prompt;
 
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
-import com.enrola.anna.config.PersonaProperties;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
-import tools.jackson.databind.json.JsonMapper;
 
 class PromptLoaderTest {
 
-  final PromptLoader prompts =
-      new PromptLoader(
-          new DefaultResourceLoader(),
-          new PersonaProperties("Anna", "Comparato", true),
-          JsonMapper.builder().build(),
-          "v1");
+  final PromptLoader loader = new PromptLoader(new DefaultResourceLoader());
 
-  /** A conversation pinned to another version must not silently get this prompt. */
+  /**
+   * The repo is the owner's: a version directory with a file missing stops the boot, saying which.
+   */
   @Test
-  void versionNotLoadedIsRefused() {
-    assertThatIllegalArgumentException()
-        .isThrownBy(() -> prompts.load("v2"))
-        .withMessage("prompt version v2 is not loaded");
+  void missingFileFailsNamingIt() {
+    assertThatIllegalStateException()
+        .isThrownBy(() -> loader.load("v99", Instant.EPOCH))
+        .withMessageContaining("prompts/v99/templates/OPENER_PROVIDER.txt");
   }
 }

@@ -9,6 +9,8 @@ import com.enrola.anna.config.SmsProperties;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.prompt.PromptBundle;
 import com.enrola.anna.prompt.PromptLoader;
+import com.enrola.anna.prompt.PromptVersion;
+import com.enrola.anna.prompt.Templates;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -18,6 +20,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.core.io.DefaultResourceLoader;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -30,9 +33,7 @@ class AgentServiceTest {
 
   static final PersonaProperties PERSONA = new PersonaProperties("Anna", "Comparato", true);
   static final SmsProperties SMS = new SmsProperties(320, 300, 1600);
-  static final PromptBundle BUNDLE =
-      new PromptLoader(new DefaultResourceLoader(), PERSONA, JsonMapper.builder().build(), "v1")
-          .active();
+  static final PromptBundle BUNDLE = shippedV1();
   static final List<InputItem> TRANSCRIPT =
       List.of(new InputItem.AssistantText("Hi Lauren"), new InputItem.UserText("save money"));
   static final TurnContext CONTEXT =
@@ -170,6 +171,22 @@ class AgentServiceTest {
   }
 
   // The scripted client has no loop and no reference to the tools: the loop above is the only one.
+
+  /** The repo's v1 as a turn gets it. */
+  private static PromptBundle shippedV1() {
+    PromptVersion v1 = new PromptLoader(new DefaultResourceLoader()).load("v1", Instant.EPOCH);
+    JsonMapper json = JsonMapper.builder().build();
+    return new PromptBundle(
+        "v1",
+        v1.promptMd(),
+        v1.knowledgeMd(),
+        json.readTree(v1.schemaJson()),
+        List.copyOf(json.readTree(v1.toolsJson()).values()),
+        new Templates(
+            json.readValue(v1.templatesJson(), new TypeReference<Map<String, String>>() {}),
+            PERSONA),
+        "canary");
+  }
 
   /**
    * The turn's side: records what happened, grants {@code toolRounds}, answers with canned JSON.

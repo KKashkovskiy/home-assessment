@@ -62,7 +62,7 @@ class ModelCallRecorder {
             yield new Output(null, null);
           }
         };
-    return columns(turn.conversation().promptVersion, result, output);
+    return columns(turn.prompt().id(), result, output);
   }
 
   private BigDecimal cost(ModelResponse.Usage usage) {

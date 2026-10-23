@@ -7,7 +7,6 @@ import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.guard.PreGuards;
 import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Suppression;
-import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.Template;
 import java.util.Map;
 import java.util.Optional;
@@ -24,13 +23,11 @@ class GuardOutcomes {
 
   private final Suppressions suppressions;
   private final TurnLocks locks;
-  private final PromptLoader prompts;
   private final TraceLog trace;
 
-  GuardOutcomes(Suppressions suppressions, TurnLocks locks, PromptLoader prompts, TraceLog trace) {
+  GuardOutcomes(Suppressions suppressions, TurnLocks locks, TraceLog trace) {
     this.suppressions = suppressions;
     this.locks = locks;
-    this.prompts = prompts;
     this.trace = trace;
   }
 
@@ -185,10 +182,7 @@ class GuardOutcomes {
     return TurnOutcome.fixed(render(turn, template), decidedBy);
   }
 
-  private String render(RunningTurn turn, Template template) {
-    return prompts
-        .load(turn.conversation().promptVersion)
-        .templates()
-        .render(template, turn.lead());
+  private static String render(RunningTurn turn, Template template) {
+    return turn.prompt().templates().render(template, turn.lead());
   }
 }
