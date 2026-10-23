@@ -17,6 +17,7 @@ import com.enrola.anna.agent.ObjectionType;
 import com.enrola.anna.agent.ScriptedModelClient;
 import com.enrola.anna.agent.Stage;
 import com.enrola.anna.guard.ModerationVerdict;
+import com.enrola.anna.guard.ReplyCheck;
 import com.enrola.anna.guard.ScriptedModerationClient;
 import com.enrola.anna.lead.LeadRepository;
 import com.enrola.anna.prompt.PromptLoader;
@@ -26,15 +27,20 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.skyscreamer.jsonassert.JSONCompareMode;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -146,12 +152,12 @@ class InboundTurnsTest {
         .containsEntry("COST_USD", new BigDecimal("0.002250"))
         .containsEntry("LATENCY_MS", 5);
     assertThat(turn.get("DECISION_JSON").toString()).contains("\"stage\":\"PREFERENCE\"");
-    assertThat(trace())
-        .containsExactly(
-            "GUARD moderation PASS",
-            "GUARD pre-guards PASS",
-            "MODEL_CALL decide INFO",
-            "STATE_DIFF state INFO");
+    List<String> expected =
+        new ArrayList<>(
+            List.of("GUARD moderation PASS", "GUARD pre-guards PASS", "MODEL_CALL decide INFO"));
+    expected.addAll(replyChecks("PASS"));
+    expected.add("STATE_DIFF state INFO");
+    assertThat(trace()).containsExactlyElementsOf(expected);
   }
 
   @Test
@@ -295,11 +301,12 @@ class InboundTurnsTest {
       value = EndReason.class,
       names = {"BOOKED", "UNSUBSCRIBED", "ABUSIVE", "OFF_TOPIC_LIMIT", "MAX_TURNS", "SAFETY"})
   void otherEndReasonsFromTheModelAreOverridden(EndReason reason) throws Exception {
-    model.decide(Decisions.engaged().ends(reason).reply("Bye then.").build());
+    String reply = "Ok, would a call later in the week suit?";
+    model.decide(Decisions.engaged().ends(reason).reply(reply).build());
 
     TurnResponse response = turns.handle(id, "whatever", "p1");
 
-    assertThat(response.reply()).isEqualTo("Bye then.");
+    assertThat(response.reply()).isEqualTo(reply);
     assertThat(response.conversationEnded()).isFalse();
     assertThat(response.unsubscribed()).isFalse();
     assertThat(jdbc.queryForObject("select count(*) from suppression", Integer.class)).isZero();
@@ -311,9 +318,14 @@ class InboundTurnsTest {
 
   /** A request for a person or a complaint hands the thread over; distress stays open. */
   @ParameterizedTest(name = "{0} ends: {1}")
-  @CsvSource({"REQUESTED, true", "COMPLAINT, true", "DISTRESS, false", "RESCHEDULE, false"})
-  void modelHandoffAsksForAHuman(HandoffReason reason, boolean ends) {
-    model.decide(Decisions.engaged().handsOff(reason).reply("I hear you.").build());
+  @CsvSource({
+    "REQUESTED, true, An advisor will be in touch.",
+    "COMPLAINT, true, Sorry about that. An advisor will be in touch.",
+    "DISTRESS, false, I'm sorry to hear that. Want me to find a time that suits?",
+    "RESCHEDULE, false, No problem. Which day suits better?"
+  })
+  void modelHandoffAsksForAHuman(HandoffReason reason, boolean ends, String reply) {
+    model.decide(Decisions.engaged().handsOff(reason).reply(reply).build());
 
     TurnResponse response = turns.handle(id, "it's all too much", "p1");
 
@@ -370,7 +382,9 @@ class InboundTurnsTest {
 
   @Test
   void transcriptIsReplayedFromTheRowsEachTurn() {
-    model.decide(Decisions.engaged().build()).decide(Decisions.engaged().reply("Second.").build());
+    model
+        .decide(Decisions.engaged().build())
+        .decide(Decisions.engaged().reply("Hospital, extras or both?").build());
     turns.handle(id, "save money", "p1");
 
     turns.handle(id, "hospital", "p2");
@@ -470,11 +484,12 @@ class InboundTurnsTest {
     @Test
     void unavailableModerationLetsTheModelAnswer() {
       moderation.enqueue(ModerationVerdict.UNAVAILABLE);
-      model.decide(Decisions.engaged().reply("Got it.").build());
+      String reply = "Got it, hospital or extras?";
+      model.decide(Decisions.engaged().reply(reply).build());
 
       TurnResponse response = turns.handle(id, "save money", "p1");
 
-      assertThat(response.reply()).isEqualTo("Got it.");
+      assertThat(response.reply()).isEqualTo(reply);
       assertThat(trace()).startsWith("GUARD moderation INFO");
     }
   }
@@ -730,6 +745,219 @@ class InboundTurnsTest {
     }
   }
 
+  /**
+   * Every model reply passes the reply guards. One that fails is asked for again once, with the
+   * turn's question and a note; a rewrite that fails too is replaced or dropped.
+   */
+  @Nested
+  class RepairCycle {
+
+    static final String TOO_LONG = "x".repeat(399) + "?";
+    static final String SHORT = "Got it, hospital or extras?";
+
+    @Test
+    void repairedReplyIsSentAndMarked() throws Exception {
+      model
+          .decide(Decisions.engaged().reply(TOO_LONG).build())
+          .decide(Decisions.engaged().reply(SHORT).build());
+
+      TurnResponse response = turns.handle(id, "save money", "p1");
+
+      assertThat(response.reply()).isEqualTo(SHORT);
+      assertThat(response.flags()).contains(Flag.LENGTH_REPAIRED);
+      assertThat(outboundRow()).containsEntry("TEXT", SHORT).containsEntry("REPAIRED", true);
+      assertThat(turnStatus()).isEqualTo("REPAIRED");
+      assertThat(trace()).filteredOn(event -> event.startsWith("MODEL_CALL")).hasSize(2);
+      assertThat(trace())
+          .filteredOn(event -> event.startsWith("GUARD length "))
+          .containsExactly("GUARD length REPAIR", "GUARD length PASS");
+      JSONAssert.assertEquals(
+          "{\"chars\":" + SHORT.length() + ",\"limit\":320,\"notes\":[]}",
+          guardPayload("length"),
+          JSONCompareMode.STRICT);
+    }
+
+    /**
+     * The transcript and context as at the turn's start, before the objection was counted, then the
+     * note; the rejected reply is never in the transcript.
+     */
+    @Test
+    void repairAsksTheSameQuestionWithANote() {
+      model
+          .decide(Decisions.engaged().objection(ObjectionType.BUSY).reply(TOO_LONG).build())
+          .decide(Decisions.engaged().reply(SHORT).build());
+
+      turns.handle(id, "too busy", "p1");
+
+      List<ModelRequest.InputItem> first = model.calls().get(0).input();
+      List<ModelRequest.InputItem> repair = model.calls().get(1).input();
+      assertThat(repair.subList(0, repair.size() - 1))
+          .isEqualTo(first.subList(0, first.size() - 1));
+      assertThat(repair.getLast().text())
+          .startsWith(first.getLast().text())
+          .contains("length:", "400");
+    }
+
+    /** One decision changes state: the repair only rewrites the text. */
+    @Test
+    void firstDecisionStandsAndBothCallsAreCosted() {
+      model
+          .decide(Decisions.engaged().stage(Stage.PREFERENCE).reply(TOO_LONG).build())
+          .decide(Decisions.engaged().stage(Stage.CALL_ASK).reply(SHORT).build());
+
+      TurnResponse response = turns.handle(id, "save money", "p1");
+
+      assertThat(response.stage()).isEqualTo(Stage.PREFERENCE);
+      Map<String, Object> turn =
+          jdbc.queryForMap(
+              "select tokens_in, cost_usd, decision_json from turn where conversation_id = ?", id);
+      assertThat(turn)
+          .containsEntry("TOKENS_IN", 2000)
+          .containsEntry("COST_USD", new BigDecimal("0.004500"));
+      assertThat(turn.get("DECISION_JSON").toString()).contains("\"stage\":\"PREFERENCE\"");
+    }
+
+    @Test
+    void failedRepairSendsTheFallback() {
+      model
+          .decide(Decisions.engaged().reply(TOO_LONG).build())
+          .decide(Decisions.engaged().reply(TOO_LONG).build());
+
+      TurnResponse response = turns.handle(id, "save money", "p1");
+
+      assertThat(response.reply()).isEqualTo(rendered(Template.FALLBACK));
+      assertThat(response.transcript().getLast().source()).isEqualTo(MessageSource.FIXED);
+      assertThat(response.conversationEnded()).isFalse();
+      assertThat(response.needsHuman()).isFalse();
+      assertThat(response.flags()).doesNotContain(Flag.LENGTH_REPAIRED);
+      assertThat(turnStatus()).isEqualTo("FALLBACK");
+      assertThat(trace())
+          .filteredOn(event -> event.startsWith("GUARD length ") || event.contains("repair-failed"))
+          .containsExactly(
+              "GUARD length REPAIR", "GUARD length BLOCK", "GUARD repair-failed BLOCK");
+    }
+
+    @Test
+    void failedRepairCallSendsTheFallback() {
+      model
+          .decide(Decisions.engaged().reply(TOO_LONG).build())
+          .enqueue(Decisions.failed(ModelResponse.Failure.TIMEOUT));
+
+      TurnResponse response = turns.handle(id, "save money", "p1");
+
+      assertThat(response.reply()).isEqualTo(rendered(Template.FALLBACK));
+      assertThat(response.needsHuman()).isFalse();
+      assertThat(trace()).contains("ERROR model_call INFO", "GUARD repair-failed BLOCK");
+    }
+
+    /** After the goal a wrong reply is worse than none, and a person follows up. */
+    @Test
+    void failedRepairAfterTheGoalSendsNothingAndHandsOff() {
+      jdbc.update("update conversation set goal_met = true where id = ?", id);
+      model
+          .decide(Decisions.engaged().reply(TOO_LONG).build())
+          .decide(Decisions.engaged().reply(TOO_LONG).build());
+
+      TurnResponse response = turns.handle(id, "thanks", "p1");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.transcript()).hasSize(2);
+      assertThat(response.needsHuman()).isTrue();
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.ERROR);
+      assertThat(response.conversationEnded()).isFalse();
+    }
+
+    static Stream<Arguments> endingDecisions() {
+      return Stream.of(
+          Arguments.of(Decisions.engaged().ends(EndReason.DECLINED), Template.DECLINED_CLOSE),
+          Arguments.of(
+              Decisions.engaged().handsOff(HandoffReason.REQUESTED), Template.HANDOFF_ACK));
+    }
+
+    /** The end stands; a fallback asking about a call would contradict it. */
+    @ParameterizedTest(name = "{1}")
+    @MethodSource("endingDecisions")
+    void failedReplyOnTheEndingTurnSendsItsFixedClose(Decisions.Builder ending, Template close) {
+      String askingAgain = "Ok, understood. Sure I can't change your mind?";
+      model.decide(ending.reply(askingAgain).build()).decide(ending.reply(askingAgain).build());
+
+      TurnResponse response = turns.handle(id, "no thanks", "p1");
+
+      assertThat(response.reply()).isEqualTo(rendered(close));
+      assertThat(response.conversationEnded()).isTrue();
+      assertThat(turnStatus()).isEqualTo("FALLBACK");
+      assertThat(trace()).contains("GUARD closing-question REPAIR", "GUARD closing-question BLOCK");
+    }
+
+    /** No scripted sales line to a lead a person is about to call. */
+    @Test
+    void failedReplyDuringADistressHandoffSendsNothing() {
+      model
+          .decide(Decisions.engaged().handsOff(HandoffReason.DISTRESS).reply(TOO_LONG).build())
+          .decide(Decisions.engaged().handsOff(HandoffReason.DISTRESS).reply(TOO_LONG).build());
+
+      TurnResponse response = turns.handle(id, "it's all too much", "p1");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.DISTRESS);
+      assertThat(response.conversationEnded()).isFalse();
+    }
+
+    /** Every check is traced under its own name, a deny-list rule under "deny". */
+    @Test
+    void denyListHitIsRepaired() {
+      model
+          .decide(Decisions.engaged().reply("You'll save hundreds, which day suits?").build())
+          .decide(Decisions.engaged().reply(SHORT).build());
+
+      TurnResponse response = turns.handle(id, "save money", "p1");
+
+      assertThat(response.reply()).isEqualTo(SHORT);
+      assertThat(trace())
+          .filteredOn(event -> event.startsWith("GUARD deny "))
+          .containsExactly("GUARD deny REPAIR", "GUARD deny PASS");
+      assertThat(guardPayload("deny")).isEqualTo("{\"notes\":[]}");
+    }
+
+    /** What is stored is what was measured and what the lead's phone shows. */
+    @Test
+    void replyIsStoredNormalised() {
+      model.decide(
+          Decisions.engaged().reply("“Fair enough” – what’s most important to you?").build());
+
+      turns.handle(id, "save money", "p1");
+
+      String sent = "\"Fair enough\" - what's most important to you?";
+      assertThat(outboundRow())
+          .containsEntry("TEXT", sent)
+          .containsEntry("CHAR_COUNT", sent.length())
+          .containsEntry("REPAIRED", false);
+    }
+
+    /** After an end there is no repair call: a closing reply that fails is suppressed. */
+    @Test
+    void closingReplyGetsTheChecksButNoRepair() {
+      model
+          .decide(Decisions.engaged().ends(EndReason.DECLINED).noReply().build())
+          .decide(Decisions.engaged().reply("Thanks, more at bit.ly/x").build());
+      turns.handle(id, "no thanks", "p1");
+
+      TurnResponse response = turns.handle(id, "ok thanks", "p2");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.flags()).contains(Flag.LOOP_SUPPRESSED);
+      assertThat(trace()).contains("GUARD url BLOCK", "GUARD closing-reply BLOCK");
+      assertThat(model.calls()).hasSize(2);
+    }
+
+    private Map<String, Object> outboundRow() {
+      return jdbc.queryForMap(
+          "select text, char_count, repaired from message where conversation_id = ?"
+              + " and turn_no = 1 and direction = 'OUT'",
+          id);
+    }
+  }
+
   /** Spend is the sum of the turns' recorded cost; at a cap no model call is made. */
   @Nested
   class SpendCaps {
@@ -784,20 +1012,17 @@ class InboundTurnsTest {
   /** The opener and the turns before carry no health information and stay readable. */
   @Test
   void healthInformationHidesBodiesFromItsTurnOn() {
+    String flaggedReply = "Thanks for letting me know. Is hospital the main thing?";
     model
         .decide(Decisions.engaged().build())
-        .decide(
-            Decisions.engaged()
-                .flags(Flag.HEALTH_INFO)
-                .reply("Thanks for letting me know.")
-                .build())
+        .decide(Decisions.engaged().flags(Flag.HEALTH_INFO).reply(flaggedReply).build())
         .decide(Decisions.engaged().reply("Hospital, then?").build());
     turns.handle(id, "save money", "p1");
     TurnResponse flagged = turns.handle(id, "I have a heart condition", "p2");
 
     TurnResponse later = turns.handle(id, "yes", "p3");
 
-    assertThat(flagged.reply()).isEqualTo("Thanks for letting me know.");
+    assertThat(flagged.reply()).isEqualTo(flaggedReply);
     assertThat(later.transcript())
         .extracting(TurnResponse.MessageView::text)
         .containsExactly(
@@ -812,8 +1037,7 @@ class InboundTurnsTest {
         .extracting(TurnResponse.MessageView::redacted)
         .containsExactly(
             null, null, null, "HEALTH_INFO", "HEALTH_INFO", "HEALTH_INFO", "HEALTH_INFO");
-    assertThat(conversations.viewWithHealth(id).transcript().get(4).text())
-        .isEqualTo("Thanks for letting me know.");
+    assertThat(conversations.viewWithHealth(id).transcript().get(4).text()).isEqualTo(flaggedReply);
   }
 
   private String rendered(Template template) {
@@ -827,6 +1051,13 @@ class InboundTurnsTest {
   private String turnStatus() {
     return jdbc.queryForObject(
         "select status from turn where conversation_id = ? and turn_no = 1", String.class, id);
+  }
+
+  /** One trace line per reply check, in order, each with {@code outcome}. */
+  private static List<String> replyChecks(String outcome) {
+    return Arrays.stream(ReplyCheck.values())
+        .map(check -> "GUARD " + check.traceName() + " " + outcome)
+        .toList();
   }
 
   /** The conversation's trace events in order, each as "type name outcome". */

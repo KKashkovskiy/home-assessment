@@ -16,14 +16,10 @@ import org.springframework.core.io.ResourceLoader;
 
 /**
  * The ten fixed SMS templates of one prompt bundle, loaded by {@link PromptLoader}. Construction
- * fails on a missing file, a non-GSM-7 character, an unknown placeholder or a rendering over the
- * template's cap, so a bad edit fails boot before the first lead sees it.
+ * fails on a missing file, a character outside {@link Gsm7}, an unknown placeholder or a rendering
+ * over the template's cap, so a bad edit fails boot before the first lead sees it.
  */
 public class Templates {
-
-  /** Anything outside the GSM-7 basic and extension sets. */
-  private static final Pattern NON_GSM7 =
-      Pattern.compile("[^\\x20-\\x5F\\x61-\\x7E\\n£¥èéùìòÇØøÅåΔΦΓΛΩΠΨΣΘΞÆæßÉ¤¡ÄÖÑÜ§¿äöñüà€]");
 
   private static final Pattern PLACEHOLDER = Pattern.compile("\\{(\\w+)}");
 
@@ -107,7 +103,7 @@ public class Templates {
       throw new IllegalStateException(
           template + " template unreadable: " + resource.getDescription(), e);
     }
-    if (NON_GSM7.matcher(text).find()) {
+    if (!Gsm7.isClean(text)) {
       throw new IllegalStateException(template + " has non-GSM-7 characters");
     }
     return text;

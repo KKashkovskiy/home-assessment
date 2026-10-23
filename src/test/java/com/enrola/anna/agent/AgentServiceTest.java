@@ -48,7 +48,8 @@ class AgentServiceTest {
           null,
           List.of(),
           false,
-          EndReason.NONE);
+          EndReason.NONE,
+          null);
 
   final ScriptedModelClient model = new ScriptedModelClient();
   final AgentService agent =

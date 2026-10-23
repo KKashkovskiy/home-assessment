@@ -116,6 +116,49 @@ class GuardOutcomes {
   }
 
   /**
+   * The model's reply failed the reply guards and its repair did not fix it; what goes instead
+   * follows the state the turn's decision left.
+   */
+  TurnOutcome replyRejected(RunningTurn turn) {
+    TurnOutcome outcome = replacement(turn);
+    trace.record(
+        turn,
+        TraceLog.Entry.guard(
+            "repair-failed", TraceOutcome.BLOCK, Map.of("status", outcome.status())));
+    return outcome;
+  }
+
+  /**
+   * After the goal nothing, and a person follows up. On the turn the model ended, the fixed close
+   * for that end. While a person is asked to take over, as for distress, nothing: a scripted sales
+   * line is wrong there. Otherwise the FALLBACK template.
+   */
+  private TurnOutcome replacement(RunningTurn turn) {
+    Conversation conversation = turn.conversation();
+    if (conversation.goalMet) {
+      StateRules.handoff(conversation, HandoffReason.ERROR);
+      return TurnOutcome.failed("reply rejected after the goal");
+    }
+    if (conversation.ended) {
+      return closeFor(turn, conversation.endReason);
+    }
+    if (conversation.needsHuman) {
+      return TurnOutcome.silent("reply rejected during a handoff");
+    }
+    return TurnOutcome.fallback(render(turn, Template.FALLBACK));
+  }
+
+  /** The model may end DECLINED or HANDOFF; every other end has a code path with its own close. */
+  private TurnOutcome closeFor(RunningTurn turn, EndReason reason) {
+    return switch (reason) {
+      case DECLINED -> TurnOutcome.fallback(render(turn, Template.DECLINED_CLOSE));
+      case HANDOFF -> TurnOutcome.fallback(render(turn, Template.HANDOFF_ACK));
+      case NONE, BOOKED, UNSUBSCRIBED, ABUSIVE, OFF_TOPIC_LIMIT, MAX_TURNS, SAFETY ->
+          TurnOutcome.silent("closing reply rejected");
+    };
+  }
+
+  /**
    * The model cannot be called: a human looks, nothing is sent, and the conversation stays open.
    */
   TurnOutcome handoffWithoutModel(RunningTurn turn, PreGuards.NoModelReason reason) {
@@ -124,8 +167,13 @@ class GuardOutcomes {
   }
 
   private TurnOutcome fixed(RunningTurn turn, Template template, String decidedBy) {
-    String text =
-        prompts.load(turn.conversation().promptVersion).templates().render(template, turn.lead());
-    return TurnOutcome.fixed(text, decidedBy);
+    return TurnOutcome.fixed(render(turn, template), decidedBy);
+  }
+
+  private String render(RunningTurn turn, Template template) {
+    return prompts
+        .load(turn.conversation().promptVersion)
+        .templates()
+        .render(template, turn.lead());
   }
 }

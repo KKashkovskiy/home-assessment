@@ -48,7 +48,7 @@ class DecisionApplier {
     decision.flags().forEach(conversation::addFlag);
     conversation.extractedJson = merged(conversation.extractedJson, decision.extracted());
     if (decision.summary() != null) {
-      conversation.summary = AgentTurn.cut(decision.summary(), SUMMARY_MAX);
+      conversation.summary = AgentCall.cut(decision.summary(), SUMMARY_MAX);
     }
   }
 

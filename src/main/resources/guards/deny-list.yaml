@@ -1,0 +1,133 @@
+# The prompt's hard rules as regexes, applied by DenyList to every model reply and read by the eval harness.
+# Each rule: a list of Java regexes (case-insensitive, applied per sentence; any one breaks the rule), why it
+# exists, and examples. DenyListTest runs every example, fails a rule with fewer than two of each, and fails a
+# pattern that no match example exercises, so nothing ships untested.
+# A match does not count when a negation sits before it in its clause (after the last comma, semicolon or "but"):
+# "I can't promise you'll save" passes, "I can't promise anything, but you'll save hundreds" fails. "No doubt",
+# "no question" and "no worries" are not negations.
+# only_when: provider_none applies a rule only to leads with no current fund.
+negation: "\\b(?:can'?t|cannot|won'?t|don'?t|doesn'?t|isn'?t|aren'?t|never|not|no(?!\\s+(?:doubt|question|worries))|unable)\\b"
+rules:
+  - id: savings-promise
+    patterns:
+      - "\\byou(?:'ll| will| could| can)\\s+save\\b"
+      - "\\bsave\\s+(?:you\\s+)?\\$"
+      - "\\bsave you (?:money|hundreds|heaps|thousands|a (?:lot|bundle|fair bit))\\b"
+      - "\\bguarantee[ds]?\\b"
+      - "\\b(?:find|get) (?:you )?(?:something |a )?(?:cheaper|better deal)\\b"
+      - "\\b(?:it|you)(?:'ll| will) be cheaper\\b"
+      - "\\blowest (?:price|premium)s?\\b"
+    why: "No savings promises, price claims or guarantees"
+    match:
+      - "You'll save hundreds a year."
+      - "We could save you $300 a year."
+      - "We'll save you hundreds a year."
+      - "An advisor can save you money."
+      - "I guarantee the advisor will find value."
+      - "Most people find something cheaper."
+      - "Let's get you a better deal."
+      - "It'll be cheaper than Bupa."
+      - "Our advisors find the lowest premium for you."
+      - "I can't promise anything, but you'll save hundreds, ok?"
+      - "There's no doubt you'll save hundreds."
+      - "No worries you'll save heaps."
+    no_match:
+      - "I can't promise you'll save anything."
+      - "Are you looking to save money or improve your cover?"
+      - "I can't promise it'll be cheaper - the advisor can check that on the call."
+      - "There's no guarantee of a discount, sorry."
+      - "An advisor can check whether there's better value out there for you."
+      - "It might save you hassle down the track."
+      - "Whether it's cheaper depends on your cover, the advisor can check that."
+  - id: all-funds
+    patterns:
+      - "\\ball (?:the )?(?:major |private )?(?:health )?(?:funds|insurers|providers)\\b"
+      - "\\bevery (?:health )?(?:fund|insurer|provider)\\b"
+      - "\\b(?:whole|entire) market\\b"
+    why: "Comparato compares 25 leading health funds, never all"
+    match:
+      - "We compare all the funds for you."
+      - "Our advisors look at every fund in Australia."
+      - "We search the whole market."
+    no_match:
+      - "Our advisors compare 25 leading health funds."
+      - "Not all funds are the same, so an advisor can check."
+  - id: human-claim
+    patterns:
+      - "\\bi(?:'m| am) (?:a )?(?:real|human|person|real person)\\b"
+      - "\\bnot an? (?:bot|robot|ai|machine)\\b"
+      - "\\bi(?:'m| am) (?:in|at|from) (?:the|our) office\\b"
+      - "\\bi(?:'ll| will) (?:call|ring|phone) you\\b"
+      - "\\bi(?:'ve| have) helped\\b"
+      - "\\bmy (?:own )?(?:family|kids|husband|wife|mum|dad)\\b"
+    why: "Never claim to be human or to have human experiences"
+    match:
+      - "I'm a real person, promise."
+      - "No, I'm not a bot."
+      - "I'm at the office till late today."
+      - "I'll call you on Monday."
+      - "I've helped heaps of people with this."
+      - "My own family had Bupa."
+    no_match:
+      - "Yes, I'm an AI assistant for Comparato. The call itself is with a real, qualified advisor."
+      - "Your advisor will call you then."
+      - "Is this for you or your family?"
+      - "The advisors work from our Melbourne office, would a call this week suit?"
+  - id: product-advice
+    patterns:
+      - "\\byou should (?:switch|move|change|go with|pick|choose)\\b"
+      - "\\bi(?:'d| would) recommend (?:switching|changing|moving|bupa|hbf|medibank|nib|hcf|ahm)\\b"
+      - "\\b(?:best|cheapest|top) (?:fund|policy|cover) (?:for you|is)\\b"
+    why: "No product advice; the advisor does that"
+    match:
+      - "You should switch to HBF."
+      - "I'd recommend Medibank."
+      - "The cheapest fund for you is nib."
+      - "No worries, I'd recommend Medibank, shall I book you in?"
+    no_match:
+      - "An advisor can tell you whether switching makes sense."
+      - "I can't recommend a fund, the advisor can."
+      - "I'd recommend a quick chat with an advisor, would tomorrow suit?"
+  - id: member-results
+    patterns:
+      - "\\b(?:most|many|our) (?:members|customers|clients|people) (?:save|saved|got|cut|pay)\\b"
+      - "\\b\\d{1,3}\\s?% (?:of (?:people|members|customers)|less|off|cheaper)\\b"
+    why: "No member results or statistics"
+    match:
+      - "Most members save around $400."
+      - "80% of people cut their premium."
+      - "Members typically pay 15% less."
+    no_match:
+      - "A lot of people want both, fair enough."
+      - "The call is 100% free and there's no obligation."
+  - id: superlative
+    patterns:
+      - "\\b(?:australia'?s |the )?(?:best|cheapest|number one|#1|leading) (?:comparison|service|site|deal|price)\\b"
+      - "\\b100\\s?% (?:unbiased|independent|impartial)\\b"
+      - "\\bnumber one\\b"
+      - "#1\\b"
+      - "\\bthe best (?:polic(?:y|ies)|funds?|deals?|cover|prices?|rates?|options?|insurers?|value)\\b"
+    why: "No superlatives about Comparato or the funds"
+    match:
+      - "Australia's best comparison service."
+      - "We're 100% unbiased."
+      - "We're number one for health cover."
+      - "Rated #1 in Australia."
+      - "We'll find you the best policy."
+    no_match:
+      - "25 leading health funds."
+      - "Comparato is a free comparison service."
+      - "What's the best time for a call?"
+  - id: provider-none-fund-name
+    only_when: provider_none
+    patterns:
+      - "\\b(?:bupa|hbf|medibank|nib|hcf|ahm|frank health|australian unity|gmhba|cbhs)\\b"
+      - "\\$\\s?\\d"
+    why: "A lead with no provider never hears a fund name or dollar amount"
+    match:
+      - "Bupa members often ask that."
+      - "Around $120 a month."
+      - "Is nib your current fund?"
+    no_match:
+      - "Is this your first time looking at private health cover?"
+      - "What's prompting you to look at cover now: hospital, extras, or both?"

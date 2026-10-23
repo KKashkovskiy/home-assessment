@@ -6,8 +6,9 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.domain.Persistable;
 
 /**
- * One SMS, either direction. {@code source} is null for inbound. Insert-only: a message row is
- * never updated, so {@link #isNew()} is always true and {@code save} inserts, which a record with a
+ * One SMS, either direction. {@code source} is null for inbound; {@code repaired} marks a model
+ * reply that passed the reply guards only on the repair call. Insert-only: a message row is never
+ * updated, so {@link #isNew()} is always true and {@code save} inserts, which a record with a
  * pre-assigned id would otherwise not do.
  */
 public record Message(
@@ -50,6 +51,21 @@ public record Message(
         null,
         source,
         false,
+        at);
+  }
+
+  /** A model reply that passed the reply guards only on the repair call. */
+  public static Message repairedReply(String conversationId, int turnNo, String text, Instant at) {
+    return new Message(
+        UUID.randomUUID().toString(),
+        conversationId,
+        turnNo,
+        Direction.OUT,
+        text,
+        text.length(),
+        null,
+        MessageSource.LLM,
+        true,
         at);
   }
 

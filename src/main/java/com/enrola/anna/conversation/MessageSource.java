@@ -4,6 +4,5 @@ package com.enrola.anna.conversation;
 public enum MessageSource {
   TEMPLATE,
   LLM,
-  FALLBACK,
   FIXED
 }

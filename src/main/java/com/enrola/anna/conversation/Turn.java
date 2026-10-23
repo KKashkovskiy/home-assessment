@@ -45,6 +45,26 @@ public record Turn(
 
     public static final ModelCall NONE =
         new ModelCall(null, null, null, 0, 0, 0, 0, BigDecimal.ZERO, 0, null, null, null);
+
+    /**
+     * This call with a second one on the same turn, the repair: tokens, cost and latency summed, so
+     * spend counts both; the decision, summary and raw JSON stay this call's, the one applied.
+     */
+    public ModelCall plus(ModelCall repair) {
+      return new ModelCall(
+          decisionJson,
+          model,
+          promptVersion,
+          tokensIn + repair.tokensIn,
+          tokensCached + repair.tokensCached,
+          tokensOut + repair.tokensOut,
+          tokensReasoning + repair.tokensReasoning,
+          costUsd.add(repair.costUsd),
+          latencyMs + repair.latencyMs,
+          reasoningSummary,
+          rawRequestJson,
+          rawResponseJson);
+    }
   }
 
   /** The turn that answered {@code inbound}, under its turn number, as {@code outcome} decided. */

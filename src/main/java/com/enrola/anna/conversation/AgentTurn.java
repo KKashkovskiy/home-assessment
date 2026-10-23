@@ -1,80 +1,56 @@
 package com.enrola.anna.conversation;
 
-import com.enrola.anna.agent.AgentService;
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.LeadIntent;
-import com.enrola.anna.agent.ModelRequest;
 import com.enrola.anna.agent.ModelResponse;
-import com.enrola.anna.agent.TurnContext;
-import com.enrola.anna.config.LimitsProperties;
-import com.enrola.anna.config.SmsProperties;
 import com.enrola.anna.guard.PreGuards;
-import com.enrola.anna.prompt.PromptLoader;
-import java.time.ZoneId;
-import java.util.List;
+import com.enrola.anna.guard.ReplyGuards;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
- * The model's part of a turn: asks the agent with the conversation's prompt bundle, the whole
- * transcript and the turn's context, records the call, and acts on the decision. On an open
- * conversation code still owns opt-out, abuse, self-harm and the closes its counters force; after a
- * soft-terminal end the model only classifies. When the call fails after the SDK's retries, or the
- * output is not a decision, nothing is sent and a human is asked to look.
+ * The model's part of a turn: one {@link AgentCall}, then what the decision does. On an open
+ * conversation code still owns opt-out, abuse, self-harm and the closes its counters force, and the
+ * reply goes out through {@link ReplyRepair}; after a soft-terminal end the model only classifies.
+ * When the call fails after the SDK's retries, or the output is not a decision, nothing is sent and
+ * a human is asked to look.
  */
 @Component
 class AgentTurn {
 
-  private final AgentService agent;
-  private final PromptLoader prompts;
-  private final MessageRepository messages;
-  private final ModelCallRecorder modelCalls;
+  private final AgentCall calls;
   private final DecisionApplier decisions;
   private final TurnCounters counters;
   private final GuardOutcomes outcomes;
+  private final ReplyRepair replies;
   private final TraceLog trace;
-  private final LimitsProperties limits;
-  private final SmsProperties sms;
 
   AgentTurn(
-      AgentService agent,
-      PromptLoader prompts,
-      MessageRepository messages,
-      ModelCallRecorder modelCalls,
+      AgentCall calls,
       DecisionApplier decisions,
       TurnCounters counters,
       GuardOutcomes outcomes,
-      TraceLog trace,
-      LimitsProperties limits,
-      SmsProperties sms) {
-    this.agent = agent;
-    this.prompts = prompts;
-    this.messages = messages;
-    this.modelCalls = modelCalls;
+      ReplyRepair replies,
+      TraceLog trace) {
+    this.calls = calls;
     this.decisions = decisions;
     this.counters = counters;
     this.outcomes = outcomes;
+    this.replies = replies;
     this.trace = trace;
-    this.limits = limits;
-    this.sms = sms;
-  }
-
-  /** {@code text} cut to its first {@code maxChars} characters when it is longer. */
-  static String cut(String text, int maxChars) {
-    return text.length() > maxChars ? text.substring(0, maxChars) : text;
   }
 
   /** An open conversation's turn; it stays open when the call fails. */
   TurnOutcome run(RunningTurn turn) {
-    List<Message> transcript = messages.transcript(turn.conversation().id);
-    return switch (ask(turn, transcript)) {
-      case Answer.Decided(Decision decision, Turn.ModelCall call) ->
-          answerOpen(turn, decision, transcript).withModelCall(call);
-      case Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->
-          failed(turn, code).withModelCall(call);
+    AgentCall.Question question = calls.questionFor(turn);
+    return switch (calls.ask(turn, question)) {
+      case AgentCall.Answer.Decided(Decision decision, Turn.ModelCall call) ->
+          answerOpen(turn, decision, question).addModelCall(call);
+      case AgentCall.Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->
+          failed(turn, code).addModelCall(call);
     };
   }
 
@@ -85,46 +61,12 @@ class AgentTurn {
    * hands off like one on an open conversation, since the message may be a request no one read.
    */
   TurnOutcome classifyOnly(RunningTurn turn) {
-    return switch (ask(turn, messages.transcript(turn.conversation().id))) {
-      case Answer.Decided(Decision decision, Turn.ModelCall call) ->
-          classifyEnded(turn, decision).withModelCall(call);
-      case Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->
-          failed(turn, code).withModelCall(call);
+    return switch (calls.ask(turn, calls.questionFor(turn))) {
+      case AgentCall.Answer.Decided(Decision decision, Turn.ModelCall call) ->
+          classifyEnded(turn, decision).addModelCall(call);
+      case AgentCall.Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->
+          failed(turn, code).addModelCall(call);
     };
-  }
-
-  /** What one recorded model call came to, with the turn's model columns either way. */
-  private sealed interface Answer {
-    record Decided(Decision decision, Turn.ModelCall call) implements Answer {}
-
-    record Failed(ModelResponse.Failure code, Turn.ModelCall call) implements Answer {}
-  }
-
-  private Answer ask(RunningTurn turn, List<Message> transcript) {
-    Conversation conversation = turn.conversation();
-    ModelResponse response =
-        agent.decide(prompts.load(conversation.promptVersion), input(transcript), contextFor(turn));
-    return switch (response) {
-      case ModelResponse.Decided decided -> decisionOf(turn, decided);
-      case ModelResponse.Failed failed -> failure(turn, failed);
-    };
-  }
-
-  /** Output that is not a decision is recorded as a SCHEMA failure. */
-  private Answer decisionOf(RunningTurn turn, ModelResponse.Decided decided) {
-    Decision decision;
-    try {
-      decision = decided.decision();
-    } catch (ModelResponse.SchemaMismatch e) {
-      return failure(turn, decided.failed(ModelResponse.Failure.SCHEMA, e.getMessage()));
-    }
-    return new Answer.Decided(
-        decision, modelCalls.record(turn.conversation(), turn.turnNo(), decided));
-  }
-
-  private Answer failure(RunningTurn turn, ModelResponse.Failed failed) {
-    return new Answer.Failed(
-        failed.code(), modelCalls.record(turn.conversation(), turn.turnNo(), failed));
   }
 
   /** A human is asked to look; nothing is sent. */
@@ -134,29 +76,29 @@ class AgentTurn {
   }
 
   /** Classification, code-owned intents, the counters and the close they force, then the reply. */
-  private TurnOutcome answerOpen(RunningTurn turn, Decision decision, List<Message> transcript) {
+  private TurnOutcome answerOpen(RunningTurn turn, Decision decision, AgentCall.Question question) {
     decisions.classify(turn, decision);
     Optional<TurnOutcome> codeOwned = outcomes.codeOwned(turn, decision.leadIntent());
     if (codeOwned.isPresent()) {
       return codeOwned.get();
     }
     Optional<PreGuards.FixedClose> close =
-        counters.count(turn.conversation(), decision, transcript);
+        counters.count(turn.conversation(), decision, question.transcript());
     if (close.isPresent()) {
       return outcomes.fixedClose(turn, close.get().template(), close.get().reason());
     }
     decisions.applyEnding(turn, decision);
-    return reply(turn, decision);
+    return reply(turn, decision, question);
   }
 
   /**
    * The model's reply once its ending is applied. No reply before an end is a bad decision, handled
    * like output that is not one, though a handoff the decision asked for is kept.
    */
-  private TurnOutcome reply(RunningTurn turn, Decision decision) {
+  private TurnOutcome reply(RunningTurn turn, Decision decision, AgentCall.Question question) {
     Conversation conversation = turn.conversation();
     if (decision.sendReply()) {
-      return TurnOutcome.decided(decision.reply());
+      return replies.send(turn, decision.reply(), question);
     }
     if (conversation.ended) {
       return TurnOutcome.silent("model ended without a reply");
@@ -206,59 +148,32 @@ class AgentTurn {
     };
   }
 
-  /** At most one closing reply after an end; a reply over that is suppressed and flagged. */
+  /**
+   * At most one closing reply after an end, and only one the reply guards pass; there is no repair
+   * call. Any other is suppressed and flagged.
+   */
   private TurnOutcome closingReply(RunningTurn turn, Decision decision) {
     Conversation conversation = turn.conversation();
     if (!decision.sendReply()) {
       return TurnOutcome.silent("model chose silence");
     }
-    Map<String, Integer> checked =
+    ReplyGuards.Checked checked = replies.checkClosing(turn, decision.reply());
+    boolean sendable =
+        checked.passed() && StateRules.closingReplyAllowed(conversation, checked.text());
+    Map<String, Integer> counts =
         Map.of(
             "post_terminal_replies",
             conversation.postTerminalReplies,
             "chars",
-            decision.reply().length());
-    if (StateRules.closingReplyAllowed(conversation, decision.reply())) {
-      trace.record(turn, TraceLog.Entry.guard("closing-reply", TraceOutcome.PASS, checked));
-      return TurnOutcome.decided(decision.reply());
+            checked.text().length());
+    trace.record(
+        turn,
+        TraceLog.Entry.guard(
+            "closing-reply", sendable ? TraceOutcome.PASS : TraceOutcome.BLOCK, counts));
+    if (sendable) {
+      return TurnOutcome.decided(checked.text());
     }
     conversation.addFlag(Flag.LOOP_SUPPRESSED);
-    trace.record(turn, TraceLog.Entry.guard("closing-reply", TraceOutcome.BLOCK, checked));
     return TurnOutcome.silent("closing reply suppressed");
-  }
-
-  /**
-   * Anna's messages, the opener included, as assistant items and the lead's as user items, each cut
-   * to {@code anna.sms.max-inbound-chars}: the model sees what the lead saw and said.
-   */
-  private List<ModelRequest.InputItem> input(List<Message> transcript) {
-    return transcript.stream()
-        .<ModelRequest.InputItem>map(
-            message ->
-                switch (message.direction()) {
-                  case OUT -> new ModelRequest.AssistantText(message.text());
-                  case IN -> new ModelRequest.UserText(cut(message.text(), sms.maxInboundChars()));
-                })
-        .toList();
-  }
-
-  /**
-   * The lead's clock is in the zone fixed at start. Nothing books or offers slots: both are empty.
-   */
-  private TurnContext contextFor(RunningTurn turn) {
-    Conversation conversation = turn.conversation();
-    return new TurnContext(
-        turn.lead(),
-        turn.now().atZone(ZoneId.of(conversation.leadZoneId)),
-        new TurnContext.Counters(
-            conversation.agentTurns,
-            conversation.objectionsUsed,
-            conversation.offTopicStreak,
-            conversation.postTerminalReplies),
-        limits,
-        null,
-        List.of(),
-        conversation.ended,
-        conversation.endReason);
   }
 }

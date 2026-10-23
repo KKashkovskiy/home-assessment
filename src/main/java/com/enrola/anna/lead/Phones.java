@@ -8,6 +8,7 @@ import java.util.regex.Pattern;
  */
 public final class Phones {
 
+  private static final String COUNTRY_CODE = "+61";
   private static final Pattern NOT_DIGIT_OR_PLUS = Pattern.compile("[^0-9+]");
 
   /**
@@ -24,6 +25,14 @@ public final class Phones {
     if (!number.matches()) {
       throw new IllegalArgumentException("not an Australian number");
     }
-    return "+61" + number.group(1);
+    return COUNTRY_CODE + number.group(1);
+  }
+
+  /**
+   * The nine digits after +61 of a number in the shape {@link #toE164} returns: what follows the
+   * leading 0 when an Australian writes it.
+   */
+  public static String nationalDigits(String e164) {
+    return e164.substring(COUNTRY_CODE.length());
   }
 }

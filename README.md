@@ -89,6 +89,29 @@ write one when they act, and each turn ends with a `STATE_DIFF` event naming the
 while moderation is down, a self-harm message after a hard end gets silence, because the model is never asked on a
 hard-terminal conversation.
 
+Every reply the model writes passes these checks before it is sent, on the text as the lead's phone will show it:
+curly quotes, dashes and ellipses become plain GSM-7 characters and emoji are dropped, so the stored `char_count` is
+what was measured. Every reply that would be sent writes one `GUARD` trace event per check, pass or not.
+
+| Check | Fails when |
+|---|---|
+| `empty`, `length` | nothing is left, or more than `anna.sms.max-chars` (320) characters |
+| `one-question`, `closing-question` | not exactly one question before the goal; any question in a reply that closes the conversation |
+| `exclamation`, `format`, `canary` | an exclamation mark; code, markdown or bullets; the prompt's secret token, which means the prompt leaked |
+| `url`, `pii` | a link off comparato.au or any email address; the lead's phone number or email |
+| `deny` | a rule in `guards/deny-list.yaml` matches a sentence with no negation before it in its clause: savings promises, "all funds", human claims, product advice, member results, superlatives, and any fund name or dollar amount for a lead with no fund |
+| `time-mention`, `max-slots` | a clock time that is not an offered slot or the booking, so with no calendar any time fails; more than three times |
+
+A reply that fails goes back to the model once, with the same transcript and context plus a note naming the failed
+checks; the rejected reply never joins the transcript. A rewrite that passes is sent, marked `repaired` and flagged
+`LENGTH_REPAIRED`; the turn keeps the first decision's classification and ending and records both calls' cost. When the
+rewrite fails too, or the repair call fails, what follows depends on the state the decision left: on the turn the model
+ended the conversation its fixed close goes instead, `DECLINED_CLOSE` or `HANDOFF_ACK`; while a person is asked to take
+over nothing is sent; after the goal nothing is sent and `needs_human` is set with `ERROR`; otherwise the `FALLBACK`
+template goes. Nothing is ever truncated, because a cut SMS reads worse than a short fixed one. After an end the one
+closing reply gets the same checks and no repair, so one that fails is suppressed. The deny-list is loaded at boot, so a
+broken file stops the app, and the tests run every rule's examples and fail a pattern no example exercises.
+
 Once a turn carries health information, message bodies from that turn on come back as `null` with
 `"redacted": "HEALTH_INFO"`, unless the GET asks with `?includeHealth=true`.
 

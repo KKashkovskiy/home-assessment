@@ -60,6 +60,19 @@ class TurnContextTest {
         .contains("You may now offer a discount.");
   }
 
+  /** The note comes after the lead block, so it reads as code's verdict, not the lead's words. */
+  @Test
+  void repairNoteComesLastOnlyOnARepair() {
+    TurnContext context = context(john("John"), false);
+
+    String repair = context.withRepairNote("length: reply is 341 chars, limit 320").render();
+
+    assertThat(repair).startsWith(context.render()).endsWith("limit 320\n");
+    assertThat(repair.indexOf("length: reply is 341 chars"))
+        .isGreaterThan(repair.indexOf(">>>END LEAD RECORD"));
+    assertThat(context.render()).doesNotContain("length:");
+  }
+
   @Test
   void noPhoneOrEmail() {
     assertThat(context(john("John"), false).render()).doesNotContain("+61").doesNotContain("@");
@@ -81,7 +94,8 @@ class TurnContextTest {
         null,
         List.of(),
         ended,
-        ended ? EndReason.DECLINED : EndReason.NONE);
+        ended ? EndReason.DECLINED : EndReason.NONE,
+        null);
   }
 
   private static Lead john(String givenName) {

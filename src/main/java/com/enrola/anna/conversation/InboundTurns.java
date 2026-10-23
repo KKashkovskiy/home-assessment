@@ -130,10 +130,13 @@ public class InboundTurns {
 
   private void saveReply(
       Conversation conversation, Message inbound, TurnOutcome outcome, Instant now) {
-    if (outcome.reply() != null) {
-      messages.save(
-          Message.outbound(
-              conversation.id, inbound.turnNo(), outcome.reply(), outcome.source(), now));
+    if (outcome.reply() == null) {
+      return;
     }
+    messages.save(
+        outcome.repaired()
+            ? Message.repairedReply(conversation.id, inbound.turnNo(), outcome.reply(), now)
+            : Message.outbound(
+                conversation.id, inbound.turnNo(), outcome.reply(), outcome.source(), now));
   }
 }

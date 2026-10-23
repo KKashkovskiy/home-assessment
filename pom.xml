@@ -40,6 +40,11 @@
       <artifactId>openai-java</artifactId>
       <version>${openai-java.version}</version>
     </dependency>
+    <!-- Reads guards/deny-list.yaml; Boot manages the version and already ships it for application.yml. -->
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+    </dependency>
     <!--
       Classes reached through the SDK carry JSR-305 nullness annotations that nothing on the classpath defines;
       javac warns "unknown enum constant When.NEVER" and the build fails on warnings. Compile time only.

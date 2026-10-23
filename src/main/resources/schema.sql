@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS message (
   text                CLOB        NOT NULL,
   char_count          INT         NOT NULL,
   provider_message_id VARCHAR(80),                   -- the SMS platform's id for inbound; null for outbound
-  source              VARCHAR(10),                   -- TEMPLATE | LLM | FALLBACK | FIXED; null for IN
+  source              VARCHAR(10),                   -- TEMPLATE | LLM | FIXED; null for IN
   repaired            BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at          TIMESTAMP WITH TIME ZONE NOT NULL
 );
