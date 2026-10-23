@@ -11,6 +11,7 @@ import com.enrola.anna.scheduling.AvailabilityTool.PartOfDay;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -24,11 +25,7 @@ class AvailabilityToolTest {
   static final String MONDAY = "2026-07-27";
 
   final AppClock clock = SchedulingFixtures.clockAt(SUNDAY);
-  final AvailabilityTool tool =
-      new AvailabilityTool(
-          clock,
-          SchedulingFixtures.defaults(),
-          new FakeCalendar(clock, SchedulingFixtures.defaults()));
+  final AvailabilityTool tool = new AvailabilityTool(clock, new FakeCalendar(clock));
 
   /** Monday's grid runs 9:00 to 19:30 in Melbourne: 22 free starts, 16 of them over the cap. */
   @Test
@@ -192,10 +189,14 @@ class AvailabilityToolTest {
   }
 
   private ToolResult run(String from, String to) {
-    return tool.run(new AvailabilityTool.Args(from, to, PartOfDay.ANY), MELBOURNE);
+    return tool.run(new AvailabilityTool.Args(from, to, PartOfDay.ANY), contextIn(MELBOURNE));
   }
 
   private ToolResult.Slots slots(String from, String to, PartOfDay part, ZoneId lead) {
-    return (ToolResult.Slots) tool.run(new AvailabilityTool.Args(from, to, part), lead);
+    return (ToolResult.Slots) tool.run(new AvailabilityTool.Args(from, to, part), contextIn(lead));
+  }
+
+  private static ToolContext contextIn(ZoneId leadZone) {
+    return SchedulingFixtures.context("c-1", SchedulingFixtures.LAUREN, leadZone, List.of());
   }
 }

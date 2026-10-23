@@ -1,6 +1,6 @@
 package com.enrola.anna.agent;
 
-import com.enrola.anna.config.AgentProperties;
+import com.enrola.anna.config.SettingsDefaults;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,8 +10,8 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * One HTTP client for every OpenAI call, so the model and the moderation endpoint share its pool,
- * per-attempt timeout and retries. Exists only when {@code OPENAI_API_KEY} is set; the key goes
- * into the request header and nowhere else.
+ * per-attempt timeout and retries, which are read once here and need a restart. Exists only when
+ * {@code OPENAI_API_KEY} is set; the key goes into the request header and nowhere else.
  */
 @Configuration
 @ConditionalOnExpression(OpenAiClientConfig.WHEN_KEY_SET)
@@ -21,11 +21,11 @@ public class OpenAiClientConfig {
   public static final String WHEN_KEY_SET = "!'${OPENAI_API_KEY:}'.isBlank()";
 
   @Bean
-  OpenAIClient openAiClient(@Value("${OPENAI_API_KEY}") String apiKey, AgentProperties agent) {
+  OpenAIClient openAiClient(@Value("${OPENAI_API_KEY}") String apiKey, SettingsDefaults defaults) {
     return OpenAIOkHttpClient.builder()
         .apiKey(apiKey)
-        .timeout(agent.timeout())
-        .maxRetries(agent.maxRetries())
+        .timeout(defaults.agent().timeout())
+        .maxRetries(defaults.agent().maxRetries())
         .build();
   }
 }

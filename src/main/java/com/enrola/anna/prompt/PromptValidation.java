@@ -1,6 +1,6 @@
 package com.enrola.anna.prompt;
 
-import com.enrola.anna.config.PersonaProperties;
+import com.enrola.anna.config.Settings;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -54,13 +54,13 @@ public final class PromptValidation {
   }
 
   /** The persona counts: the disclosure is part of every rendered opener. */
-  public static Result validate(PromptVersion version, PersonaProperties persona) {
+  public static Result validate(PromptVersion version, Settings.Persona persona) {
     return validate(version, version.parse(), persona);
   }
 
   /** The same rules on {@code version} with its JSON columns already parsed. */
   static Result validate(
-      PromptVersion version, PromptVersion.Columns columns, PersonaProperties persona) {
+      PromptVersion version, PromptVersion.Columns columns, Settings.Persona persona) {
     return Result.ofErrors(PromptBundle.placeholderProblems(version.promptMd()))
         .plus(knowledge(version.knowledgeMd()))
         .plus(
@@ -126,7 +126,7 @@ public final class PromptValidation {
     return Result.ofErrors(errors);
   }
 
-  private static Result templates(Map<String, String> texts, PersonaProperties persona) {
+  private static Result templates(Map<String, String> texts, Settings.Persona persona) {
     List<String> missing =
         Stream.of(Template.values())
             .filter(template -> texts.get(template.name()) == null)

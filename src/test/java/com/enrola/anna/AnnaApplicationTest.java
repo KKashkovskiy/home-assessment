@@ -27,8 +27,9 @@ class AnnaApplicationTest {
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
-  static void databaseInTempDir(DynamicPropertyRegistry registry) {
+  static void dataInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + tempDir.resolve("anna"));
+    registry.add("anna.data-dir", tempDir::toString);
   }
 
   @Autowired JdbcTemplate jdbcTemplate;

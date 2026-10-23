@@ -3,7 +3,9 @@ package com.enrola.anna.web;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.Stage;
-import com.enrola.anna.config.SchedulingProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsStore;
+import com.enrola.anna.config.SettingsValidation;
 import com.enrola.anna.conversation.ConversationStatus;
 import com.enrola.anna.conversation.Source;
 import com.enrola.anna.conversation.TraceOutcome;
@@ -13,7 +15,6 @@ import com.enrola.anna.scheduling.ToolResult;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -33,10 +34,10 @@ public class ViewFormats {
   private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
   private static final List<String> PROVIDERS = List.of("Bupa", "HBF", "Medibank", "nib", "HCF");
 
-  private final ZoneId advisorZone;
+  private final SettingsStore settings;
 
-  public ViewFormats(SchedulingProperties scheduling) {
-    this.advisorZone = scheduling.advisorZone();
+  public ViewFormats(SettingsStore settings) {
+    this.settings = settings;
   }
 
   public List<ConversationStatus> statuses() {
@@ -71,6 +72,71 @@ public class ViewFormats {
   /** The Configuration page's File select. */
   public List<PromptFile> promptFiles() {
     return List.of(PromptFile.values());
+  }
+
+  public List<Settings.ReasoningEffort> reasoningEfforts() {
+    return List.of(Settings.ReasoningEffort.values());
+  }
+
+  public List<Settings.ReasoningSummary> reasoningSummaries() {
+    return List.of(Settings.ReasoningSummary.values());
+  }
+
+  public List<Settings.ClockMode> clockModes() {
+    return List.of(Settings.ClockMode.values());
+  }
+
+  public List<Settings.CalendarPreset> calendarPresets() {
+    return List.of(Settings.CalendarPreset.values());
+  }
+
+  /** The zones the advisor zone field suggests: those of the states and territories. */
+  public List<String> zones() {
+    return LeadZones.zones();
+  }
+
+  /** "fully booked": a preset as its selects name it. */
+  public String presetName(Settings.CalendarPreset preset) {
+    return preset.value().replace('_', ' ');
+  }
+
+  /** What a preset does to the fake calendar. */
+  public String presetDescription(Settings.CalendarPreset preset) {
+    return switch (preset) {
+      case NORMAL -> "slots from the advisor hours";
+      case FULLY_BOOKED -> "no slots at all";
+      case SLOT_TAKEN -> "the next booking is refused as taken";
+    };
+  }
+
+  /** "0.50", "0.125": a USD amount for a form field, at least to the cent, never rounded. */
+  public String dollars(BigDecimal usd) {
+    return usd == null ? "" : usd.setScale(Math.max(usd.scale(), 2)).toPlainString();
+  }
+
+  /** The longest reply any setting allows. */
+  public int smsLimit() {
+    return SettingsValidation.SMS_LIMIT;
+  }
+
+  public int maxToolRounds() {
+    return SettingsValidation.MAX_TOOL_ROUNDS;
+  }
+
+  public int minOutputTokens() {
+    return SettingsValidation.MIN_OUTPUT_TOKENS;
+  }
+
+  public int calendarRangeDays() {
+    return SettingsValidation.CALENDAR_RANGE_DAYS;
+  }
+
+  public int quickReplyLines() {
+    return QuickReplies.MAX_LINES;
+  }
+
+  public int quickReplyChars() {
+    return QuickReplies.MAX_LINE_CHARS;
   }
 
   public String statusClass(ConversationStatus status) {
@@ -333,7 +399,7 @@ public class ViewFormats {
 
   /** "26 Jul 10:00" in the advisors' zone, for the list's activity column. */
   public String when(Instant at) {
-    return WHEN.format(at.atZone(advisorZone));
+    return WHEN.format(at.atZone(settings.current().scheduling().advisorZone()));
   }
 
   /** "v1 (26 Jul 10:00)": a version as the diff pickers offer it. */

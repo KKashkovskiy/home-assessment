@@ -24,7 +24,6 @@ class AgentTurn {
   private final TurnQuestions questions;
   private final AgentCall calls;
   private final DecisionApplier decisions;
-  private final TurnCounters counters;
   private final GuardOutcomes outcomes;
   private final ReplyRepair replies;
   private final TraceLog trace;
@@ -33,14 +32,12 @@ class AgentTurn {
       TurnQuestions questions,
       AgentCall calls,
       DecisionApplier decisions,
-      TurnCounters counters,
       GuardOutcomes outcomes,
       ReplyRepair replies,
       TraceLog trace) {
     this.questions = questions;
     this.calls = calls;
     this.decisions = decisions;
-    this.counters = counters;
     this.outcomes = outcomes;
     this.replies = replies;
     this.trace = trace;
@@ -96,7 +93,8 @@ class AgentTurn {
       return codeOwned.get();
     }
     Optional<PreGuards.FixedClose> close =
-        counters.count(turn.conversation(), decision, question.transcript());
+        new TurnCounters(turn.settings().limits())
+            .count(turn.conversation(), decision, question.transcript());
     if (close.isPresent()) {
       return outcomes.fixedClose(turn, close.get().template(), close.get().reason());
     }

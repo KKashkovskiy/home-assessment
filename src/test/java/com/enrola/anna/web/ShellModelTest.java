@@ -2,7 +2,9 @@ package com.enrola.anna.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.enrola.anna.config.Settings;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -23,7 +25,18 @@ class ShellModelTest {
   })
   void meterShowsSpendAgainstTheCap(BigDecimal spend, BigDecimal cap, int percent, String label) {
     ShellModel shell =
-        new ShellModel("REAL", null, spend, cap, "gpt-5.1", "low", "v1", AgentStatus.READY, true);
+        new ShellModel(
+            Settings.ClockMode.REAL,
+            LocalDateTime.of(2026, 7, 26, 10, 0),
+            "AEST",
+            Settings.CalendarPreset.NORMAL,
+            spend,
+            cap,
+            "gpt-5.1",
+            "low",
+            "v1",
+            AgentStatus.READY,
+            true);
 
     assertThat(shell.spendPercent()).isEqualTo(percent);
     assertThat(shell.meterLabel()).isEqualTo(label);

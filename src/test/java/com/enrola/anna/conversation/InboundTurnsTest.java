@@ -19,6 +19,10 @@ import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.ObjectionType;
 import com.enrola.anna.agent.ScriptedModelClient;
 import com.enrola.anna.agent.Stage;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsDefaults;
+import com.enrola.anna.config.SettingsFixture;
+import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.guard.ModerationVerdict;
 import com.enrola.anna.guard.ReplyCheck;
 import com.enrola.anna.guard.ScriptedModerationClient;
@@ -30,12 +34,14 @@ import com.enrola.anna.scheduling.BookingRepository;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -80,8 +86,9 @@ class InboundTurnsTest {
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
-  static void databaseInTempDir(DynamicPropertyRegistry registry) {
+  static void dataInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + tempDir.resolve("anna"));
+    registry.add("anna.data-dir", tempDir::toString);
   }
 
   @TestConfiguration
@@ -108,6 +115,8 @@ class InboundTurnsTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired BookingRepository bookings;
   @Autowired AppClock clock;
+  @Autowired SettingsStore settings;
+  @Autowired SettingsDefaults defaults;
   String id;
 
   @BeforeEach
@@ -1622,6 +1631,85 @@ class InboundTurnsTest {
     assertThat(conversations.viewWithHealth(id).transcript().get(4).text()).isEqualTo(flaggedReply);
   }
 
+  /**
+   * A save applies from the next turn of a conversation that started before it: the limits, the
+   * caps, the price table and the clock each turn reads.
+   */
+  @Nested
+  class SettingsApply {
+
+    @AfterEach
+    void shippedSettings() {
+      settings.save(defaults.settings());
+    }
+
+    @Test
+    void maxTurnsAppliesNextTurn() {
+      settings.save(SettingsFixture.with(settings.current(), "limits", "maxTurns", 2));
+      model.decide(Decisions.engaged().build()).decide(Decisions.engaged().build());
+
+      turns.handle(id, "save money", "p1");
+      turns.handle(id, "monday lunchtime?", "p2");
+      TurnResponse third = turns.handle(id, "and?", "p3");
+
+      assertThat(third.reply()).isEqualTo(rendered(Template.MAX_TURNS_CLOSE));
+      assertThat(third.endReason()).isEqualTo(EndReason.MAX_TURNS);
+      assertThat(model.calls()).hasSize(2);
+    }
+
+    /** 1,000 input tokens at $10 per million and 100 output at $10: $0.011. */
+    @Test
+    void priceTableAppliesNextTurn() {
+      Settings.Price shipped = settings.current().priceTable().get("gpt-5.1");
+      settings.save(
+          SettingsFixture.with(
+              settings.current(),
+              "priceTable",
+              Map.of(
+                  "gpt-5.1",
+                  new Settings.Price(
+                      new BigDecimal("10.00"), shipped.cached(), shipped.output()))));
+      model.decide(Decisions.engaged().build());
+
+      turns.handle(id, "save money", "p1");
+
+      assertThat(
+              jdbc.queryForObject(
+                  "select cost_usd from turn where conversation_id = ?", BigDecimal.class, id))
+          .isEqualByComparingTo("0.011");
+    }
+
+    /** One call costs $0.00225, over a $0.002 cap, so the second turn makes none. */
+    @Test
+    void conversationCapAppliesNextTurn() {
+      settings.save(
+          SettingsFixture.with(settings.current(), "budgets", "convCap", new BigDecimal("0.002")));
+      model.decide(Decisions.engaged().build());
+
+      turns.handle(id, "save money", "p1");
+      TurnResponse second = turns.handle(id, "yes", "p2");
+
+      assertThat(second.handoffReason()).isEqualTo(HandoffReason.ERROR);
+      assertThat(model.calls()).hasSize(1);
+      assertThat(guardPayload("pre-guards")).contains("SPEND_CAP_CONVERSATION");
+    }
+
+    @Test
+    void fixedClockChangesTheContext() {
+      settings.save(
+          settings
+              .current()
+              .withClock(
+                  new Settings.Clock(
+                      Settings.ClockMode.FIXED, LocalDateTime.of(2026, 7, 27, 14, 0))));
+      model.decide(Decisions.engaged().build());
+
+      turns.handle(id, "save money", "p1");
+
+      assertThat(contextOf(model.calls().getFirst())).contains("Now: Monday 27 July 2026, 2:00");
+    }
+  }
+
   /** The text of a transcript or context item. */
   private static String text(InputItem item) {
     return switch (item) {
@@ -1644,7 +1732,7 @@ class InboundTurnsTest {
 
   private String rendered(Template template) {
     return prompts
-        .bundle("v1")
+        .bundle("v1", SettingsFixture.DEFAULTS.persona())
         .templates()
         .render(template, leads.findById("lauren").orElseThrow());
   }

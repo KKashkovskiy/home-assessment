@@ -6,8 +6,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.enrola.anna.config.Settings;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.web.servlet.ResultActions;
 
 /** The status strip and banner with no key, on a fixed clock, and a PII mask that fails closed. */
 class ShellModelAdviceTest extends ConsoleFixture {
@@ -26,9 +28,15 @@ class ShellModelAdviceTest extends ConsoleFixture {
   }
 
   @Test
-  void fixedClockShowsTheFixedBadgeInTheAdvisorsZone() throws Exception {
-    assertThat(body(mvc.perform(get("/conversations"))))
-        .contains("Clock <b>FIXED</b>", "2026-07-26 10:00 AEST");
+  void fixedClockShowsItsTimeInTheAdvisorsZone() throws Exception {
+    ResultActions page = mvc.perform(get("/conversations"));
+
+    assertThat(shell(page).clockMode()).isEqualTo(Settings.ClockMode.FIXED);
+    assertThat(body(page))
+        .contains(
+            "<option value=\"FIXED\" selected=\"selected\">FIXED</option>",
+            "value=\"2026-07-26T10:00\"",
+            ">AEST<");
   }
 
   @Test
@@ -64,5 +72,9 @@ class ShellModelAdviceTest extends ConsoleFixture {
   void toggleWithoutAValueIs400InTheShell() throws Exception {
     assertThat(body(mvc.perform(post("/ui/pii-mask")).andExpect(status().isBadRequest())))
         .contains("data-notice=\"BAD_REQUEST\"", "class=\"tabs\"");
+  }
+
+  private static ShellModel shell(ResultActions result) {
+    return (ShellModel) result.andReturn().getModelAndView().getModel().get("shell");
   }
 }

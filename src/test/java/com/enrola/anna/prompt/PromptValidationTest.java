@@ -8,7 +8,8 @@ import static com.enrola.anna.prompt.PromptValidationTest.Artifact.TOOLS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import com.enrola.anna.config.PersonaProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsFixture;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +24,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 /** Every rule, each on the repo's v1 with one artifact broken. */
 class PromptValidationTest {
 
-  static final PersonaProperties PERSONA = new PersonaProperties("Anna", "Comparato", true);
+  static final Settings.Persona PERSONA = SettingsFixture.DEFAULTS.persona();
   static final PromptVersion V1 =
       new PromptLoader(new DefaultResourceLoader()).load("v1", Instant.EPOCH);
 

@@ -49,7 +49,7 @@ public class SchedulingTools {
       return switch (name) {
         case "get_availability" ->
             args(argumentsJson, AvailabilityTool.Args.class)
-                .map(args -> availability.run(args, context.leadZone()))
+                .map(args -> availability.run(args, context))
                 .orElse(BAD_ARGS);
         case "book_call" ->
             args(argumentsJson, BookCallTool.Args.class)

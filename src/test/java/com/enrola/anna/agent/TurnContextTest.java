@@ -2,7 +2,7 @@ package com.enrola.anna.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.enrola.anna.config.LimitsProperties;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.scheduling.Slot;
 import java.time.Instant;
@@ -126,7 +126,7 @@ class TurnContextTest {
         PERTH_NOW,
         false,
         new TurnContext.Counters(1, 0, 0, 0),
-        new LimitsProperties(15, 3, 1),
+        SettingsFixture.DEFAULTS.limits(),
         null,
         List.of(),
         ended,

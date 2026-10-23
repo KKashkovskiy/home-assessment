@@ -3,8 +3,7 @@ package com.enrola.anna.conversation;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.InputItem;
 import com.enrola.anna.agent.TurnContext;
-import com.enrola.anna.config.LimitsProperties;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.scheduling.Booking;
 import com.enrola.anna.scheduling.BookingRepository;
 import java.time.ZoneId;
@@ -21,18 +20,10 @@ class TurnQuestions {
 
   private final MessageRepository messages;
   private final BookingRepository bookings;
-  private final LimitsProperties limits;
-  private final SmsProperties sms;
 
-  TurnQuestions(
-      MessageRepository messages,
-      BookingRepository bookings,
-      LimitsProperties limits,
-      SmsProperties sms) {
+  TurnQuestions(MessageRepository messages, BookingRepository bookings) {
     this.messages = messages;
     this.bookings = bookings;
-    this.limits = limits;
-    this.sms = sms;
   }
 
   /** The transcript and the turn's context, as of the turn's start. */
@@ -62,15 +53,15 @@ class TurnQuestions {
 
   /**
    * Anna's messages, the opener included, as assistant items and the lead's as user items, each cut
-   * to {@code anna.sms.max-inbound-chars}: the model sees what the lead saw and said.
+   * to the inbound limit: the model sees what the lead saw and said.
    */
-  List<InputItem> transcriptOf(Question question) {
+  List<InputItem> transcriptOf(Question question, Settings.Limits limits) {
     return question.transcript().stream()
         .<InputItem>map(
             message ->
                 switch (message.direction()) {
                   case OUT -> new InputItem.AssistantText(message.text());
-                  case IN -> new InputItem.UserText(cut(message.text(), sms.maxInboundChars()));
+                  case IN -> new InputItem.UserText(cut(message.text(), limits.maxInboundChars()));
                 })
         .toList();
   }
@@ -92,7 +83,7 @@ class TurnQuestions {
             conversation.objectionsUsed,
             conversation.offTopicStreak,
             conversation.postTerminalReplies),
-        limits,
+        turn.settings().limits(),
         bookingLabel(conversation),
         conversation.lastOfferedSlots(),
         conversation.ended,

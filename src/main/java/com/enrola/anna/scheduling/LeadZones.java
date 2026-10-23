@@ -54,6 +54,11 @@ public final class LeadZones {
     return ZONES.keySet().stream().sorted().toList();
   }
 
+  /** The zones of the states and territories, each once, in alphabetical order. */
+  public static List<String> zones() {
+    return ZONES.values().stream().map(ZoneId::getId).distinct().sorted().toList();
+  }
+
   /** True for one of the eight states and territories, ignoring case and whitespace. */
   public static boolean known(String state) {
     return state != null && ZONES.containsKey(state.strip().toUpperCase(Locale.ROOT));

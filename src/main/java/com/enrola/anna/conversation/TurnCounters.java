@@ -4,25 +4,24 @@ import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.agent.ObjectionType;
-import com.enrola.anna.config.LimitsProperties;
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.guard.PreGuards;
 import com.enrola.anna.guard.StopKeywords;
 import com.enrola.anna.prompt.Template;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.stereotype.Component;
 
 /**
  * The counts code keeps from an open conversation's decisions, objections and the off-topic streak,
  * and the close they force once a limit is reached. Only code moves them, so the model cannot talk
- * its way past a limit; the prompt reads them in the turn context.
+ * its way past a limit; the prompt reads them in the turn context. Built for one turn from the
+ * limits that turn read.
  */
-@Component
 class TurnCounters {
 
-  private final LimitsProperties limits;
+  private final Settings.Limits limits;
 
-  TurnCounters(LimitsProperties limits) {
+  TurnCounters(Settings.Limits limits) {
     this.limits = limits;
   }
 

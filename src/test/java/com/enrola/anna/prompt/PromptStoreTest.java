@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsFixture;
+import com.enrola.anna.config.SettingsInvalid;
+import com.enrola.anna.config.SettingsStore;
+import com.enrola.anna.config.SettingsValidation;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.List;
@@ -25,11 +30,13 @@ class PromptStoreTest {
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
-  static void databaseInTempDir(DynamicPropertyRegistry registry) {
+  static void dataInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + tempDir.resolve("anna"));
+    registry.add("anna.data-dir", tempDir::toString);
   }
 
   @Autowired PromptStore store;
+  @Autowired SettingsStore settings;
   @Autowired PromptVersionRepository versions;
   @Autowired JdbcTemplate jdbc;
 
@@ -128,6 +135,27 @@ class PromptStoreTest {
     assertThatThrownBy(() -> store.activate("v2"))
         .isInstanceOf(PromptVersionCorrupt.class)
         .hasMessageEndingWith(": tools are not valid JSON");
+  }
+
+  /**
+   * A company name that pushes the active version's opener over its cap is refused at save, not on
+   * the next start; nothing is written.
+   */
+  @Test
+  void settingsTheActiveVersionCannotRenderAreRefused() {
+    Settings longerCompany =
+        SettingsFixture.with(
+            settings.current(), "persona", "company", "Comparato Health Insurance");
+
+    assertThatThrownBy(() -> settings.save(longerCompany))
+        .isInstanceOfSatisfying(
+            SettingsInvalid.class,
+            refused ->
+                assertThat(refused.problems())
+                    .extracting(SettingsValidation.Problem::field)
+                    .containsExactly("persona", "company"));
+    assertThat(settings.current().persona().company()).isEqualTo("Comparato");
+    assertThat(tempDir.resolve("settings.json")).doesNotExist();
   }
 
   @Test

@@ -5,7 +5,8 @@ import static com.enrola.anna.scheduling.SchedulingFixtures.SUNDAY;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.AppClock;
-import com.enrola.anna.config.SchedulingProperties.CalendarPreset;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.Settings.CalendarPreset;
 import com.enrola.anna.lead.Lead;
 import java.lang.reflect.Proxy;
 import java.time.Instant;
@@ -26,7 +27,7 @@ class SchedulingToolsTest {
 
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final ToolContext CONTEXT =
-      new ToolContext("c-1", SchedulingFixtures.LAUREN, MELBOURNE, List.of());
+      SchedulingFixtures.context("c-1", SchedulingFixtures.LAUREN, MELBOURNE, List.of());
 
   static final Instant NOON_MONDAY = Instant.parse("2026-07-27T02:00:00Z");
   static final Slot NOON =
@@ -88,7 +89,7 @@ class SchedulingToolsTest {
 
   static Stream<Arguments> everyCode() {
     ToolContext offeredNoon =
-        new ToolContext("c-1", SchedulingFixtures.LAUREN, MELBOURNE, List.of(NOON));
+        SchedulingFixtures.context("c-1", SchedulingFixtures.LAUREN, MELBOURNE, List.of(NOON));
     Lead noPhone = new Lead("pat", "Pat", " ", null, "VIC", null, null, null, null, SUNDAY);
     Instant mondayAfterNoon = NOON_MONDAY.plusSeconds(1800);
     return Stream.of(
@@ -122,7 +123,7 @@ class SchedulingToolsTest {
                 toolsAt(SUNDAY),
                 "book_call",
                 BOOK_NOON,
-                new ToolContext("c-1", noPhone, MELBOURNE, List.of(NOON))),
+                SchedulingFixtures.context("c-1", noPhone, MELBOURNE, List.of(NOON))),
             REJECTED),
         Arguments.of(
             "SLOT_TAKEN",
@@ -242,13 +243,12 @@ class SchedulingToolsTest {
   }
 
   private static SchedulingTools tools(AppClock clock, CalendarPreset preset) {
-    return tools(clock, new FakeCalendar(clock, SchedulingFixtures.props(preset, List.of())));
+    return tools(clock, SchedulingFixtures.calendar(clock, preset));
   }
 
   private static SchedulingTools tools(AppClock clock, FakeCalendar calendar) {
     return new SchedulingTools(
-        new AvailabilityTool(clock, SchedulingFixtures.defaults(), calendar),
-        new BookCallTool(NO_BOOKINGS, calendar, clock));
+        new AvailabilityTool(clock, calendar), new BookCallTool(NO_BOOKINGS, calendar, clock));
   }
 
   /** The tools over a calendar that cannot answer. */
@@ -256,9 +256,10 @@ class SchedulingToolsTest {
     AppClock clock = SchedulingFixtures.clockAt(SUNDAY);
     return tools(
         clock,
-        new FakeCalendar(clock, SchedulingFixtures.defaults()) {
+        new FakeCalendar(clock) {
           @Override
-          public List<Instant> freeStarts(Instant from, Instant to) {
+          public List<Instant> freeStarts(
+              Instant from, Instant to, Settings.Scheduling scheduling) {
             throw new IllegalStateException("calendar down");
           }
         });

@@ -1,6 +1,6 @@
 package com.enrola.anna.prompt;
 
-import com.enrola.anna.config.PersonaProperties;
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.lead.Lead;
 import java.time.Instant;
 import java.util.EnumMap;
@@ -38,10 +38,10 @@ public class Templates {
           Instant.EPOCH);
 
   private final Map<Template, String> texts = new EnumMap<>(Template.class);
-  private final PersonaProperties persona;
+  private final Settings.Persona persona;
 
   /** {@code texts} maps every {@link Template} name to its text; surrounding space is dropped. */
-  public Templates(Map<String, String> texts, PersonaProperties persona) {
+  public Templates(Map<String, String> texts, Settings.Persona persona) {
     this.persona = persona;
     for (Template template : Template.values()) {
       this.texts.put(
@@ -90,7 +90,7 @@ public class Templates {
   private Map<String, String> values(Lead lead) {
     return Map.of(
         "name_part", namePart(lead),
-        "persona", persona.name(),
+        "persona", persona.persona(),
         "disclosure", disclosure(),
         "provider", Objects.requireNonNullElse(lead.currentProvider(), "").strip());
   }

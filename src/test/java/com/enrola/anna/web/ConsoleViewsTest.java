@@ -2,7 +2,8 @@ package com.enrola.anna.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.enrola.anna.config.LimitsProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.conversation.Conversation;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -10,7 +11,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 /** A counter is at its limit when the next event ends the conversation or is refused. */
 class ConsoleViewsTest {
 
-  static final LimitsProperties LIMITS = new LimitsProperties(15, 3, 1);
+  static final Settings.Limits LIMITS = SettingsFixture.DEFAULTS.limits();
 
   @ParameterizedTest(name = "turns {0}, objections {1}, off-topic {2}, closing {3}: {4}")
   @CsvSource({

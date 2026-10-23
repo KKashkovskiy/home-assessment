@@ -1,7 +1,7 @@
 package com.enrola.anna.guard;
 
 import com.enrola.anna.agent.OpenAiClientConfig;
-import com.enrola.anna.config.ModerationProperties;
+import com.enrola.anna.config.SettingsDefaults;
 import com.openai.client.OpenAIClient;
 import com.openai.models.moderations.Moderation;
 import com.openai.models.moderations.ModerationCreateParams;
@@ -14,10 +14,10 @@ import org.springframework.stereotype.Component;
 
 /**
  * OpenAI's moderations endpoint over the shared client, with its own timeout and retries from
- * {@code anna.moderation}; exists only when {@code OPENAI_API_KEY} is set. A call that fails in any
- * way, an answer with no result included, is {@link ModerationVerdict#UNAVAILABLE}: moderation
- * being down must never lose or block a turn, and the model's own ABUSIVE and SELF_HARM intents
- * still protect the conversation.
+ * {@code anna.moderation}, read once here; exists only when {@code OPENAI_API_KEY} is set. A call
+ * that fails in any way, an answer with no result included, is {@link
+ * ModerationVerdict#UNAVAILABLE}: moderation being down must never lose or block a turn, and the
+ * model's own ABUSIVE and SELF_HARM intents still protect the conversation.
  */
 @Component
 @ConditionalOnExpression(OpenAiClientConfig.WHEN_KEY_SET)
@@ -27,7 +27,8 @@ public final class OpenAiModerationClient implements ModerationClient {
 
   private final OpenAIClient client;
 
-  public OpenAiModerationClient(OpenAIClient client, ModerationProperties moderation) {
+  public OpenAiModerationClient(OpenAIClient client, SettingsDefaults defaults) {
+    SettingsDefaults.Moderation moderation = defaults.moderation();
     this.client =
         client.withOptions(
             options -> options.timeout(moderation.timeout()).maxRetries(moderation.maxRetries()));

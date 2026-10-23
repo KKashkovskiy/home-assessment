@@ -55,7 +55,7 @@
       </form>
     </section>
 
-    <section th:replace="~{fragments/settings :: form}"></section>
+    <form th:replace="~{fragments/settings :: form(${settings})}"></form>
   </main>
 </body>
 </html>

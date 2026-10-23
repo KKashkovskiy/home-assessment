@@ -1,5 +1,6 @@
 package com.enrola.anna.agent;
 
+import com.enrola.anna.config.Settings;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -27,18 +28,21 @@ public record ModelRequest(
     tools = List.copyOf(tools);
   }
 
-  /** The boot-time check: a few tokens of {@code {"ok": true}}, no tools, no reasoning. */
-  public static ModelRequest ping(String model) {
+  /**
+   * The model check: {@code {"ok": true}} and no tools, asked the way a turn asks, with the same
+   * model, reasoning and output cap, so a model a turn would fail on fails this too.
+   */
+  public static ModelRequest ping(Settings.Agent agent, int maxOutputTokens) {
     return new ModelRequest(
-        model,
+        agent.model(),
         "Reply with ok set to true.",
         List.of(new InputItem.UserText("ping")),
         "ping",
         okSchema(),
         List.of(),
-        null,
-        null,
-        64);
+        agent.reasoning().value(),
+        agent.reasoningSummary().requested(),
+        maxOutputTokens);
   }
 
   /** This request with {@code next} as its input, for the next round of the same call. */

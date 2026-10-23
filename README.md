@@ -22,8 +22,10 @@ first boot and ignored by git.
 
 No key is needed to build, test or run. Keys come from the environment only: export them in the shell, or copy
 `.env.example` to `.env`, fill it in and load it with `set -a; . ./.env; set +a`. Spring does not read `.env` on its
-own, and git ignores it. With `OPENAI_API_KEY` set, the app makes one small request at boot and logs
-`model check ok: gpt-5.1`; a failure is a warning unless `anna.agent.strict-model-check` is true. Without it the log
+own, and git ignores it. With `OPENAI_API_KEY` set, the app makes one small request at boot, shaped like a turn's
+(the same model, reasoning and output cap), and logs `model check ok: gpt-5.1`; a failure is a warning unless
+`anna.agent.strict-model-check` is true. A settings save that changes the model, its reasoning or the output cap
+checks again in the background, and the status strip says how it went. Without it the log
 says `model check skipped`. The key travels as a request header; the key itself is in no stored row or log line.
 
 Open `http://localhost:8080/` for the console, described at the end of this section. The platform API sits beside
@@ -140,13 +142,13 @@ are the sum of its rounds' and its cost the sum of their costs. Every call gets 
 model got wrong is rejected with a compact code (`BAD_ARGS`, `BAD_DATE`, `BAD_RANGE`, `UNKNOWN_TOOL`, `UNKNOWN_SLOT`,
 `NO_PHONE`) and counts toward nothing, since the round cap bounds it; a calendar that refuses or a tool that breaks
 (`SLOT_TAKEN`, `NOT_BOOKED`, `TOOL_FAILED`) counts, and a second such failure in a row, across turns, with no answer
-between, sets `needs_human` with `ERROR`. `anna.clock.mode: FIXED` with `anna.clock.fixed-at` replays a conversation on
-a known day, and `anna.scheduling.calendar-preset: fully_booked` empties the calendar.
+between, sets `needs_human` with `ERROR`. A fixed clock replays a conversation on a known day, and the
+`fully_booked` calendar preset empties the calendar; both are runtime settings, below.
 
 `book_call` takes one argument, a `slot_id`, and books only an id from the latest availability result on the
 conversation; any other is `UNKNOWN_SLOT` and the model asks for availability again. The calendar checks the slot again
 at booking, because an offer goes stale between turns, and answers `NOT_BOOKED` for one no longer free;
-`calendar-preset: slot_taken` makes it answer the first booking `SLOT_TAKEN`. Both go back to the model. Name, phone and
+the `slot_taken` preset makes it answer the next booking `SLOT_TAKEN`. Both go back to the model. Name, phone and
 email come from the stored lead, never from the model, and a lead with no phone is `NO_PHONE`. A booking is a row with
 the calendar's event id, the UTC start and the lead-local label, one per conversation by a unique index, and a repeat
 `book_call` returns the booking already made. The row is the truth: it commits before its turn does, so a turn that dies
@@ -190,14 +192,15 @@ left, Anna on the right with a `n/320` count and a chip naming what wrote the re
 `FALLBACK` when the reply guards fell back), a repaired marker, the turn's tool calls between the bubbles, and a dashed
 line wherever a turn sent nothing, saying why from the reason stored with the turn. The composer sends as the lead with no provider message id, shows the
 lead's bubble at once, swaps in the turn the server rendered, and stays enabled after an end so the silence can be
-checked; the chips above it come from `src/main/resources/quick-replies.txt`. The right pane shows the stage
-tracker with skipped stages struck through, badges that say yes or no, the counters against their limits, the facts
-the model extracted and the booking as the booking row has it. Start opens a seeded lead, or a custom one with its
-consent evidence; a phone that already has a lead starts that lead, says so and saves nothing typed, and an
+checked; the chips above it come from `quick-replies.txt`, edited with the runtime settings. The right pane shows
+the stage tracker with skipped stages struck through, badges that say yes or no, the counters against their limits,
+the facts the model extracted and the booking as the booking row has it. Start opens a seeded lead, or a custom one
+with its consent evidence; a phone that already has a lead starts that lead, says so and saves nothing typed, and an
 opted-out phone is refused. Reset closes an open
 conversation as `RESET`, whose later messages are stored without a reply, and starts a new one through the same
-checks; nothing is deleted. The status strip shows the clock, app spend against its cap, the model with the active
-prompt version, and the PII mask, which works on the server: phone numbers and emails are masked wherever they
+checks; nothing is deleted. The status strip shows the clock and the calendar preset, each a control that saves the
+runtime settings below, app spend against its cap, the model with the active prompt version, and the PII mask,
+which works on the server: phone numbers and emails are masked wherever they
 appear, and once a conversation carries health information its summary, cover note and message bodies from that
 turn on are hidden. The mask is on unless the session turned it off. Every action is a form post, so the page works
 without JavaScript. The console has no login, so its protection against other sites is a strict same-site session
@@ -230,8 +233,23 @@ and a character outside GSM-7 is a warning shown with the saved version. Activat
 version and refuses, with the reason, one that does not load; running conversations keep theirs, and the status strip
 names the new version after the reload. Diff shows two saved versions of a file side by side. The editor is Monaco
 0.52.2 from `cdnjs.cloudflare.com`, the console's only external resource, mounted over a plain form, so without
-JavaScript or the CDN the page still lists, saves and activates; only the diff needs it. Runtime settings are read from
-`application.yml` and the environment; the console has no editor for them.
+JavaScript or the CDN the page still lists, saves and activates; only the diff needs it.
+
+Under the prompts sits the runtime settings form, one record saved whole: the model, reasoning effort and summary
+(`off` asks for none), tool rounds and output tokens; the reply limit (at most 320), the target the prompt asks for,
+the inbound cut, the turn cap, the off-topic streak and the objection retries; the three spend caps and the price
+table; the persona; the advisor hours, lead time, horizon, call length, slot grid, slots per offer, advisor zone and
+state holidays; the moderation thresholds; and the test controls, the calendar preset (`normal`, `fully_booked`,
+`slot_taken`), the clock, `REAL` or `FIXED` at an advisor-local time, and the quick-reply chips. The settings groups
+of `application.yml` hold the defaults. A save is validated whole, the active prompt version's templates rendered with
+the new persona included, and is refused with every problem marked beside its field and nothing written; or it is
+written to `data/settings.json` in one atomic move and swapped in, so the next turn runs on it while a turn in flight
+keeps what it read. The chips go to `data/quick-replies.txt`. Both files are reapplied at boot, the settings laid over
+the yml, so a file from a build with fewer settings takes the rest from it; a settings file that does not read,
+validate or fit the active prompt version's templates is renamed `.bad`, logged, and the defaults run. Keys show only
+as set or not set, and what needs a restart (port, database URL, data directory, the model's and moderation's timeouts
+and retries, the strict model check) is listed read-only. The clock and preset controls in the status strip make the
+same save with one value changed, so the clock badge and the calendar follow from any page.
 
 ## What Anna does
 

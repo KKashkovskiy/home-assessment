@@ -2,16 +2,13 @@ package com.enrola.anna.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.enrola.anna.config.AgentProperties;
-import com.enrola.anna.config.LimitsProperties;
-import com.enrola.anna.config.PersonaProperties;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.prompt.PromptBundle;
 import com.enrola.anna.prompt.PromptLoader;
 import com.enrola.anna.prompt.PromptVersion;
 import com.enrola.anna.prompt.Templates;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -31,8 +28,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class AgentServiceTest {
 
-  static final PersonaProperties PERSONA = new PersonaProperties("Anna", "Comparato", true);
-  static final SmsProperties SMS = new SmsProperties(320, 300, 1600);
+  static final Settings SETTINGS = SettingsFixture.DEFAULTS;
   static final PromptBundle BUNDLE = shippedV1();
   static final List<InputItem> TRANSCRIPT =
       List.of(new InputItem.AssistantText("Hi Lauren"), new InputItem.UserText("save money"));
@@ -52,12 +48,13 @@ class AgentServiceTest {
           Instant.parse("2026-07-26T00:00:00Z").atZone(ZoneId.of("Australia/Melbourne")),
           false,
           new TurnContext.Counters(0, 0, 0, 0),
-          new LimitsProperties(15, 3, 1),
+          SETTINGS.limits(),
           null,
           List.of(),
           false,
           EndReason.NONE,
           null);
+  static final AgentService.Call CALL = callWith(SETTINGS.agent());
   static final String AVAILABILITY = "{\"date_from\":\"2026-07-27\"}";
   static final String BOOKING = "{\"slot_id\":\"sA\"}";
   static final String BOOKED = "{\"status\":\"BOOKED\",\"booking_id\":\"cal-1\"}";
@@ -65,16 +62,13 @@ class AgentServiceTest {
   final ScriptedModelClient model = new ScriptedModelClient();
   final AgentService agent =
       new AgentService(
-          new StaticListableBeanFactory(Map.of("model", model)).getBeanProvider(ModelClient.class),
-          new AgentProperties("gpt-5.1", "low", "auto", Duration.ofSeconds(30), 2, 1200, 4, false),
-          PERSONA,
-          SMS);
+          new StaticListableBeanFactory(Map.of("model", model)).getBeanProvider(ModelClient.class));
 
   @Test
   void transcriptIsReplayedWithTheContextLast() {
     model.decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
+    agent.decide(CALL, new Rounds(0));
 
     assertThat(model.calls().getFirst().input())
         .containsExactly(
@@ -87,14 +81,30 @@ class AgentServiceTest {
   void requestCarriesTheRenderedPromptAndTheStrictSchema() {
     model.decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
+    agent.decide(CALL, new Rounds(0));
 
     ModelRequest request = model.calls().getFirst();
     assertThat(request.model()).isEqualTo("gpt-5.1");
-    assertThat(request.instructions()).isEqualTo(BUNDLE.render(PERSONA, SMS)).doesNotContain("{{");
+    assertThat(request.instructions())
+        .isEqualTo(BUNDLE.render(SETTINGS.persona(), SETTINGS.limits()))
+        .doesNotContain("{{");
     assertThat(request.schemaName()).isEqualTo("agent_decision");
     assertThat(request.schema()).isEqualTo(BUNDLE.schema().get("schema"));
     assertThat(request.reasoningEffort()).isEqualTo("low");
+    assertThat(request.reasoningSummary()).isEqualTo("auto");
+  }
+
+  @Test
+  void aSummaryOfOffAsksForNone() {
+    model.decide(Decisions.engaged().build());
+
+    agent.decide(
+        callWith(
+            SettingsFixture.with(
+                SETTINGS.agent(), "reasoningSummary", Settings.ReasoningSummary.OFF)),
+        new Rounds(0));
+
+    assertThat(model.calls().getFirst().reasoningSummary()).isNull();
   }
 
   /** The decision call offers the bundle's two tools; after an end nothing could be right. */
@@ -102,8 +112,8 @@ class AgentServiceTest {
   void onlyTheDecisionCallOffersTools() {
     model.decide(Decisions.engaged().build()).decide(Decisions.engaged().build());
 
-    agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
-    agent.classify(BUNDLE, TRANSCRIPT, CONTEXT, new Rounds(0));
+    agent.decide(CALL, new Rounds(0));
+    agent.classify(CALL, new Rounds(0));
 
     assertThat(model.calls().get(0).tools())
         .extracting(definition -> definition.get("name").stringValue())
@@ -123,7 +133,7 @@ class AgentServiceTest {
         .decide(Decisions.engaged().build());
     Rounds rounds = new Rounds(4);
 
-    AgentService.TurnResult result = agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, rounds);
+    AgentService.TurnResult result = agent.decide(CALL, rounds);
 
     assertThat(rounds.events)
         .containsExactly(
@@ -158,7 +168,7 @@ class AgentServiceTest {
         .callTool("get_availability", AVAILABILITY);
     Rounds rounds = new Rounds(2);
 
-    AgentService.TurnResult result = agent.decide(BUNDLE, TRANSCRIPT, CONTEXT, rounds);
+    AgentService.TurnResult result = agent.decide(CALL, rounds);
 
     assertThat(result.last())
         .isInstanceOfSatisfying(
@@ -172,6 +182,11 @@ class AgentServiceTest {
 
   // The scripted client has no loop and no reference to the tools: the loop above is the only one.
 
+  private static AgentService.Call callWith(Settings.Agent agent) {
+    return new AgentService.Call(
+        BUNDLE, agent, SETTINGS.persona(), SETTINGS.limits(), TRANSCRIPT, CONTEXT);
+  }
+
   /** The repo's v1 as a turn gets it. */
   private static PromptBundle shippedV1() {
     PromptVersion v1 = new PromptLoader(new DefaultResourceLoader()).load("v1", Instant.EPOCH);
@@ -184,7 +199,7 @@ class AgentServiceTest {
         List.copyOf(json.readTree(v1.toolsJson()).values()),
         new Templates(
             json.readValue(v1.templatesJson(), new TypeReference<Map<String, String>>() {}),
-            PERSONA),
+            SETTINGS.persona()),
         "canary");
   }
 

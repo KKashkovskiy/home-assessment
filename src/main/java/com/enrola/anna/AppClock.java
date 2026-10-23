@@ -1,36 +1,44 @@
 package com.enrola.anna;
 
-import com.enrola.anna.config.ClockProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * The one source of "now": the system clock, or an instant it stands still at, as {@code
- * anna.clock} says at boot. Unlike a {@link Clock} bean it can be stopped while the app runs, so a
- * conversation replays on a known day. Nothing else in the app reads the time.
+ * The one source of "now": the system clock, or an instant it stands still at. It follows the
+ * settings' clock from boot and after each save that changes it, and a scenario can stop or release
+ * it directly, so a conversation replays on a known day; a save that leaves the settings' clock as
+ * it was leaves this one alone. Unlike a {@link Clock} bean it can change while the app runs.
+ * Nothing else in the app reads the time.
  */
 @Component
 public final class AppClock {
 
   private static final Clock SYSTEM = Clock.systemUTC();
 
-  private volatile Clock clock;
+  private volatile Clock clock = SYSTEM;
 
-  public AppClock(ClockProperties props) {
-    clock =
-        switch (props.mode()) {
-          case REAL -> SYSTEM;
-          case FIXED -> Clock.fixed(props.fixedAt(), ZoneOffset.UTC);
-        };
+  /** What the settings last asked for: an instant to stand at, or the system clock. */
+  private Optional<Instant> followed;
+
+  /** The system clock, following no settings, for code that moves it itself. */
+  public AppClock() {}
+
+  @Autowired
+  public AppClock(SettingsStore settings) {
+    settings.onChange(this::follow);
   }
 
   public Instant now() {
     return clock.instant();
   }
 
-  /** True while the clock stands still, set so at boot or by {@link #fixAt}. */
+  /** True while the clock stands still. */
   public boolean fixed() {
     return !clock.equals(SYSTEM);
   }
@@ -38,5 +46,30 @@ public final class AppClock {
   /** Stops the clock at {@code at}. */
   public void fixAt(Instant at) {
     clock = Clock.fixed(at, ZoneOffset.UTC);
+  }
+
+  /** Lets the clock follow the system clock again. */
+  public void real() {
+    clock = SYSTEM;
+  }
+
+  /** A save that asks for what this clock already follows is not followed again. */
+  private void follow(Settings settings) {
+    Optional<Instant> wanted = standingInstant(settings);
+    if (wanted.equals(followed)) {
+      return;
+    }
+    followed = wanted;
+    wanted.ifPresentOrElse(this::fixAt, this::real);
+  }
+
+  /** A fixed clock's time is advisor-local wall time, placed in the advisors' zone. */
+  private static Optional<Instant> standingInstant(Settings settings) {
+    Settings.Clock wanted = settings.clock();
+    return switch (wanted.clockMode()) {
+      case REAL -> Optional.empty();
+      case FIXED ->
+          Optional.of(wanted.fixedClock().atZone(settings.scheduling().advisorZone()).toInstant());
+    };
   }
 }

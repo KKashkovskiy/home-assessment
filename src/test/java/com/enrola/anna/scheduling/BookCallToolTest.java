@@ -6,7 +6,8 @@ import static com.enrola.anna.scheduling.SchedulingFixtures.codeOf;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.AppClock;
-import com.enrola.anna.config.SchedulingProperties.CalendarPreset;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.Settings.CalendarPreset;
 import com.enrola.anna.conversation.ConversationService;
 import com.enrola.anna.conversation.Source;
 import com.enrola.anna.lead.Lead;
@@ -39,8 +40,9 @@ class BookCallToolTest {
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
-  static void databaseInTempDir(DynamicPropertyRegistry registry) {
+  static void dataInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + tempDir.resolve("anna"));
+    registry.add("anna.data-dir", tempDir::toString);
   }
 
   @Autowired BookingRepository bookings;
@@ -49,7 +51,7 @@ class BookCallToolTest {
   @Autowired JdbcTemplate jdbc;
 
   final AppClock clock = SchedulingFixtures.clockAt(SUNDAY);
-  final FakeCalendar calendar = new FakeCalendar(clock, SchedulingFixtures.defaults());
+  final FakeCalendar calendar = new FakeCalendar(clock);
   BookCallTool tool;
   Lead lauren;
   ToolContext context;
@@ -134,7 +136,8 @@ class BookCallToolTest {
   void noPhoneIsNotBooked() {
     Lead noPhone = new Lead("pat", "Pat", " ", null, "VIC", null, null, null, null, SUNDAY);
     ToolContext withoutPhone =
-        new ToolContext(context.conversationId(), noPhone, MELBOURNE, context.lastOffered());
+        SchedulingFixtures.context(
+            context.conversationId(), noPhone, MELBOURNE, context.lastOffered());
 
     assertThat(codeOf(tool.run(new BookCallTool.Args(Slot.idFor(NOON_MONDAY)), withoutPhone)))
         .isEqualTo("NO_PHONE");
@@ -154,11 +157,11 @@ class BookCallToolTest {
             "Australia/Melbourne",
             SUNDAY);
     FakeCalendar racing =
-        new FakeCalendar(clock, SchedulingFixtures.defaults()) {
+        new FakeCalendar(clock) {
           @Override
-          public ToolResult book(Slot slot, Lead invitee) {
+          public ToolResult book(Slot slot, Lead invitee, Settings.Scheduling scheduling) {
             bookings.save(rival);
-            return super.book(slot, invitee);
+            return super.book(slot, invitee, scheduling);
           }
         };
 
@@ -172,7 +175,8 @@ class BookCallToolTest {
   /** The calendar booked, the row did not save: whether the call is booked is now unknown. */
   @Test
   void rowThatFailsAfterTheCalendarBookedIsUnknown() {
-    ToolContext missing = new ToolContext("c-missing", lauren, MELBOURNE, context.lastOffered());
+    ToolContext missing =
+        SchedulingFixtures.context("c-missing", lauren, MELBOURNE, context.lastOffered());
 
     assertThat(tool.run(new BookCallTool.Args(Slot.idFor(NOON_MONDAY)), missing))
         .isInstanceOf(ToolResult.BookingUnknown.class);
@@ -185,18 +189,18 @@ class BookCallToolTest {
 
   private ToolContext offeredTo(String conversationId, Lead lead) {
     ToolResult offer =
-        new AvailabilityTool(clock, SchedulingFixtures.defaults(), calendar)
+        new AvailabilityTool(clock, calendar)
             .run(
                 new AvailabilityTool.Args(
                     "2026-07-27", "2026-07-27", AvailabilityTool.PartOfDay.MIDDAY),
-                MELBOURNE);
+                SchedulingFixtures.context(conversationId, lead, MELBOURNE, List.of()));
     List<Slot> slots = ((ToolResult.Slots) offer).slots();
     assertThat(slots).extracting(Slot::label).hasSize(6).contains(NOON_LABEL);
-    return new ToolContext(conversationId, lead, MELBOURNE, slots);
+    return SchedulingFixtures.context(conversationId, lead, MELBOURNE, slots);
   }
 
   private FakeCalendar calendarWith(CalendarPreset preset) {
-    return new FakeCalendar(clock, SchedulingFixtures.props(preset, List.of()));
+    return SchedulingFixtures.calendar(clock, preset);
   }
 
   /** The shipped calendar, keeping each slot it was asked to book and for whom. */
@@ -206,14 +210,14 @@ class BookCallToolTest {
     final List<Lead> invitees = new ArrayList<>();
 
     RecordingCalendar() {
-      super(clock, SchedulingFixtures.defaults());
+      super(clock);
     }
 
     @Override
-    public ToolResult book(Slot slot, Lead invitee) {
+    public ToolResult book(Slot slot, Lead invitee, Settings.Scheduling scheduling) {
       slots.add(slot);
       invitees.add(invitee);
-      return super.book(slot, invitee);
+      return super.book(slot, invitee, scheduling);
     }
   }
 }

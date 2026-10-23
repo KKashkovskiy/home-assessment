@@ -69,7 +69,7 @@ public class BookCallTool {
 
   /** The calendar first, then the row; a refusal from the calendar goes back as it came. */
   private ToolResult book(Slot slot, ToolContext context) {
-    ToolResult answer = calendar.book(slot, context.lead());
+    ToolResult answer = calendar.book(slot, context.lead(), context.scheduling());
     if (!(answer instanceof ToolResult.Booked event)) {
       return answer;
     }

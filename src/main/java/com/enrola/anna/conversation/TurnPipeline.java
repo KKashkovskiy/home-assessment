@@ -3,7 +3,8 @@ package com.enrola.anna.conversation;
 import com.enrola.anna.agent.AgentService;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.guard.ModerationClient;
 import com.enrola.anna.guard.ModerationVerdict;
 import com.enrola.anna.guard.PreGuards;
@@ -21,12 +22,12 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * The steps of one claimed turn, in order: the prompt version the conversation pinned is loaded, a
- * phone that opted out leaves the conversation unsubscribed, moderation screens the inbound, the
- * {@link PreGuards} pick one outcome, and the outcome runs. Moderation and the pre-guards write a
- * GUARD event every turn, pass or not. A STOP is never screened, so it cannot wait on moderation.
- * Without a key there is no moderation endpoint, so every verdict is unavailable and the trace
- * shows the gap.
+ * The steps of one claimed turn, in order: the settings are read, once, and the prompt version the
+ * conversation pinned is loaded; a phone that opted out leaves the conversation unsubscribed,
+ * moderation screens the inbound, the {@link PreGuards} pick one outcome, and the outcome runs.
+ * Moderation and the pre-guards write a GUARD event every turn, pass or not. A STOP is never
+ * screened, so it cannot wait on moderation. Without a key there is no moderation endpoint, so
+ * every verdict is unavailable and the trace shows the gap.
  */
 @Component
 class TurnPipeline {
@@ -36,13 +37,12 @@ class TurnPipeline {
   private final PromptStore prompts;
   private final Suppressions suppressions;
   private final ModerationClient moderation;
-  private final PreGuards preGuards;
   private final AgentService agent;
   private final SpendCap spend;
   private final AgentTurn agentTurn;
   private final GuardOutcomes outcomes;
   private final TraceLog trace;
-  private final SmsProperties sms;
+  private final SettingsStore settings;
 
   TurnPipeline(
       LeadRepository leads,
@@ -50,33 +50,32 @@ class TurnPipeline {
       PromptStore prompts,
       Suppressions suppressions,
       ObjectProvider<ModerationClient> moderation,
-      PreGuards preGuards,
       AgentService agent,
       SpendCap spend,
       AgentTurn agentTurn,
       GuardOutcomes outcomes,
       TraceLog trace,
-      SmsProperties sms) {
+      SettingsStore settings) {
     this.leads = leads;
     this.bookings = bookings;
     this.prompts = prompts;
     this.suppressions = suppressions;
     this.moderation = moderation.getIfAvailable(() -> ModerationClient.NONE);
-    this.preGuards = preGuards;
     this.agent = agent;
     this.spend = spend;
     this.agentTurn = agentTurn;
     this.outcomes = outcomes;
     this.trace = trace;
-    this.sms = sms;
+    this.settings = settings;
   }
 
   /**
    * Runs {@code inbound} on {@code conversation}, changing it in memory; the caller stores both.
-   * Text over {@code anna.sms.max-inbound-chars} flags the conversation INPUT_TRUNCATED.
+   * Text over the inbound limit flags the conversation INPUT_TRUNCATED.
    */
   TurnOutcome run(Conversation conversation, Message inbound, Instant now) {
     StateSnapshot before = StateSnapshot.of(conversation);
+    Settings current = settings.current();
     RunningTurn turn =
         new RunningTurn(
             conversation,
@@ -84,8 +83,9 @@ class TurnPipeline {
             inbound,
             now,
             bookings.findByConversationId(conversation.id).isPresent(),
-            promptFor(conversation, inbound.turnNo()));
-    if (inbound.charCount() > sms.maxInboundChars()) {
+            promptFor(conversation, inbound.turnNo(), current.persona()),
+            current);
+    if (inbound.charCount() > current.limits().maxInboundChars()) {
       conversation.addFlag(Flag.INPUT_TRUNCATED);
     }
     meetGoalOfSavedBooking(turn);
@@ -101,9 +101,9 @@ class TurnPipeline {
    * longer loads, the active one stands in for its fixed templates only, so STOP, the safety reply
    * and a booking change still work; the pre-guards keep the model out and the trace says why.
    */
-  private PromptBundle promptFor(Conversation conversation, int turnNo) {
+  private PromptBundle promptFor(Conversation conversation, int turnNo, Settings.Persona persona) {
     try {
-      return prompts.bundle(conversation.promptVersion);
+      return prompts.bundle(conversation.promptVersion, persona);
     } catch (PromptUnavailable e) {
       String active = prompts.activeId();
       trace.record(
@@ -115,7 +115,7 @@ class TurnPipeline {
               TraceOutcome.BLOCK,
               new ErrorPayload(
                   "PROMPT", e.getMessage() + "; fixed templates from " + active, null)));
-      return prompts.bundle(active);
+      return prompts.bundle(active, persona);
     }
   }
 
@@ -155,29 +155,37 @@ class TurnPipeline {
   }
 
   private PreGuards.Outcome decide(RunningTurn turn, ModerationVerdict verdict) {
-    Conversation conversation = turn.conversation();
+    Settings current = turn.settings();
     PreGuards.Outcome outcome =
-        preGuards.decide(
-            turn.inbound().text(),
-            verdict,
-            new PreGuards.Standing(
-                conversation.endReason,
-                conversation.status == ConversationStatus.RESET,
-                safetySent(conversation),
-                conversation.agentTurns,
-                turn.bookedAtStart(),
-                conversation.handoffReason),
-            new PreGuards.ModelAccess(
-                turn.onPinnedPrompt(),
-                agent.available(),
-                spend.appCapReached(),
-                spend.conversationCapReached(conversation.id)));
+        new PreGuards(current.limits(), current.moderation())
+            .decide(turn.inbound().text(), verdict, standing(turn), modelAccess(turn));
     guard(
         turn,
         "pre-guards",
         verdictOf(outcome),
         Map.of("outcome", outcome.getClass().getSimpleName(), "detail", outcome));
     return outcome;
+  }
+
+  private static PreGuards.Standing standing(RunningTurn turn) {
+    Conversation conversation = turn.conversation();
+    return new PreGuards.Standing(
+        conversation.endReason,
+        conversation.status == ConversationStatus.RESET,
+        safetySent(conversation),
+        conversation.agentTurns,
+        turn.bookedAtStart(),
+        conversation.handoffReason);
+  }
+
+  /** The caps are the turn's settings', measured against the spend so far. */
+  private PreGuards.ModelAccess modelAccess(RunningTurn turn) {
+    Settings.Budgets budgets = turn.settings().budgets();
+    return new PreGuards.ModelAccess(
+        turn.onPinnedPrompt(),
+        agent.available(),
+        spend.appCapReached(budgets),
+        spend.conversationCapReached(turn.conversation().id, budgets));
   }
 
   /**

@@ -1,7 +1,8 @@
 package com.enrola.anna.prompt;
 
 import com.enrola.anna.AppClock;
-import com.enrola.anna.config.PersonaProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsStore;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,7 @@ class PromptSeed {
   private final PromptVersionRepository versions;
   private final PromptLoader loader;
   private final PromptStore store;
-  private final PersonaProperties persona;
+  private final SettingsStore settings;
   private final AppClock clock;
   private final TransactionTemplate tx;
 
@@ -29,42 +30,46 @@ class PromptSeed {
       PromptVersionRepository versions,
       PromptLoader loader,
       PromptStore store,
-      PersonaProperties persona,
+      SettingsStore settings,
       AppClock clock,
       TransactionTemplate tx) {
     this.versions = versions;
     this.loader = loader;
     this.store = store;
-    this.persona = persona;
+    this.settings = settings;
     this.clock = clock;
     this.tx = tx;
   }
 
   /**
    * In one transaction: inserts every repo version that has no row, activates the lowest when none
-   * is active, and loads the active one. A repo version with any finding fails the boot, since the
-   * repo is under the owner's control, and so does an active version this configuration cannot
-   * load. An id the table already has is skipped, with a warning when the row was a save: the repo
-   * and the table then disagree.
+   * is active, and loads the active one, all with the yml's persona. A repo version with any
+   * finding fails the boot, since the repo and the yml are under the owner's control, and so does
+   * an active version the yml's persona cannot load. An id the table already has is skipped, with a
+   * warning when the row was a save: the repo and the table then disagree. Then the settings file
+   * is checked against the versions, and set aside when its persona does not fit.
    */
   @PostConstruct
   void seed() {
+    Settings.Persona yml = settings.defaults().persona();
     tx.executeWithoutResult(
         _ -> {
           warnIfDamaged();
-          loader.availableVersions().forEach(this::seedIfAbsent);
+          loader.availableVersions().forEach(id -> seedIfAbsent(id, yml));
           activateLowestIfNoneActive();
-          store.requireLoadable(store.activeId());
+          store.bundle(store.activeId(), yml);
         });
+    settings.recheck();
   }
 
-  private void seedIfAbsent(String id) {
+  private void seedIfAbsent(String id, Settings.Persona persona) {
     versions
         .findById(id)
-        .ifPresentOrElse(PromptSeed::warnIfSaved, () -> versions.save(validRepoVersion(id)));
+        .ifPresentOrElse(
+            PromptSeed::warnIfSaved, () -> versions.save(validRepoVersion(id, persona)));
   }
 
-  private PromptVersion validRepoVersion(String id) {
+  private PromptVersion validRepoVersion(String id, Settings.Persona persona) {
     PromptVersion version = loader.load(id, clock.now());
     PromptValidation.Result check = PromptValidation.validate(version, persona);
     if (!check.clean()) {

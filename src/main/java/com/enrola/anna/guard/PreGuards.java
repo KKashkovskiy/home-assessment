@@ -2,11 +2,9 @@ package com.enrola.anna.guard;
 
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.HandoffReason;
-import com.enrola.anna.config.LimitsProperties;
-import com.enrola.anna.config.ModerationProperties;
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.lead.Suppression;
 import com.enrola.anna.prompt.Template;
-import org.springframework.stereotype.Component;
 
 /**
  * Everything decided before the main model call, in an order that is the specification: a lone
@@ -15,10 +13,10 @@ import org.springframework.stereotype.Component;
  * because the safety template goes out once whatever the state; silence after a hard end or a
  * console reset fourth, so nothing more is spent on that conversation; abuse fifth, so a distressed
  * lead who swears gets Lifeline, not a cut-off; then whether the model can be called at all; then
- * the soft-terminal classify-only path; then the turn cap. Pure: it reads plain values and returns
- * an {@link Outcome}, and the caller acts on it.
+ * the soft-terminal classify-only path; then the turn cap. Pure: built for one turn from the limits
+ * and thresholds that turn read, it reads plain values and returns an {@link Outcome}, and the
+ * caller acts on it.
  */
-@Component
 public class PreGuards {
 
   /** What the turn does next; the caller switches over it exhaustively. */
@@ -111,10 +109,10 @@ public class PreGuards {
       boolean appCapReached,
       boolean conversationCapReached) {}
 
-  private final LimitsProperties limits;
-  private final ModerationProperties thresholds;
+  private final Settings.Limits limits;
+  private final Settings.Moderation thresholds;
 
-  public PreGuards(LimitsProperties limits, ModerationProperties thresholds) {
+  public PreGuards(Settings.Limits limits, Settings.Moderation thresholds) {
     this.limits = limits;
     this.thresholds = thresholds;
   }
@@ -171,12 +169,12 @@ public class PreGuards {
   }
 
   private boolean selfHarm(ModerationVerdict verdict) {
-    return verdict.available() && verdict.selfHarm() >= thresholds.selfHarm();
+    return verdict.available() && verdict.selfHarm() >= thresholds.modSelfHarm();
   }
 
   private boolean abusive(ModerationVerdict verdict) {
     return verdict.available()
-        && (verdict.harassment() >= thresholds.harassment()
-            || verdict.threat() >= thresholds.threat());
+        && (verdict.harassment() >= thresholds.modHarassment()
+            || verdict.threat() >= thresholds.modThreat());
   }
 }

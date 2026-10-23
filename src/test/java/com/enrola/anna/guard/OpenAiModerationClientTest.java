@@ -3,15 +3,14 @@ package com.enrola.anna.guard;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.agent.OpenAiClientConfig;
-import com.enrola.anna.config.AgentProperties;
-import com.enrola.anna.config.ModerationProperties;
+import com.enrola.anna.config.SettingsDefaults;
+import com.enrola.anna.config.SettingsFixture;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.models.moderations.ModerationCreateResponse;
 import com.openai.services.blocking.ModerationService;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.time.Duration;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -21,15 +20,14 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 /** Moderation that fails in any way never fails the turn; nothing here leaves the machine. */
 class OpenAiModerationClientTest {
 
-  static final ModerationProperties MODERATION =
-      new ModerationProperties(0.5, 0.5, 0.3, Duration.ofSeconds(2), 0);
+  static final SettingsDefaults DEFAULTS = SettingsFixture.yml("anna.moderation.timeout=2s");
 
   @Test
   void unreachableEndpointIsUnavailable() {
     OpenAIClient unreachable =
         OpenAIOkHttpClient.builder().apiKey("sk-test").baseUrl("http://127.0.0.1:9").build();
 
-    assertThat(new OpenAiModerationClient(unreachable, MODERATION).screen("you useless bot"))
+    assertThat(new OpenAiModerationClient(unreachable, DEFAULTS).screen("you useless bot"))
         .isEqualTo(ModerationVerdict.UNAVAILABLE);
   }
 
@@ -44,7 +42,7 @@ class OpenAiModerationClientTest {
                     .results(List.of())
                     .build());
 
-    assertThat(new OpenAiModerationClient(client, MODERATION).screen("hello"))
+    assertThat(new OpenAiModerationClient(client, DEFAULTS).screen("hello"))
         .isEqualTo(ModerationVerdict.UNAVAILABLE);
   }
 
@@ -56,7 +54,7 @@ class OpenAiModerationClientTest {
               throw new IllegalStateException("not the SDK's");
             });
 
-    assertThat(new OpenAiModerationClient(client, MODERATION).screen("hello"))
+    assertThat(new OpenAiModerationClient(client, DEFAULTS).screen("hello"))
         .isEqualTo(ModerationVerdict.UNAVAILABLE);
   }
 
@@ -64,12 +62,7 @@ class OpenAiModerationClientTest {
   void existsOnlyWithAKey() {
     ApplicationContextRunner runner =
         new ApplicationContextRunner()
-            .withBean(
-                AgentProperties.class,
-                () ->
-                    new AgentProperties(
-                        "gpt-5.1", null, null, Duration.ofSeconds(1), 0, 16, 4, false))
-            .withBean(ModerationProperties.class, () -> MODERATION)
+            .withBean(SettingsDefaults.class, () -> DEFAULTS)
             .withUserConfiguration(OpenAiClientConfig.class, OpenAiModerationClient.class);
 
     runner

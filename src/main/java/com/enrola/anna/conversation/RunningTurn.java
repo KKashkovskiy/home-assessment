@@ -1,5 +1,6 @@
 package com.enrola.anna.conversation;
 
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.prompt.PromptBundle;
 import java.time.Instant;
@@ -9,7 +10,8 @@ import java.time.Instant;
  * whether the conversation had a booking row when the turn began; the row, not a flag, is what
  * makes CANCEL and a reschedule request mean the call. {@code prompt} is the version the
  * conversation pinned at start, whatever is active now; when that one cannot load, the active one,
- * for its fixed templates only.
+ * for its fixed templates only. {@code settings} is the record the turn read at its start: every
+ * step runs on it, so a save while the turn runs applies from the next one.
  */
 record RunningTurn(
     Conversation conversation,
@@ -17,7 +19,8 @@ record RunningTurn(
     Message inbound,
     Instant now,
     boolean bookedAtStart,
-    PromptBundle prompt) {
+    PromptBundle prompt,
+    Settings settings) {
 
   int turnNo() {
     return inbound.turnNo();

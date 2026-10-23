@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import com.enrola.anna.config.PersonaProperties;
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.lead.Lead;
 import java.time.Instant;
 import java.util.HashMap;
@@ -107,7 +107,7 @@ class TemplatesTest {
   }
 
   private static Templates templates(Map<String, String> texts, boolean disclosureInOpener) {
-    return new Templates(texts, new PersonaProperties("Anna", "Comparato", disclosureInOpener));
+    return new Templates(texts, new Settings.Persona("Anna", "Comparato", disclosureInOpener));
   }
 
   /** The shipped templates with {@code text} as FALLBACK. */

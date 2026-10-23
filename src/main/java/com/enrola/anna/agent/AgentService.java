@@ -1,9 +1,7 @@
 package com.enrola.anna.agent;
 
 import com.enrola.anna.agent.ModelResponse.Usage;
-import com.enrola.anna.config.AgentProperties;
-import com.enrola.anna.config.PersonaProperties;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.prompt.PromptBundle;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,11 +13,11 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * Runs the model's part of a turn: model, tools, model, until the model answers, a round fails, or
- * it still calls tools when the turn has no tool round left. Builds the request from the bundle,
- * the transcript and the turn's context; the caller's {@link ToolLoopCallbacks} records each round,
- * grants the tool rounds and answers the calls, and the caller maps the output to a {@link
- * Decision} and applies it. Without {@code OPENAI_API_KEY} there is no client and {@link
- * #available()} is false.
+ * it still calls tools when the turn has no tool round left. Builds the request from a {@link
+ * Call}: the bundle, the turn's settings, the transcript and the turn's context; the caller's
+ * {@link ToolLoopCallbacks} records each round, grants the tool rounds and answers the calls, and
+ * the caller maps the output to a {@link Decision} and applies it. Without {@code OPENAI_API_KEY}
+ * there is no client and {@link #available()} is false.
  */
 @Service
 public class AgentService {
@@ -27,19 +25,9 @@ public class AgentService {
   private static final Logger log = LoggerFactory.getLogger(AgentService.class);
 
   private final ModelClient client;
-  private final AgentProperties agent;
-  private final PersonaProperties persona;
-  private final SmsProperties sms;
 
-  public AgentService(
-      ObjectProvider<ModelClient> client,
-      AgentProperties agent,
-      PersonaProperties persona,
-      SmsProperties sms) {
+  public AgentService(ObjectProvider<ModelClient> client) {
     this.client = client.getIfAvailable();
-    this.agent = agent;
-    this.persona = persona;
-    this.sms = sms;
     if (this.client == null) {
       log.warn("model check skipped: OPENAI_API_KEY not set; inbound turns hand off with ERROR");
     }
@@ -70,29 +58,36 @@ public class AgentService {
     }
   }
 
+  /**
+   * What one call is made of, from what its turn read at its start: the pinned version's prompt,
+   * schema and tools; the model and how it reasons; the persona and the limits the prompt names;
+   * the transcript to replay whole; and the turn's context, sent after it.
+   */
+  public record Call(
+      PromptBundle bundle,
+      Settings.Agent agent,
+      Settings.Persona persona,
+      Settings.Limits limits,
+      List<InputItem> transcript,
+      TurnContext context) {
+
+    public Call {
+      transcript = List.copyOf(transcript);
+    }
+  }
+
   public boolean available() {
     return client != null;
   }
 
-  /**
-   * The decision call: {@code transcript} replayed whole, then {@code context} as the last item,
-   * with the bundle's tools offered.
-   */
-  public TurnResult decide(
-      PromptBundle bundle,
-      List<InputItem> transcript,
-      TurnContext context,
-      ToolLoopCallbacks callbacks) {
-    return run(request(bundle, transcript, context, bundle.tools()), callbacks);
+  /** The decision call, with the bundle's tools offered. */
+  public TurnResult decide(Call call, ToolLoopCallbacks callbacks) {
+    return run(request(call, call.bundle().tools()), callbacks);
   }
 
   /** Like {@link #decide}, with no tools offered: after an end the model only classifies. */
-  public TurnResult classify(
-      PromptBundle bundle,
-      List<InputItem> transcript,
-      TurnContext context,
-      ToolLoopCallbacks callbacks) {
-    return run(request(bundle, transcript, context, List.of()), callbacks);
+  public TurnResult classify(Call call, ToolLoopCallbacks callbacks) {
+    return run(request(call, List.of()), callbacks);
   }
 
   private TurnResult run(ModelRequest request, ToolLoopCallbacks callbacks) {
@@ -110,20 +105,20 @@ public class AgentService {
     };
   }
 
-  private ModelRequest request(
-      PromptBundle bundle, List<InputItem> transcript, TurnContext context, List<JsonNode> tools) {
-    List<InputItem> input = new ArrayList<>(transcript);
-    input.add(new InputItem.UserText(context.render()));
+  private static ModelRequest request(Call call, List<JsonNode> tools) {
+    PromptBundle bundle = call.bundle();
+    List<InputItem> input = new ArrayList<>(call.transcript());
+    input.add(new InputItem.UserText(call.context().render()));
     return new ModelRequest(
-        agent.model(),
-        bundle.render(persona, sms),
+        call.agent().model(),
+        bundle.render(call.persona(), call.limits()),
         input,
         bundle.schema().get("name").stringValue(),
         bundle.schema().get("schema"),
         tools,
-        agent.reasoningEffort(),
-        agent.reasoningSummary(),
-        agent.maxOutputTokens());
+        call.agent().reasoning().value(),
+        call.agent().reasoningSummary().requested(),
+        call.limits().maxOutputTokens());
   }
 
   /**

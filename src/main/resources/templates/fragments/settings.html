@@ -1,10 +1,141 @@
 <!doctype html>
 <html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
 <body>
-<!-- The runtime settings section of the Configuration page, a section with the prototype's id. -->
-<section th:fragment="form" id="settings-form" class="panel" aria-labelledby="settings-title">
-  <header><h2 id="settings-title">Runtime settings</h2></header>
-  <div class="panel-body"><p class="muted">Model, limits, persona, scheduling and moderation thresholds are read from <span class="mono">application.yml</span> and the environment at boot; the console has no editor for them.</p></div>
-</section>
+<!-- The runtime settings section of the Configuration page: one form over the whole settings record, saved whole. The
+     server renders every value and, after a refused save, what was typed with each problem beside its field, so no
+     script is needed. Field names are the prototype's; the form posts to its own anchor, so a refused save lands on it. -->
+<form th:fragment="form(section)" id="settings-form" class="panel" method="post" th:action="@{/configuration/settings} + '#settings-form'" aria-labelledby="settings-title" novalidate
+      th:with="form=${section.form}, smsLimit=${@fmt.smsLimit()}, toolRounds=${@fmt.maxToolRounds()}, minTokens=${@fmt.minOutputTokens()}, rangeDays=${@fmt.calendarRangeDays()}">
+  <header><h2 id="settings-title">Runtime settings</h2><span class="small muted">Saved as a whole and applied from the next turn. Overrides persist to <span class="mono">data/settings.json</span> and are reapplied at boot.</span></header>
+  <div class="panel-body" th:if="${section.notice != null}">
+    <div id="settings-notice" role="status" th:class="${@fmt.noticeClass(section.notice)}" th:data-notice="${section.notice.code}" th:text="${section.notice.text}">notice</div>
+  </div>
+  <div class="panel-body settings-grid">
+    <fieldset id="fs-model"><legend>Model and reasoning</legend>
+      <div th:replace="~{fragments/settings :: field(name='model', id='s-model', label='Model', type='text', value=${form.model}, list='s-models', hint='Non-mini model, Responses API, store off. It needs a row in the price table.')}"></div>
+      <datalist id="s-models"><option th:each="model : ${section.models()}" th:value="${model}"></option></datalist>
+      <div class="inline-fields">
+        <div class="field" th:classappend="${section.invalid('reasoning')} ? 'invalid'"><label for="s-reasoning">Reasoning effort</label>
+          <select id="s-reasoning" name="reasoning" th:aria-invalid="${section.invalid('reasoning')} ? 'true'" th:aria-describedby="${section.describedBy('reasoning', 's-reasoning', false)}"><option th:each="effort : ${@fmt.reasoningEfforts()}" th:value="${effort.value()}" th:text="${effort.value()}" th:selected="${effort == form.reasoning}">low</option></select>
+          <span th:replace="~{fragments/settings :: error('reasoning', 's-reasoning')}"></span></div>
+        <div class="field" th:classappend="${section.invalid('reasoningSummary')} ? 'invalid'"><label for="s-summary">Reasoning summary</label>
+          <select id="s-summary" name="reasoningSummary" th:aria-invalid="${section.invalid('reasoningSummary')} ? 'true'" th:aria-describedby="${section.describedBy('reasoningSummary', 's-summary', true)}"><option th:each="summary : ${@fmt.reasoningSummaries()}" th:value="${summary.value()}" th:text="${summary.value()}" th:selected="${summary == form.reasoningSummary}">auto</option></select>
+          <span class="hint" id="s-summary-hint">Kept in the trace, never sent to the lead; off asks for none.</span>
+          <span th:replace="~{fragments/settings :: error('reasoningSummary', 's-summary')}"></span></div>
+      </div>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='maxToolRounds', id='s-toolloop', label='Tool rounds per turn', type='number', value=${form.maxToolRounds}, min=1, max=${toolRounds}, hint='The decision call and its repair share them.')}"></div>
+        <div th:replace="~{fragments/settings :: field(name='maxOutputTokens', id='s-outtokens', label='Max output tokens', type='number', value=${form.maxOutputTokens}, min=${minTokens})}"></div>
+      </div>
+    </fieldset>
+    <fieldset id="fs-limits"><legend>Limits</legend>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='maxChars', id='s-maxchars', label='Hard reply limit (chars)', type='number', value=${form.maxChars}, min=1, max=${smsLimit}, hint=|Code rejects above this: one repair, then FALLBACK. At most ${smsLimit}.|)}"></div>
+        <div th:replace="~{fragments/settings :: field(name='targetChars', id='s-target', label='Target in prompt (chars)', type='number', value=${form.targetChars}, min=1)}"></div>
+        <div th:replace="~{fragments/settings :: field(name='maxInboundChars', id='s-inbound', label='Inbound cut (chars)', type='number', value=${form.maxInboundChars}, min=1, hint='Stored whole; the model reads this much.')}"></div>
+      </div>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='maxTurns', id='s-turns', label='Max agent turns', type='number', value=${form.maxTurns}, min=1, hint='Reaching it sends MAX_TURNS_CLOSE.')}"></div>
+        <div th:replace="~{fragments/settings :: field(name='offTopicLimit', id='s-offtopic', label='Off-topic streak', type='number', value=${form.offTopicLimit}, min=1)}"></div>
+        <div th:replace="~{fragments/settings :: field(name='objectionRetries', id='s-objections', label='Objection retries', type='number', value=${form.objectionRetries}, min=0)}"></div>
+      </div>
+      <div class="inline-fields" th:with="convCap=${@fmt.dollars(form.convCap)}, appCap=${@fmt.dollars(form.appCap)}, evalCap=${@fmt.dollars(form.evalCap)}">
+        <div th:replace="~{fragments/settings :: field(name='convCap', id='s-convcap', label='Spend cap per conversation ($)', type='number', value=${convCap}, min=0.01, step='0.01')}"></div>
+        <div th:replace="~{fragments/settings :: field(name='appCap', id='s-appcap', label='App spend cap ($)', type='number', value=${appCap}, min=0.01, step='0.01')}"></div>
+        <div th:replace="~{fragments/settings :: field(name='evalCap', id='s-evalcap', label='Eval run cap ($)', type='number', value=${evalCap}, min=0.01, step='0.01', hint='Eval spend is a separate ledger.')}"></div>
+      </div>
+      <div class="field" th:classappend="${section.priceProblem() != null} ? 'invalid'"><span class="label" id="price-title">Price table ($ per 1M tokens)</span>
+        <table id="price-table" class="slot-table" aria-labelledby="price-title" aria-describedby="price-hint">
+          <thead><tr><th scope="col">Model</th><th scope="col" class="num">Input</th><th scope="col" class="num">Cached</th><th scope="col" class="num">Output</th></tr></thead>
+          <tbody>
+            <tr th:each="row, rowStat : ${form.priceRows()}" th:with="cell=${section.rowField(rowStat.index)}, bad=${section.invalid(cell)}" th:classappend="${bad} ? 'invalid'">
+              <td><input type="text" th:name="${cell} + '.model'" th:value="${section.shown(cell + '.model', row.model)}" th:placeholder="${row.blank()} ? 'add a model'" th:aria-label="${row.blank()} ? 'New model' : 'Model'" th:aria-invalid="${bad} ? 'true'" th:aria-describedby="${bad} ? 'price-error'"></td>
+              <td><input type="number" step="any" min="0" th:name="${cell} + '.input'" th:value="${section.shown(cell + '.input', @fmt.dollars(row.input))}" th:aria-label="|${row.model} input price|" th:aria-invalid="${bad} ? 'true'" th:aria-describedby="${bad} ? 'price-error'"></td>
+              <td><input type="number" step="any" min="0" th:name="${cell} + '.cached'" th:value="${section.shown(cell + '.cached', @fmt.dollars(row.cached))}" th:aria-label="|${row.model} cached price|" th:aria-invalid="${bad} ? 'true'" th:aria-describedby="${bad} ? 'price-error'"></td>
+              <td><input type="number" step="any" min="0" th:name="${cell} + '.output'" th:value="${section.shown(cell + '.output', @fmt.dollars(row.output))}" th:aria-label="|${row.model} output price|" th:aria-invalid="${bad} ? 'true'" th:aria-describedby="${bad} ? 'price-error'"></td>
+            </tr>
+          </tbody>
+        </table>
+        <span class="hint" id="price-hint">Each model call is costed from this table. Clear a model's name to drop its row.</span>
+        <span class="error" id="price-error" th:if="${section.priceProblem() != null}" th:text="${section.priceProblem()}">problem</span></div>
+    </fieldset>
+    <fieldset id="fs-persona"><legend>Persona</legend>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='persona', id='s-persona', label='Agent name', type='text', value=${form.persona})}"></div>
+        <div th:replace="~{fragments/settings :: field(name='company', id='s-company', label='Company', type='text', value=${form.company})}"></div>
+      </div>
+      <label class="toggle"><input id="s-disclosure" name="disclosureInOpener" type="checkbox" value="true" th:checked="${form.disclosureInOpener}"> Say "AI assistant" in the opener</label>
+      <span class="hint">The active prompt version's templates must still fit their caps with these. Templates and the knowledge pack live in Prompts above.</span>
+    </fieldset>
+    <fieldset id="fs-sched"><legend>Scheduling</legend>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='hoursFrom', id='s-from', label='Weekdays from', type='time', value=${form.hoursFrom})}"></div>
+        <div th:replace="~{fragments/settings :: field(name='hoursTo', id='s-to', label='to', type='time', value=${form.hoursTo})}"></div>
+        <div th:replace="~{fragments/settings :: field(name='satTo', id='s-satto', label='Saturday until', type='time', value=${form.satTo}, hint='Never Sunday.')}"></div>
+      </div>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='leadTimeMin', id='s-lead', label='Lead time (minutes)', type='number', value=${form.leadTimeMin}, min=0, hint='No slot sooner than now plus this.')}"></div>
+        <div th:replace="~{fragments/settings :: field(name='horizonDays', id='s-horizon', label='Horizon (days)', type='number', value=${form.horizonDays}, min=1, max=${rangeDays}, hint=|Calendly allows ${rangeDays}.|)}"></div>
+      </div>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='eventMin', id='s-event', label='Call length (minutes)', type='number', value=${form.eventMin}, min=1)}"></div>
+        <div th:replace="~{fragments/settings :: field(name='gridMin', id='s-grid', label='Slot grid (minutes)', type='number', value=${form.gridMin}, min=1)}"></div>
+        <div th:replace="~{fragments/settings :: field(name='maxSlots', id='s-maxslots', label='Slots per offer', type='number', value=${form.maxSlots}, min=1)}"></div>
+      </div>
+      <div th:replace="~{fragments/settings :: field(name='advisorZone', id='s-zone', label='Advisor timezone', type='text', value=${form.advisorZone}, list='s-zones', hint='Also the zone of a lead with no state, flagged TZ_ASSUMED.')}"></div>
+      <datalist id="s-zones"><option th:each="zone : ${@fmt.zones()}" th:value="${zone}"></option></datalist>
+      <div th:replace="~{fragments/settings :: field(name='stateHolidays', id='s-holidays', label='State public holidays', type='text', value=${form.stateHolidaysText()}, placeholder='2026-11-03, 2027-03-08', hint='Comma-separated dates in the state the advisors work in; national ones are built in.')}"></div>
+    </fieldset>
+    <fieldset id="fs-fakes"><legend>Fakes and test controls</legend>
+      <div class="field" th:classappend="${section.invalid('calendarPreset')} ? 'invalid'"><label for="s-calendar">Calendar preset</label>
+        <select id="s-calendar" name="calendarPreset" th:aria-invalid="${section.invalid('calendarPreset')} ? 'true'" th:aria-describedby="${section.describedBy('calendarPreset', 's-calendar', true)}"><option th:each="preset : ${@fmt.calendarPresets()}" th:value="${preset.value()}" th:text="${@fmt.presetName(preset)}" th:selected="${preset == form.calendarPreset}">normal</option></select>
+        <span class="hint" id="s-calendar-hint"><th:block th:each="preset, presetStat : ${@fmt.calendarPresets()}"><b th:text="${@fmt.presetName(preset)}">normal</b>: <th:block th:text="${@fmt.presetDescription(preset)}">slots</th:block><th:block th:unless="${presetStat.last}">; </th:block></th:block>. The fake Calendly keeps the real limits: a 31-day range, no start in the past.</span>
+        <span th:replace="~{fragments/settings :: error('calendarPreset', 's-calendar')}"></span></div>
+      <div class="inline-fields">
+        <div class="field" th:classappend="${section.invalid('clockMode')} ? 'invalid'"><label for="s-clockmode">Clock</label>
+          <select id="s-clockmode" name="clockMode" th:aria-invalid="${section.invalid('clockMode')} ? 'true'" th:aria-describedby="${section.describedBy('clockMode', 's-clockmode', false)}"><option th:each="mode : ${@fmt.clockModes()}" th:value="${mode}" th:text="${mode}" th:selected="${mode == form.clockMode}">REAL</option></select>
+          <span th:replace="~{fragments/settings :: error('clockMode', 's-clockmode')}"></span></div>
+        <div th:replace="~{fragments/settings :: field(name='fixedClock', id='s-clock', label='Fixed time (advisor zone)', type='datetime-local', value=${form.fixedClock}, hint='Read when the clock is FIXED.')}"></div>
+      </div>
+      <div class="field" th:classappend="${section.invalid('quickReplies')} ? 'invalid'"><label for="s-quick">Quick replies (label | text, one a line)</label>
+        <textarea id="s-quick" name="quickReplies" rows="6" spellcheck="false" th:aria-invalid="${section.invalid('quickReplies')} ? 'true'" th:aria-describedby="${section.describedBy('quickReplies', 's-quick', true)}">
+[[${form.quickReplies}]]</textarea>
+        <span class="hint" id="s-quick-hint" th:text="|The chips above the composer, saved to data/quick-replies.txt; at most ${@fmt.quickReplyLines()} lines of ${@fmt.quickReplyChars()} characters.|">The chips above the composer.</span>
+        <span th:replace="~{fragments/settings :: error('quickReplies', 's-quick')}"></span></div>
+    </fieldset>
+    <fieldset id="fs-mod"><legend>Moderation thresholds</legend>
+      <div class="inline-fields">
+        <div th:replace="~{fragments/settings :: field(name='modHarassment', id='s-har', label='Harassment', type='number', value=${form.modHarassment}, min=0.01, max=1, step='0.01')}"></div>
+        <div th:replace="~{fragments/settings :: field(name='modSelfHarm', id='s-self', label='Self-harm', type='number', value=${form.modSelfHarm}, min=0.01, max=1, step='0.01')}"></div>
+        <div th:replace="~{fragments/settings :: field(name='modThreat', id='s-threat', label='Threat', type='number', value=${form.modThreat}, min=0.01, max=1, step='0.01')}"></div>
+      </div>
+      <span class="hint">Every inbound is screened before the model. A score at or above its threshold ends the conversation ABUSIVE with no reply, or sends the SELF_HARM_SAFETY template.</span>
+    </fieldset>
+    <fieldset id="fs-restart"><legend>Set at boot <span class="chip warn">restart</span></legend>
+      <table class="slot-table" aria-label="Values that need a restart"><tbody>
+        <tr th:each="value : ${section.restartOnly}"><th scope="row" th:text="${value.name}">Server port</th><td class="mono" th:text="${value.value}">8080</td></tr>
+      </tbody></table>
+      <div class="field"><span class="label">Keys</span>
+        <div class="row"><span th:each="key : ${section.keys}" th:class="${key.set} ? 'chip pass' : 'chip warn'" th:data-key="${key.name}" th:text="|${key.name}: ${key.set ? 'set' : 'not set'}|">OPENAI_API_KEY: set</span></div>
+        <span class="hint">From the environment only; never shown, logged or stored.</span></div>
+    </fieldset>
+  </div>
+  <div class="panel-body settings-actions">
+    <div class="form-actions"><button class="btn primary" type="submit">Save settings</button><a class="btn" th:href="@{/configuration} + '#settings-form'">Discard changes</a></div>
+  </div>
+</form>
+
+<!-- One labelled input with its hint and its problem. Called with named values; any left out is not rendered. After a
+     refused save the input shows what was typed when it did not bind. -->
+<div th:fragment="field" class="field" th:classappend="${section.invalid(name)} ? 'invalid'">
+  <label th:for="${id}" th:text="${label}">Label</label>
+  <input th:id="${id}" th:name="${name}" th:type="${type}" th:value="${section.shown(name, value)}" th:min="${min}" th:max="${max}" th:step="${step}" th:list="${list}" th:placeholder="${placeholder}"
+         th:aria-invalid="${section.invalid(name)} ? 'true'" th:aria-describedby="${section.describedBy(name, id, hint != null)}">
+  <span class="hint" th:if="${hint != null}" th:id="${id} + '-hint'" th:text="${hint}">hint</span>
+  <span th:replace="~{fragments/settings :: error(${name}, ${id})}"></span>
+</div>
+
+<!-- A field's problem, named by the control's aria-describedby. -->
+<span th:fragment="error(name, id)" class="error" th:if="${section.invalid(name)}" th:id="${id} + '-error'" th:text="${section.problems.get(name)}">problem</span>
 </body>
 </html>

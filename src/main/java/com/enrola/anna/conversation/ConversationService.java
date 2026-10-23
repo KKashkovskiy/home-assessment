@@ -5,8 +5,8 @@ import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.Stage;
-import com.enrola.anna.config.AgentProperties;
-import com.enrola.anna.config.SchedulingProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
@@ -16,7 +16,6 @@ import com.enrola.anna.prompt.Template;
 import com.enrola.anna.scheduling.BookingRepository;
 import com.enrola.anna.scheduling.LeadZones;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -50,8 +49,7 @@ public class ConversationService {
   private final TurnLocks locks;
   private final TransactionTemplate tx;
   private final AppClock clock;
-  private final AgentProperties agent;
-  private final ZoneId advisorZone;
+  private final SettingsStore settings;
   private final String appVersion;
 
   public ConversationService(
@@ -64,8 +62,7 @@ public class ConversationService {
       TurnLocks locks,
       TransactionTemplate tx,
       AppClock clock,
-      AgentProperties agent,
-      SchedulingProperties scheduling,
+      SettingsStore settings,
       @Value("${anna.app-version}") String appVersion) {
     this.leads = leads;
     this.conversations = conversations;
@@ -76,8 +73,7 @@ public class ConversationService {
     this.locks = locks;
     this.tx = tx;
     this.clock = clock;
-    this.agent = agent;
-    this.advisorZone = scheduling.advisorZone();
+    this.settings = settings;
     this.appVersion = appVersion;
   }
 
@@ -193,11 +189,16 @@ public class ConversationService {
             });
   }
 
-  /** The only place the active prompt version is read: the conversation pins it for good. */
+  /**
+   * The only place the active prompt version is read: the conversation pins it for good. The opener
+   * speaks as the current settings' persona.
+   */
   private TurnResponse open(Lead lead, Source source) {
     Instant now = clock.now();
-    PromptBundle bundle = prompts.bundle(prompts.activeId());
-    Conversation conversation = conversations.save(newConversation(lead, bundle, source, now));
+    Settings current = settings.current();
+    PromptBundle bundle = prompts.bundle(prompts.activeId(), current.persona());
+    Conversation conversation =
+        conversations.save(newConversation(lead, new Start(bundle, current, source, now)));
     Message opener = storeOpener(conversation, lead, bundle, now);
     return TurnResponse.of(
         new TurnResponse.Rows(conversation, null, List.of(opener)),
@@ -205,12 +206,17 @@ public class ConversationService {
         now);
   }
 
+  /** What a new conversation starts on: the active version, the settings, the client, the time. */
+  private record Start(PromptBundle bundle, Settings settings, Source source, Instant now) {}
+
   /**
    * An unguessable id, because it reaches URLs; version 0 makes {@code save} insert. It records the
    * prompt version, model, effort and build it starts on.
    */
-  private Conversation newConversation(Lead lead, PromptBundle bundle, Source source, Instant now) {
-    LeadZones.Resolved zone = LeadZones.resolve(lead.state(), advisorZone);
+  private Conversation newConversation(Lead lead, Start start) {
+    Settings current = start.settings();
+    Instant now = start.now();
+    LeadZones.Resolved zone = LeadZones.resolve(lead.state(), current.scheduling().advisorZone());
     Conversation conversation = new Conversation();
     conversation.id = "c-" + UUID.randomUUID();
     conversation.leadId = lead.id();
@@ -222,11 +228,11 @@ public class ConversationService {
     conversation.setEndReasonHistory(List.of());
     conversation.handoffReason = HandoffReason.NONE;
     conversation.leadZoneId = zone.zone().getId();
-    conversation.promptVersion = bundle.id();
-    conversation.model = agent.model();
-    conversation.reasoningEffort = agent.reasoningEffort();
+    conversation.promptVersion = start.bundle().id();
+    conversation.model = current.agent().model();
+    conversation.reasoningEffort = current.agent().reasoning().value();
     conversation.appVersion = appVersion;
-    conversation.source = source;
+    conversation.source = start.source();
     conversation.createdAt = now;
     conversation.updatedAt = now;
     return conversation;

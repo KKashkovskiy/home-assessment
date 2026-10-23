@@ -3,9 +3,8 @@ package com.enrola.anna.web;
 import com.enrola.anna.AppClock;
 import com.enrola.anna.agent.Stage;
 import com.enrola.anna.agent.ToolCall;
-import com.enrola.anna.config.LimitsProperties;
-import com.enrola.anna.config.SchedulingProperties;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.conversation.Conversation;
 import com.enrola.anna.conversation.ConversationRepository;
 import com.enrola.anna.conversation.Direction;
@@ -58,17 +57,17 @@ public class ConsoleViews {
   private final MessageRepository messages;
   private final TurnRepository turns;
   private final BookingRepository bookings;
-  private final LimitsProperties limits;
-  private final SmsProperties sms;
-  private final SchedulingProperties scheduling;
+  private final SettingsStore settings;
   private final AppClock clock;
   private final JsonMapper json;
 
   /**
-   * How free text reaches the page: as stored with the mask off; with it on, phones and emails
-   * masked, and hidden whole where the conversation carries health information.
+   * How a conversation reaches the page: free text as stored with the mask off; with it on, phones
+   * and emails masked, and hidden whole where the conversation carries health information. Lengths
+   * are measured against the limits this render read, so a reply sent under an older limit shows
+   * against today's.
    */
-  private record Shown(Conversation conversation, boolean mask) {
+  private record Shown(Conversation conversation, boolean mask, Settings.Limits limits) {
 
     String freeText(String text) {
       return mask ? PiiMask.freeText(text, conversation.healthInfoTurn != null) : text;
@@ -88,9 +87,7 @@ public class ConsoleViews {
       MessageRepository messages,
       TurnRepository turns,
       BookingRepository bookings,
-      LimitsProperties limits,
-      SmsProperties sms,
-      SchedulingProperties scheduling,
+      SettingsStore settings,
       AppClock clock,
       JsonMapper json) {
     this.conversations = conversations;
@@ -98,9 +95,7 @@ public class ConsoleViews {
     this.messages = messages;
     this.turns = turns;
     this.bookings = bookings;
-    this.limits = limits;
-    this.sms = sms;
-    this.scheduling = scheduling;
+    this.settings = settings;
     this.clock = clock;
     this.json = json;
   }
@@ -110,18 +105,22 @@ public class ConsoleViews {
     Conversation conversation = conversations.require(conversationId);
     Lead lead = leadOf(conversation);
     List<Turn> turnRows = turns.findByConversationIdOrderByTurnNoAsc(conversationId);
-    Shown shown = new Shown(conversation, mask);
+    Settings current = settings.current();
+    Shown shown = new Shown(conversation, mask, current.limits());
     return new ConsoleView(
         conversation,
         mask ? PiiMask.apply(lead) : lead,
         wallClock(clock.now(), ZoneId.of(conversation.leadZoneId)),
         thread(conversation, turnRows, shown),
         seen(turnRows),
-        counters(conversation, limits),
+        counters(conversation, shown.limits()),
         shown.freeText(conversation.summary),
         facts(conversation.extracted(), shown),
-        bookings.findByConversationId(conversationId).map(this::bookingCard).orElse(null),
-        sms.maxInboundChars());
+        bookings
+            .findByConversationId(conversationId)
+            .map(booking -> bookingCard(booking, current.scheduling()))
+            .orElse(null),
+        shown.limits().maxInboundChars());
   }
 
   /**
@@ -129,7 +128,7 @@ public class ConsoleViews {
    * refused: the last reply before the turn cap, the objection with no retry left, the off-topic
    * message that ends the streak, the closing reply already used.
    */
-  static List<ConsoleView.Counter> counters(Conversation conversation, LimitsProperties limits) {
+  static List<ConsoleView.Counter> counters(Conversation conversation, Settings.Limits limits) {
     return List.of(
         new ConsoleView.Counter(
             "turns",
@@ -171,7 +170,7 @@ public class ConsoleViews {
         turnRows.stream().collect(Collectors.toMap(Turn::turnNo, Turn::status));
     List<ThreadItem> items = new ArrayList<>();
     for (Message message : messages.transcript(conversation.id)) {
-      items.add(bubble(message, shown.body(message), source(message, statuses), zone));
+      items.add(bubble(message, source(message, statuses), zone, shown));
     }
     Set<Integer> answered =
         items.stream()
@@ -188,13 +187,15 @@ public class ConsoleViews {
     return items;
   }
 
-  private ThreadItem.Bubble bubble(Message message, String body, ReplySource source, ZoneId zone) {
+  private static ThreadItem.Bubble bubble(
+      Message message, ReplySource source, ZoneId zone, Shown shown) {
+    Settings.Limits limits = shown.limits();
     return new ThreadItem.Bubble(
         message.direction(),
-        body,
+        shown.body(message),
         message.charCount(),
-        sms.maxChars(),
-        message.charCount() > sms.targetChars(),
+        limits.maxChars(),
+        message.charCount() > limits.targetChars(),
         source,
         message.repaired(),
         message.turnNo(),
@@ -256,7 +257,8 @@ public class ConsoleViews {
         text(extracted, "preferred_time_of_day"));
   }
 
-  private ConsoleView.BookingCard bookingCard(Booking booking) {
+  private static ConsoleView.BookingCard bookingCard(
+      Booking booking, Settings.Scheduling scheduling) {
     return new ConsoleView.BookingCard(
         booking.id(),
         booking.localLabel(),

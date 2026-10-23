@@ -1,16 +1,20 @@
 package com.enrola.anna.web;
 
+import com.enrola.anna.config.Settings;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 
 /**
- * Values for the status strip and banner on every page: clock mode and the fixed instant's label,
- * app spend against its cap, the model, effort and active prompt version, whether the agent can
- * answer, and the PII mask.
+ * Values for the status strip and banner on every page: the clock's mode and its advisor-local time
+ * to the minute with the zone's name, the calendar preset, app spend against its cap, the model,
+ * effort and active prompt version, whether the agent can answer, and the PII mask.
  */
 public record ShellModel(
-    String clockMode,
-    String fixedAt,
+    Settings.ClockMode clockMode,
+    LocalDateTime clockTime,
+    String clockZone,
+    Settings.CalendarPreset calendarPreset,
     BigDecimal spend,
     BigDecimal cap,
     String model,
@@ -20,6 +24,11 @@ public record ShellModel(
     boolean piiMask) {
 
   private static final BigDecimal CENT = new BigDecimal("0.01");
+
+  /** The clock stands still, so the strip shows the time it stands at. */
+  public boolean clockFixed() {
+    return clockMode == Settings.ClockMode.FIXED;
+  }
 
   /** "$0.0083 of $10.00": four decimals under a cent, so one cheap turn never reads $0.00. */
   public String meterLabel() {

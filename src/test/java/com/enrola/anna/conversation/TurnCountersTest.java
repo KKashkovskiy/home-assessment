@@ -7,7 +7,7 @@ import com.enrola.anna.agent.Decisions;
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.agent.ObjectionType;
-import com.enrola.anna.config.LimitsProperties;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.guard.PreGuards;
 import com.enrola.anna.prompt.Template;
 import java.time.Instant;
@@ -20,7 +20,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 /** The counting rules with limits 15/3/1, one decision at a time, no database. */
 class TurnCountersTest {
 
-  final TurnCounters counters = new TurnCounters(new LimitsProperties(15, 3, 1));
+  final TurnCounters counters = new TurnCounters(SettingsFixture.DEFAULTS.limits());
   final Conversation conversation = new Conversation();
   final List<Message> transcript = new ArrayList<>();
 

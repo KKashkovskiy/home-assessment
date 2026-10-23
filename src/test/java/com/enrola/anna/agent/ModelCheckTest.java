@@ -3,44 +3,58 @@ package com.enrola.anna.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.awaitility.Awaitility.await;
 
-import com.enrola.anna.config.AgentProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsFixture;
+import com.enrola.anna.config.SettingsStore;
+import java.nio.file.Path;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
- * A failed boot check warns, unless strict mode asks for a failed boot; either way the console can
- * read how it went.
+ * The check asks what a turn would ask; a failure at boot warns unless strict mode asks for a
+ * failed boot, and a save that changes the request checks again. The console reads how the latest
+ * check went.
  */
 class ModelCheckTest {
 
+  static final ModelResponse OK =
+      new ModelResponse.Decided(
+          JsonNodeFactory.instance.objectNode().put("ok", true),
+          null,
+          ModelResponse.Usage.ZERO,
+          5,
+          "{}",
+          "{}");
+
   final ScriptedModelClient model = new ScriptedModelClient();
 
-  @Test
-  void checkPingsTheConfiguredModel() {
-    model.enqueue(
-        new ModelResponse.Decided(
-            JsonNodeFactory.instance.objectNode().put("ok", true),
-            null,
-            ModelResponse.Usage.ZERO,
-            5,
-            "{}",
-            "{}"));
+  @TempDir Path dataDir;
 
-    ModelCheck check = new ModelCheck(model, agent(false));
+  /** The model, its reasoning and the output cap of the settings, as a turn sends them. */
+  @Test
+  void checkAsksWhatATurnWould() {
+    model.enqueue(OK);
+    ModelCheck check = check(false);
     assertThat(check.result()).isEqualTo(ModelCheck.Result.PENDING);
 
     check.run(null);
 
-    assertThat(model.calls()).singleElement().extracting(ModelRequest::model).isEqualTo("gpt-5.1");
+    ModelRequest ping = model.calls().getFirst();
+    assertThat(ping.model()).isEqualTo("gpt-5.1");
+    assertThat(ping.reasoningEffort()).isEqualTo("low");
+    assertThat(ping.reasoningSummary()).isEqualTo("auto");
+    assertThat(ping.maxOutputTokens()).isEqualTo(1200);
     assertThat(check.result()).isEqualTo(ModelCheck.Result.PASSED);
   }
 
   @Test
   void failedCheckWarnsAndContinues() {
     model.enqueue(Decisions.failed(ModelResponse.Failure.HTTP_5XX));
-    ModelCheck check = new ModelCheck(model, agent(false));
+    ModelCheck check = check(false);
 
     assertThatCode(() -> check.run(null)).doesNotThrowAnyException();
     assertThat(check.result()).isEqualTo(ModelCheck.Result.FAILED);
@@ -51,11 +65,32 @@ class ModelCheckTest {
     model.enqueue(Decisions.failed(ModelResponse.Failure.HTTP_4XX));
 
     assertThatIllegalStateException()
-        .isThrownBy(() -> new ModelCheck(model, agent(true)).run(null))
+        .isThrownBy(() -> check(true).run(null))
         .withMessage("model check failed for gpt-5.1: HTTP_4XX");
   }
 
-  private static AgentProperties agent(boolean strict) {
-    return new AgentProperties("gpt-5.1", "low", "auto", Duration.ofSeconds(1), 0, 16, 4, strict);
+  /** A save that changes the request asks again; one that changes something else does not. */
+  @Test
+  void aSaveThatChangesTheRequestChecksAgain() {
+    SettingsStore settings = new SettingsStore(SettingsFixture.DEFAULTS, dataDir);
+    ModelCheck check = new ModelCheck(model, settings, SettingsFixture.yml());
+    model.enqueue(OK).enqueue(Decisions.failed(ModelResponse.Failure.HTTP_4XX));
+    check.run(null);
+
+    settings.save(SettingsFixture.with(settings.current(), "limits", "maxTurns", 7));
+    assertThat(model.calls()).hasSize(1);
+
+    settings.save(
+        SettingsFixture.with(
+            settings.current(), "agent", "reasoning", Settings.ReasoningEffort.MEDIUM));
+    await().atMost(Duration.ofSeconds(5)).until(() -> check.result() == ModelCheck.Result.FAILED);
+    assertThat(model.calls()).last().extracting(ModelRequest::reasoningEffort).isEqualTo("medium");
+  }
+
+  private ModelCheck check(boolean strict) {
+    return new ModelCheck(
+        model,
+        new SettingsStore(SettingsFixture.DEFAULTS, dataDir),
+        SettingsFixture.yml("anna.agent.strict-model-check=" + strict));
   }
 }

@@ -2,7 +2,6 @@ package com.enrola.anna.conversation;
 
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.Flag;
-import com.enrola.anna.config.SmsProperties;
 import com.enrola.anna.guard.ReplyCheck;
 import com.enrola.anna.guard.ReplyContext;
 import com.enrola.anna.guard.ReplyGuards;
@@ -28,21 +27,18 @@ class ReplyRepair {
   private final AgentCall calls;
   private final GuardOutcomes outcomes;
   private final TraceLog trace;
-  private final SmsProperties sms;
 
   ReplyRepair(
       ReplyGuards guards,
       TurnQuestions questions,
       AgentCall calls,
       GuardOutcomes outcomes,
-      TraceLog trace,
-      SmsProperties sms) {
+      TraceLog trace) {
     this.guards = guards;
     this.questions = questions;
     this.calls = calls;
     this.outcomes = outcomes;
     this.trace = trace;
-    this.sms = sms;
   }
 
   /**
@@ -104,15 +100,16 @@ class ReplyRepair {
           TraceLog.Entry.guard(
               check.traceName(),
               notes.isEmpty() ? TraceOutcome.PASS : onFailure,
-              payload(check, notes, checked.text())));
+              payload(check, notes, checked.text(), turn.settings().limits().maxChars())));
     }
     return checked;
   }
 
   /** The check's notes; the length row also carries what was measured and the limit. */
-  private Map<String, Object> payload(ReplyCheck check, List<String> notes, String text) {
+  private static Map<String, Object> payload(
+      ReplyCheck check, List<String> notes, String text, int limit) {
     return check == ReplyCheck.LENGTH
-        ? Map.of("chars", text.length(), "limit", sms.maxChars(), "notes", notes)
+        ? Map.of("chars", text.length(), "limit", limit, "notes", notes)
         : Map.of("notes", notes);
   }
 
@@ -129,6 +126,6 @@ class ReplyRepair {
         questions.bookingLabel(conversation),
         conversation.goalMet,
         conversation.ended,
-        sms.maxChars());
+        turn.settings().limits().maxChars());
   }
 }

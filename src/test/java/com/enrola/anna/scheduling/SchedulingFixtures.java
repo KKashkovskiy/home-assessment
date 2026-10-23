@@ -1,9 +1,9 @@
 package com.enrola.anna.scheduling;
 
 import com.enrola.anna.AppClock;
-import com.enrola.anna.config.ClockProperties;
-import com.enrola.anna.config.SchedulingProperties;
-import com.enrola.anna.config.SchedulingProperties.CalendarPreset;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.Settings.CalendarPreset;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.lead.Lead;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -12,7 +12,7 @@ import java.time.ZoneId;
 import java.util.List;
 
 /**
- * The shipped scheduling defaults, a clock fixed on Sunday 26 July 2026, 10:00 in Melbourne, and
+ * The shipped scheduling settings, a clock fixed on Sunday 26 July 2026, 10:00 in Melbourne, and
  * Lauren, a Victorian lead.
  */
 final class SchedulingFixtures {
@@ -23,29 +23,42 @@ final class SchedulingFixtures {
   static final Lead LAUREN =
       new Lead("lauren", "Lauren", "+61400000001", null, "VIC", null, null, null, null, SUNDAY);
 
+  /** Melbourne, 9:00 to 20:00 and Saturday to 17:00, 60 minutes' lead, 14 days, 6 slots. */
+  static final Settings.Scheduling SCHEDULING = SettingsFixture.DEFAULTS.scheduling();
+
   private SchedulingFixtures() {}
 
-  static SchedulingProperties defaults() {
-    return props(CalendarPreset.NORMAL, List.of());
-  }
-
-  static SchedulingProperties props(CalendarPreset preset, List<LocalDate> stateHolidays) {
-    return new SchedulingProperties(
-        MELBOURNE,
-        60,
-        14,
-        LocalTime.of(9, 0),
-        LocalTime.of(20, 0),
-        LocalTime.of(17, 0),
-        15,
-        30,
-        6,
-        preset,
+  /** The shipped settings with the advisors' state closed on {@code stateHolidays}. */
+  static Settings.Scheduling withHolidays(List<LocalDate> stateHolidays) {
+    return new Settings.Scheduling(
+        SCHEDULING.hoursFrom(),
+        SCHEDULING.hoursTo(),
+        SCHEDULING.satTo(),
+        SCHEDULING.leadTimeMin(),
+        SCHEDULING.horizonDays(),
+        SCHEDULING.advisorZone(),
+        SCHEDULING.eventMin(),
+        SCHEDULING.gridMin(),
+        SCHEDULING.maxSlots(),
         stateHolidays);
   }
 
   static AppClock clockAt(Instant at) {
-    return new AppClock(new ClockProperties(ClockProperties.Mode.FIXED, at));
+    AppClock clock = new AppClock();
+    clock.fixAt(at);
+    return clock;
+  }
+
+  static FakeCalendar calendar(AppClock clock, CalendarPreset preset) {
+    FakeCalendar calendar = new FakeCalendar(clock);
+    calendar.preset(preset);
+    return calendar;
+  }
+
+  /** A call answered for {@code lead} in {@code leadZone} under the shipped settings. */
+  static ToolContext context(
+      String conversationId, Lead lead, ZoneId leadZone, List<Slot> lastOffered) {
+    return new ToolContext(conversationId, lead, leadZone, lastOffered, SCHEDULING);
   }
 
   /** A failure's or rejection's code, or the kind of result otherwise; never the hint wording. */

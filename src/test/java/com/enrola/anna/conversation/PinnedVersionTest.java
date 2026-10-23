@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.enrola.anna.agent.Decisions;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.ScriptedModelClient;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.guard.ModerationVerdict;
 import com.enrola.anna.guard.ScriptedModerationClient;
 import com.enrola.anna.lead.LeadRepository;
@@ -41,8 +42,9 @@ class PinnedVersionTest {
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
-  static void databaseInTempDir(DynamicPropertyRegistry registry) {
+  static void dataInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + tempDir.resolve("anna"));
+    registry.add("anna.data-dir", tempDir::toString);
   }
 
   @TestConfiguration
@@ -204,7 +206,7 @@ class PinnedVersionTest {
 
   private String activeTemplate(Template template) {
     return prompts
-        .bundle(prompts.activeId())
+        .bundle(prompts.activeId(), SettingsFixture.DEFAULTS.persona())
         .templates()
         .render(template, leads.findById("lauren").orElseThrow());
   }

@@ -19,7 +19,28 @@
       <li><a th:href="@{/evals}" th:aria-current="${tab == 'evals'} ? 'page'">Evals</a></li>
     </ul></nav>
     <div id="status-strip" class="status-strip">
-      <span class="chip" th:title="${shell.fixedAt != null} ? 'Fixed clock: the fake calendar and lead-local times read it' : 'System clock'">Clock <b th:text="${shell.clockMode}">REAL</b> <span class="muted" th:if="${shell.fixedAt != null}" th:text="${shell.fixedAt}"></span></span>
+      <!-- Test controls: each saves the settings with one value changed, as the Configuration page does. A real clock
+           sends this minute, where FIXED then stands. The script posts a select as it changes and hides its button;
+           without it the buttons post. -->
+      <form id="clock-control" class="chip control" method="post" th:action="@{/configuration/clock}" th:title="${shell.clockFixed()} ? 'Fixed clock: the fake calendar and lead-local times read it' : 'System clock'">
+        <label for="clock-mode">Clock</label>
+        <select id="clock-mode" name="clockMode" data-autosubmit><option th:each="mode : ${@fmt.clockModes()}" th:value="${mode}" th:text="${mode}" th:selected="${mode == shell.clockMode}">REAL</option></select>
+        <th:block th:if="${shell.clockFixed()}">
+          <label class="visually-hidden" for="clock-time">Fixed time in the advisors' zone</label>
+          <input id="clock-time" name="fixedClock" type="datetime-local" th:value="${shell.clockTime}">
+          <span class="muted" th:text="${shell.clockZone}">AEST</span>
+          <button class="chip" type="submit">Set</button>
+        </th:block>
+        <th:block th:unless="${shell.clockFixed()}">
+          <input type="hidden" name="fixedClock" th:value="${shell.clockTime}">
+          <button class="chip" type="submit" data-autosubmit-button>Set</button>
+        </th:block>
+      </form>
+      <form id="calendar-control" class="chip control" method="post" th:action="@{/configuration/calendar-preset}" title="The fake calendar's preset for the next availability or booking call">
+        <label for="calendar-preset">Calendar</label>
+        <select id="calendar-preset" name="calendarPreset" data-autosubmit><option th:each="preset : ${@fmt.calendarPresets()}" th:value="${preset.value()}" th:text="${@fmt.presetName(preset)}" th:selected="${preset == shell.calendarPreset}">normal</option></select>
+        <button class="chip" type="submit" data-autosubmit-button>Set</button>
+      </form>
       <span class="meter" title="App spend against the hard cap; eval spend is a separate ledger"><span class="track" aria-hidden="true"><span class="fill" th:style="'width:' + ${shell.spendPercent()} + '%'"></span></span><span class="num" th:text="${shell.meterLabel()}">$0.00 of $10.00</span></span>
       <span th:class="${shell.agentAvailable()} ? 'chip accent' : 'chip fail'" th:data-agent="${shell.agent}" title="Model, reasoning effort and the prompt version new conversations start on"><b th:text="${shell.model}">gpt-5.1</b> <th:block th:text="${shell.agentAvailable()} ? ${shell.effort} : 'unavailable'">low</th:block> <span th:text="'prompt ' + ${shell.promptVersion}">prompt v1</span></span>
       <form class="inline-form" method="post" th:action="@{/ui/pii-mask}">

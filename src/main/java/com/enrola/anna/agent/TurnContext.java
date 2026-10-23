@@ -1,6 +1,6 @@
 package com.enrola.anna.agent;
 
-import com.enrola.anna.config.LimitsProperties;
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.scheduling.Slot;
 import java.time.ZonedDateTime;
@@ -23,7 +23,7 @@ public record TurnContext(
     ZonedDateTime leadNow,
     boolean zoneAssumed,
     Counters counters,
-    LimitsProperties limits,
+    Settings.Limits limits,
     String bookingLabel,
     List<Slot> lastOfferedSlots,
     boolean ended,

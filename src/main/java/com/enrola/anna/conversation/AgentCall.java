@@ -4,7 +4,7 @@ import com.enrola.anna.agent.AgentService;
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.ToolLoopCallbacks;
-import com.enrola.anna.config.AgentProperties;
+import com.enrola.anna.config.Settings;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,19 +21,16 @@ class AgentCall {
   private final TurnQuestions questions;
   private final ModelCallRecorder modelCalls;
   private final TurnToolCalls tools;
-  private final AgentProperties agentProps;
 
   AgentCall(
       AgentService agent,
       TurnQuestions questions,
       ModelCallRecorder modelCalls,
-      TurnToolCalls tools,
-      AgentProperties agentProps) {
+      TurnToolCalls tools) {
     this.agent = agent;
     this.questions = questions;
     this.modelCalls = modelCalls;
     this.tools = tools;
-    this.agentProps = agentProps;
   }
 
   /** What one recorded call came to, with the turn's model columns either way. */
@@ -45,18 +42,14 @@ class AgentCall {
     record Failed(ModelResponse.Failure code, Turn.ModelCall call) implements Answer {}
   }
 
-  /**
-   * The tool rounds of {@code turn}, {@code anna.agent.max-tool-rounds} of them for all its calls.
-   */
+  /** The tool rounds of {@code turn}, its settings' {@code maxToolRounds} for all its calls. */
   ToolRounds toolRoundsFor(RunningTurn turn) {
-    return new ToolRounds(turn, agentProps.maxToolRounds());
+    return new ToolRounds(turn, turn.settings().limits().maxToolRounds());
   }
 
   /** A call that may use the scheduling tools while {@code rounds} has some left. */
   Answer ask(RunningTurn turn, TurnQuestions.Question question, ToolRounds rounds) {
-    return answerOf(
-        turn,
-        agent.decide(turn.prompt(), questions.transcriptOf(question), question.context(), rounds));
+    return answerOf(turn, agent.decide(callFor(turn, question), rounds));
   }
 
   /**
@@ -65,10 +58,7 @@ class AgentCall {
    */
   Answer classify(RunningTurn turn, TurnQuestions.Question question, ToolRounds rounds) {
     rounds.endToolRounds();
-    return answerOf(
-        turn,
-        agent.classify(
-            turn.prompt(), questions.transcriptOf(question), question.context(), rounds));
+    return answerOf(turn, agent.classify(callFor(turn, question), rounds));
   }
 
   /**
@@ -80,6 +70,17 @@ class AgentCall {
     return turn.conversation().ended
         ? classify(turn, question, rounds)
         : ask(turn, question, rounds);
+  }
+
+  private AgentService.Call callFor(RunningTurn turn, TurnQuestions.Question question) {
+    Settings settings = turn.settings();
+    return new AgentService.Call(
+        turn.prompt(),
+        settings.agent(),
+        settings.persona(),
+        settings.limits(),
+        questions.transcriptOf(question, settings.limits()),
+        question.context());
   }
 
   private Answer answerOf(RunningTurn turn, AgentService.TurnResult result) {

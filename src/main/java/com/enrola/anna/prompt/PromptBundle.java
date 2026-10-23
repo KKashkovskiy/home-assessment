@@ -1,7 +1,6 @@
 package com.enrola.anna.prompt;
 
-import com.enrola.anna.config.PersonaProperties;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.config.Settings;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,9 +30,9 @@ public record PromptBundle(
   /** What {@link #render} fills each placeholder with; the names a prompt must use, and only. */
   private static final Map<String, Function<Fill, String>> PLACEHOLDERS =
       Map.of(
-          "persona", fill -> fill.persona().name(),
-          "target_chars", fill -> String.valueOf(fill.sms().targetChars()),
-          "max_chars", fill -> String.valueOf(fill.sms().maxChars()),
+          "persona", fill -> fill.persona().persona(),
+          "target_chars", fill -> String.valueOf(fill.limits().targetChars()),
+          "max_chars", fill -> String.valueOf(fill.limits().maxChars()),
           "canary", fill -> fill.bundle().canary(),
           "knowledge", fill -> fill.bundle().knowledge());
 
@@ -41,7 +40,7 @@ public record PromptBundle(
     tools = List.copyOf(tools);
   }
 
-  private record Fill(PromptBundle bundle, PersonaProperties persona, SmsProperties sms) {}
+  private record Fill(PromptBundle bundle, Settings.Persona persona, Settings.Limits limits) {}
 
   /**
    * What {@link #render} needs of a prompt: every placeholder present, and none it would not fill.
@@ -65,8 +64,8 @@ public record PromptBundle(
    * The instructions of every call: placeholders filled and the pack inlined in one pass, so text
    * in a value that looks like a placeholder stays literal.
    */
-  public String render(PersonaProperties persona, SmsProperties sms) {
-    Fill fill = new Fill(this, persona, sms);
+  public String render(Settings.Persona persona, Settings.Limits limits) {
+    Fill fill = new Fill(this, persona, limits);
     return PLACEHOLDER
         .matcher(prompt)
         .replaceAll(

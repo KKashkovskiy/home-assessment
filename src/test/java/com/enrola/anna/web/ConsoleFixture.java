@@ -2,6 +2,8 @@ package com.enrola.anna.web;
 
 import com.enrola.anna.AppClock;
 import com.enrola.anna.agent.ScriptedModelClient;
+import com.enrola.anna.config.SettingsDefaults;
+import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.conversation.ConversationService;
 import com.enrola.anna.conversation.Source;
 import com.enrola.anna.guard.ScriptedModerationClient;
@@ -26,9 +28,10 @@ import org.springframework.web.context.WebApplicationContext;
 /**
  * The console over real H2 on Sunday 26 July 2026, 10:00 in Melbourne, with locks that give up
  * after 100 ms and no model, unless a subclass imports {@link Scripted}. Every test starts with no
- * conversations, only the seeded leads and prompt v1 active; conversations are made through the
- * service, never by inserting rows. Every context shares one database for the run, since the cache
- * keeps contexts across classes; each test empties it first.
+ * conversations, only the seeded leads, prompt v1 active, the yml's settings and the shipped quick
+ * replies; conversations are made through the service, never by inserting rows. Every context
+ * shares one database and data directory for the run, since the cache keeps contexts across
+ * classes; each test resets them first.
  */
 @SpringBootTest(
     properties = {
@@ -45,8 +48,9 @@ abstract class ConsoleFixture {
   static final Path DATABASE = temporaryDirectory();
 
   @DynamicPropertySource
-  static void databaseInTempDir(DynamicPropertyRegistry registry) {
+  static void dataInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + DATABASE.resolve("anna"));
+    registry.add("anna.data-dir", DATABASE::toString);
   }
 
   private static Path temporaryDirectory() {
@@ -75,10 +79,16 @@ abstract class ConsoleFixture {
   @Autowired JdbcTemplate jdbc;
   @Autowired ConversationService conversations;
   @Autowired AppClock clock;
+  @Autowired SettingsStore settings;
+  @Autowired SettingsDefaults defaults;
   MockMvc mvc;
 
   @BeforeEach
-  void noConversations() {
+  void noConversations() throws IOException {
+    if (!settings.current().equals(defaults.settings())) {
+      settings.save(defaults.settings());
+    }
+    Files.deleteIfExists(DATABASE.resolve("quick-replies.txt"));
     clock.fixAt(Instant.parse(NOW));
     mvc = MockMvcBuilders.webAppContextSetup(context).build();
     jdbc.update("delete from booking");

@@ -1,7 +1,7 @@
-/* Anna console. The server renders every page and fragment; this script adds the theme toggle, the start
-   panel as a dialog, filters that apply on change, the composer's optimistic send, the inspector's
-   toggles, prompt dialog and live log, and Monaco over the prompt editor's form. Every action is also a plain
-   form post or link, so the console works without it. */
+/* Anna console. The server renders every page and fragment; this script adds the theme toggle, the status strip's
+   test controls posting on change, the start panel as a dialog, filters that apply on change, the composer's
+   optimistic send, the inspector's toggles, prompt dialog and live log, and Monaco over the prompt editor's form.
+   Every action is also a plain form post or link, so the console works without it. */
 (function () {
   'use strict';
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -34,6 +34,12 @@
     };
     window.addEventListener('resize', measure);
     measure();
+  }
+
+  /* The status strip's test controls post as a select changes, so their buttons are only for pages without the script. */
+  function initAutosubmit() {
+    $$('[data-autosubmit]').forEach((select) => select.addEventListener('change', () => select.form.requestSubmit()));
+    $$('[data-autosubmit-button]').forEach((button) => { button.hidden = true; });
   }
 
   /* The full id is the copy button's: the page shows only its start. */
@@ -486,6 +492,7 @@
   }
 
   initTheme();
+  initAutosubmit();
   trackChromeHeight();
   initCopyButtons();
   initFilters();

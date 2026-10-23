@@ -7,22 +7,33 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsFixture;
+import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.PromptVersion;
 import com.enrola.anna.prompt.PromptVersionRepository;
+import com.enrola.anna.scheduling.FakeCalendar;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -37,6 +48,7 @@ class ConfigurationControllerTest extends ConsoleFixture {
   @Autowired PromptStore prompts;
   @Autowired PromptVersionRepository versions;
   @Autowired DataSource dataSource;
+  @Autowired QuickReplies quickReplies;
 
   @Test
   void pageOpensTheActiveVersionInTheForm() throws Exception {
@@ -314,6 +326,311 @@ class ConfigurationControllerTest extends ConsoleFixture {
 
     assertThat(count("select count(*) from prompt_version")).isEqualTo(2);
     assertThat(prompts.activeId()).isEqualTo("v1");
+  }
+
+  /**
+   * The settings form, saved whole: refused with every problem beside its field and nothing
+   * written, or applied, persisted and reread by a store built after it, as at the next boot.
+   */
+  @Nested
+  class RuntimeSettings {
+
+    @Test
+    void formShowsTheRunningValuesTheKeysAndWhatNeedsARestart() throws Exception {
+      ResultActions shown = mvc.perform(get("/configuration")).andExpect(status().isOk());
+
+      SettingsPage page = settingsPage(shown);
+      assertThat(page.form()).isEqualTo(SettingsForm.of(defaults.settings(), quickReplies.text()));
+      assertThat(page.problems()).isEmpty();
+      assertThat(page.keys())
+          .containsExactly(
+              new SettingsPage.Key("OPENAI_API_KEY", false),
+              new SettingsPage.Key("EVAL_OPENAI_API_KEY", false));
+      assertThat(page.restartOnly())
+          .extracting(SettingsPage.RestartOnly::name)
+          .contains("Database URL", "Model timeout", "Strict model check");
+      assertThat(body(shown))
+          .contains(
+              "name=\"maxTurns\" type=\"number\" value=\"15\"",
+              "name=\"prices[0].model\" value=\"gpt-5.1\"",
+              "data-key=\"OPENAI_API_KEY\"");
+    }
+
+    @Test
+    void refusedSaveMarksEveryProblemAndWritesNothing() throws Exception {
+      Settings broken =
+          SettingsFixture.with(
+              SettingsFixture.with(defaults.settings(), "limits", "targetChars", 400),
+              "budgets",
+              "convCap",
+              new BigDecimal("20"));
+
+      ResultActions refused =
+          mvc.perform(settingsPost(broken, quickReplies.text())).andExpect(status().isBadRequest());
+
+      SettingsPage page = settingsPage(refused);
+      assertThat(page.problems()).containsOnlyKeys("targetChars", "convCap");
+      assertThat(page.notice().code()).isEqualTo("SETTINGS_NOT_SAVED");
+      assertThat(page.form().targetChars()).isEqualTo(400);
+      assertThat(body(refused))
+          .contains(
+              "data-notice=\"SETTINGS_NOT_SAVED\"",
+              "id=\"s-target-error\">" + page.problems().get("targetChars") + "<");
+      assertThat(settings.current()).isEqualTo(defaults.settings());
+      assertThat(DATABASE.resolve("settings.json")).doesNotExist();
+    }
+
+    @Test
+    void aValueThatDoesNotBindIsMarkedBeforeAnyRule() throws Exception {
+      MultiValueMap<String, String> fields = settingsForm(defaults.settings(), quickReplies.text());
+      fields.set("maxChars", "lots");
+      fields.set("advisorZone", "Mars/Olympus");
+
+      ResultActions refused =
+          mvc.perform(post("/configuration/settings").params(fields))
+              .andExpect(status().isBadRequest());
+
+      SettingsPage page = settingsPage(refused);
+      assertThat(page.problems()).containsOnlyKeys("maxChars", "advisorZone");
+      assertThat(page.typed()).containsEntry("maxChars", "lots");
+      assertThat(settings.current()).isEqualTo(defaults.settings());
+    }
+
+    /** An emptied number shows empty again, not a zero the browser never sent. */
+    @Test
+    void anEmptiedNumberIsShownEmptyWithWhatToEnter() throws Exception {
+      MultiValueMap<String, String> fields = settingsForm(defaults.settings(), quickReplies.text());
+      fields.set("maxTurns", "");
+
+      ResultActions refused =
+          mvc.perform(post("/configuration/settings").params(fields))
+              .andExpect(status().isBadRequest());
+
+      assertThat(settingsPage(refused).problems())
+          .containsEntry("maxTurns", "Enter a whole number.");
+      assertThat(body(refused)).contains("name=\"maxTurns\" type=\"number\" value=\"\"");
+    }
+
+    /** A bad price cell marks its row, and only that row. */
+    @Test
+    void aBadPriceCellMarksItsRow() throws Exception {
+      MultiValueMap<String, String> fields = settingsForm(defaults.settings(), quickReplies.text());
+      fields.set("prices[0].input", "cheap");
+
+      ResultActions refused =
+          mvc.perform(post("/configuration/settings").params(fields))
+              .andExpect(status().isBadRequest());
+
+      SettingsPage page = settingsPage(refused);
+      assertThat(page.problems()).containsOnlyKeys("prices[0]");
+      assertThat(page.priceProblem()).isEqualTo("Enter a number.");
+    }
+
+    /** A price row the rules refuse is marked by its place in the table, not by its model. */
+    @Test
+    void aRefusedPriceRowIsMarkedWhereItSits() throws Exception {
+      MultiValueMap<String, String> fields = settingsForm(defaults.settings(), quickReplies.text());
+      fields.set("prices[0].output", "-1");
+
+      assertThat(
+              settingsPage(
+                      mvc.perform(post("/configuration/settings").params(fields))
+                          .andExpect(status().isBadRequest()))
+                  .problems())
+          .containsOnlyKeys("prices[0]");
+    }
+
+    @Test
+    void postsFromAnotherSiteAreRefused() throws Exception {
+      for (MockHttpServletRequestBuilder control :
+          List.of(
+              settingsPost(SettingsFixture.with(defaults.settings(), "limits", "maxTurns", 2), ""),
+              post("/configuration/clock")
+                  .param("clockMode", "REAL")
+                  .param("fixedClock", "2026-07-26T10:00"),
+              post("/configuration/calendar-preset").param("calendarPreset", "fully_booked"))) {
+        mvc.perform(control.header("Sec-Fetch-Site", "cross-site"))
+            .andExpect(status().isForbidden());
+      }
+
+      assertThat(settings.current()).isEqualTo(defaults.settings());
+    }
+
+    @Test
+    void savedSettingsApplyAndAreReadAgainAtBoot() throws Exception {
+      Settings changed =
+          SettingsFixture.with(defaults.settings(), "limits", "maxTurns", 2)
+              .withCalendarPreset(Settings.CalendarPreset.SLOT_TAKEN);
+
+      MvcResult saved =
+          mvc.perform(settingsPost(changed, "STOP\nare you a bot?\n"))
+              .andExpect(status().is3xxRedirection())
+              .andExpect(header().string("Location", "/configuration#settings-form"))
+              .andReturn();
+
+      assertThat(saved.getFlashMap().get("settingsNotice"))
+          .extracting(notice -> ((Notice) notice).code())
+          .isEqualTo("SETTINGS_SAVED");
+      assertThat(settings.current()).isEqualTo(changed);
+      assertThat(new SettingsStore(defaults, DATABASE).current()).isEqualTo(changed);
+      assertThat(quickReplies.load())
+          .extracting(QuickReplies.QuickReply::label)
+          .containsExactly("STOP", "are you a bot?");
+      assertThat(quickReplies.text()).isEqualTo("STOP\nare you a bot?\n");
+    }
+
+    @Test
+    void quickRepliesOverTheirLimitAreRefused() throws Exception {
+      ResultActions refused =
+          mvc.perform(settingsPost(defaults.settings(), "chip\n".repeat(51)))
+              .andExpect(status().isBadRequest());
+
+      assertThat(settingsPage(refused).problems()).containsOnlyKeys("quickReplies");
+      assertThat(DATABASE.resolve("quick-replies.txt")).doesNotExist();
+    }
+
+    private SettingsPage settingsPage(ResultActions result) {
+      return (SettingsPage) result.andReturn().getModelAndView().getModel().get("settings");
+    }
+  }
+
+  /**
+   * The status strip's clock and calendar controls: each saves one value of the settings, applies
+   * at once and outlives a restart, and answers with the page it was pressed on.
+   */
+  @Nested
+  class StripControls {
+
+    @Autowired FakeCalendar calendar;
+
+    @Test
+    void clockControlFlipsTheClockAndBack() throws Exception {
+      mvc.perform(
+              post("/configuration/clock")
+                  .param("clockMode", "REAL")
+                  .param("fixedClock", "2026-07-26T10:00")
+                  .header("Referer", "http://localhost/conversations?q=x"))
+          .andExpect(header().string("Location", "/conversations?q=x"));
+
+      assertThat(clock.fixed()).isFalse();
+      assertThat(shell(mvc.perform(get("/conversations"))).clockMode())
+          .isEqualTo(Settings.ClockMode.REAL);
+      assertThat(new SettingsStore(defaults, DATABASE).current().clock().clockMode())
+          .isEqualTo(Settings.ClockMode.REAL);
+
+      mvc.perform(
+          post("/configuration/clock")
+              .param("clockMode", "FIXED")
+              .param("fixedClock", "2026-07-27T09:30"));
+
+      assertThat(clock.now()).isEqualTo(Instant.parse("2026-07-26T23:30:00Z"));
+      assertThat(shell(mvc.perform(get("/conversations"))).clockTime())
+          .isEqualTo(LocalDateTime.of(2026, 7, 27, 9, 30));
+    }
+
+    /** The strip always sends a time; a hand-made post without one changes nothing. */
+    @Test
+    void aClockPostWithoutATimeIs400() throws Exception {
+      ResultActions refused =
+          mvc.perform(post("/configuration/clock").param("clockMode", "REAL"))
+              .andExpect(status().isBadRequest());
+
+      assertThat(config(refused).notice().code()).isEqualTo("BAD_REQUEST");
+      assertThat(settings.current()).isEqualTo(defaults.settings());
+    }
+
+    @Test
+    void presetControlReachesTheCalendar() throws Exception {
+      mvc.perform(post("/configuration/calendar-preset").param("calendarPreset", "fully_booked"))
+          .andExpect(status().is3xxRedirection());
+
+      assertThat(settings.current().calendarPreset())
+          .isEqualTo(Settings.CalendarPreset.FULLY_BOOKED);
+      assertThat(
+              calendar.freeStarts(
+                  clock.now(),
+                  clock.now().plusSeconds(7 * 86_400),
+                  settings.current().scheduling()))
+          .isEmpty();
+      assertThat(shell(mvc.perform(get("/conversations"))).calendarPreset())
+          .isEqualTo(Settings.CalendarPreset.FULLY_BOOKED);
+    }
+
+    @Test
+    void anUnknownPresetIs400() throws Exception {
+      ResultActions refused =
+          mvc.perform(post("/configuration/calendar-preset").param("calendarPreset", "haunted"))
+              .andExpect(status().isBadRequest());
+
+      assertThat(config(refused).notice().code()).isEqualTo("BAD_REQUEST");
+      assertThat(settings.current().calendarPreset()).isEqualTo(Settings.CalendarPreset.NORMAL);
+    }
+
+    private ShellModel shell(ResultActions result) {
+      return (ShellModel) result.andReturn().getModelAndView().getModel().get("shell");
+    }
+  }
+
+  /** The settings form as a browser posts {@code settings}. */
+  private static MockHttpServletRequestBuilder settingsPost(
+      Settings settings, String quickReplies) {
+    return post("/configuration/settings").params(settingsForm(settings, quickReplies));
+  }
+
+  /** Every field of the form showing {@code settings}, then the price rows, as a browser sends. */
+  private static MultiValueMap<String, String> settingsForm(
+      Settings settings, String quickReplies) {
+    SettingsForm form = SettingsForm.of(settings, quickReplies);
+    MultiValueMap<String, String> fields = new LinkedMultiValueMap<>();
+    fields.add("model", form.model());
+    fields.add("reasoning", form.reasoning().value());
+    fields.add("reasoningSummary", form.reasoningSummary().value());
+    fields.add("maxChars", String.valueOf(form.maxChars()));
+    fields.add("targetChars", String.valueOf(form.targetChars()));
+    fields.add("maxInboundChars", String.valueOf(form.maxInboundChars()));
+    fields.add("maxTurns", String.valueOf(form.maxTurns()));
+    fields.add("offTopicLimit", String.valueOf(form.offTopicLimit()));
+    fields.add("objectionRetries", String.valueOf(form.objectionRetries()));
+    fields.add("maxToolRounds", String.valueOf(form.maxToolRounds()));
+    fields.add("maxOutputTokens", String.valueOf(form.maxOutputTokens()));
+    fields.add("convCap", form.convCap().toPlainString());
+    fields.add("appCap", form.appCap().toPlainString());
+    fields.add("evalCap", form.evalCap().toPlainString());
+    fields.add("persona", form.persona());
+    fields.add("company", form.company());
+    if (form.disclosureInOpener()) {
+      fields.add("disclosureInOpener", "true");
+    }
+    fields.add("hoursFrom", form.hoursFrom().toString());
+    fields.add("hoursTo", form.hoursTo().toString());
+    fields.add("satTo", form.satTo().toString());
+    fields.add("leadTimeMin", String.valueOf(form.leadTimeMin()));
+    fields.add("horizonDays", String.valueOf(form.horizonDays()));
+    fields.add("advisorZone", form.advisorZone().getId());
+    fields.add("eventMin", String.valueOf(form.eventMin()));
+    fields.add("gridMin", String.valueOf(form.gridMin()));
+    fields.add("maxSlots", String.valueOf(form.maxSlots()));
+    fields.add("stateHolidays", form.stateHolidaysText());
+    fields.add("modHarassment", String.valueOf(form.modHarassment()));
+    fields.add("modSelfHarm", String.valueOf(form.modSelfHarm()));
+    fields.add("modThreat", String.valueOf(form.modThreat()));
+    fields.add("clockMode", form.clockMode().name());
+    fields.add("fixedClock", form.fixedClock() == null ? "" : form.fixedClock().toString());
+    fields.add("calendarPreset", form.calendarPreset().value());
+    fields.add("quickReplies", quickReplies);
+    List<SettingsForm.PriceRow> rows = form.priceRows();
+    for (int row = 0; row < rows.size(); row++) {
+      SettingsForm.PriceRow price = rows.get(row);
+      fields.add("prices[" + row + "].model", price.model());
+      fields.add("prices[" + row + "].input", plain(price.input()));
+      fields.add("prices[" + row + "].cached", plain(price.cached()));
+      fields.add("prices[" + row + "].output", plain(price.output()));
+    }
+    return fields;
+  }
+
+  private static String plain(BigDecimal usd) {
+    return usd == null ? "" : usd.toPlainString();
   }
 
   /**

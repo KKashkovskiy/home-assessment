@@ -57,7 +57,8 @@ class TurnToolCalls {
         conversation.id,
         turn.lead(),
         ZoneId.of(conversation.leadZoneId),
-        conversation.lastOfferedSlots());
+        conversation.lastOfferedSlots(),
+        turn.settings().scheduling());
   }
 
   private static void keep(RunningTurn turn, ToolResult result) {

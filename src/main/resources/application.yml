@@ -18,6 +18,10 @@ server:
         same-site: strict                 # with CrossSiteGuard, the console's cross-site protection
 anna:
   app-version: "@project.version@"       # filtered in from the pom at build time; stamped on each conversation
+  data-dir: data                          # settings.json and quick-replies.txt, the overrides the console saves
+  # The persona, agent, prices, sms, limits, budgets, moderation, scheduling and clock groups are defaults: the
+  # Configuration page saves overrides to data/settings.json, which win from then on and at every boot. The timeouts,
+  # retries and the strict model check are read once at boot and need a restart.
   persona:
     name: Anna                            # {persona} in the templates, {{persona}} in the prompt
     company: Comparato                    # named in the opener and the disclosure
@@ -25,7 +29,7 @@ anna:
   agent:
     model: gpt-5.1                        # non-mini; checked at boot when a key is set
     reasoning-effort: low                 # low | medium | high; sent as reasoning.effort
-    reasoning-summary: auto               # auto | concise | detailed; stored on the turn, never sent to the lead
+    reasoning-summary: auto               # auto | concise | detailed | off; stored on the turn, never sent to the lead
     timeout: 30s                          # per HTTP attempt; a call makes up to 1 + max-retries attempts
     max-retries: 2                        # SDK retries on timeout and 5xx
     max-output-tokens: 1200               # the decision JSON is small; the cap protects the budget
@@ -46,6 +50,7 @@ anna:
   budgets:
     app-cap-usd: 10.00                    # sum of turn.cost_usd across every conversation
     conversation-cap-usd: 0.50            # sum of turn.cost_usd for one conversation
+    eval-cap-usd: 10.00                   # one eval run's spend, a ledger of its own
   moderation:
     harassment: 0.5                       # harassment and harassment/threatening scores at or above end ABUSIVE
     threat: 0.5                           # violence and violence/graphic, likewise

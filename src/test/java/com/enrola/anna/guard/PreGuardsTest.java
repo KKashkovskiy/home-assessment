@@ -4,8 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.HandoffReason;
-import com.enrola.anna.config.LimitsProperties;
-import com.enrola.anna.config.ModerationProperties;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.guard.PreGuards.Detector;
 import com.enrola.anna.guard.PreGuards.ModelAccess;
 import com.enrola.anna.guard.PreGuards.NoModelReason;
@@ -13,7 +12,6 @@ import com.enrola.anna.guard.PreGuards.Outcome;
 import com.enrola.anna.guard.PreGuards.Standing;
 import com.enrola.anna.lead.Suppression;
 import com.enrola.anna.prompt.Template;
-import java.time.Duration;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -21,13 +19,11 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
-/** The pre-guard order with limits 15/3/1 and thresholds 0.5/0.5/0.3. */
+/** The pre-guard order with the shipped limits 15/3/1 and thresholds 0.5/0.5/0.3. */
 class PreGuardsTest {
 
   static final PreGuards GUARDS =
-      new PreGuards(
-          new LimitsProperties(15, 3, 1),
-          new ModerationProperties(0.5, 0.5, 0.3, Duration.ofSeconds(5), 0));
+      new PreGuards(SettingsFixture.DEFAULTS.limits(), SettingsFixture.DEFAULTS.moderation());
   static final Standing OPEN =
       new Standing(EndReason.NONE, false, false, 0, false, HandoffReason.NONE);
   static final Standing BOOKED =

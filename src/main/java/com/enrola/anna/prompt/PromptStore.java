@@ -1,11 +1,14 @@
 package com.enrola.anna.prompt;
 
 import com.enrola.anna.AppClock;
-import com.enrola.anna.config.PersonaProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsStore;
+import com.enrola.anna.config.SettingsValidation;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +18,9 @@ import org.springframework.stereotype.Service;
  * Prompt versions in the table, which {@link PromptSeed} fills from the repo at boot. One version
  * is active for new conversations; each conversation pins the id it started on and every turn loads
  * that one, so activating a version never changes a conversation in flight. Saving inserts the next
- * id and never updates; {@link #activate} is the only write to an existing row.
+ * id and never updates; {@link #activate} is the only write to an existing row. The active version
+ * always loads under the settings' persona: activating checks a version against it, and a settings
+ * save is checked against the active version.
  */
 @Service
 public class PromptStore {
@@ -23,7 +28,7 @@ public class PromptStore {
   private static final Logger log = LoggerFactory.getLogger(PromptStore.class);
 
   private final PromptVersionRepository versions;
-  private final PersonaProperties persona;
+  private final SettingsStore settings;
   private final AppClock clock;
   private final String canary = UUID.randomUUID().toString();
 
@@ -48,10 +53,11 @@ public class PromptStore {
   public record VersionSummary(
       String id, Instant createdAt, String createdBy, String note, boolean active) {}
 
-  public PromptStore(PromptVersionRepository versions, PersonaProperties persona, AppClock clock) {
+  public PromptStore(PromptVersionRepository versions, SettingsStore settings, AppClock clock) {
     this.versions = versions;
-    this.persona = persona;
+    this.settings = settings;
     this.clock = clock;
+    settings.addCheck(this::activeVersionProblems);
   }
 
   /** The version new conversations pin. */
@@ -63,10 +69,11 @@ public class PromptStore {
   }
 
   /**
-   * The artifacts of version {@code id}: {@link PromptVersionMissing} without a row, {@link
-   * PromptVersionCorrupt} when the row no longer passes {@link PromptValidation}.
+   * The artifacts of version {@code id}, its templates speaking as {@code persona}: {@link
+   * PromptVersionMissing} without a row, {@link PromptVersionCorrupt} when the row no longer passes
+   * {@link PromptValidation}.
    */
-  public PromptBundle bundle(String id) {
+  public PromptBundle bundle(String id, Settings.Persona persona) {
     PromptVersion version = get(id);
     PromptVersion.Columns columns = version.parse();
     PromptValidation.Result check = PromptValidation.validate(version, columns, persona);
@@ -92,16 +99,16 @@ public class PromptStore {
   }
 
   /**
-   * Why a turn could not load {@code version} under the running configuration, the errors {@link
+   * Why a turn could not load {@code version} under the current settings, the errors {@link
    * #activate} refuses it with; empty when it could.
    */
   public List<String> loadErrors(PromptVersion version) {
-    return PromptValidation.validate(version, persona).errors();
+    return check(version).errors();
   }
 
-  /** Throws what {@link #bundle} would for {@code id}; returns when a turn could load it. */
-  void requireLoadable(String id) {
-    bundle(id);
+  /** {@code version} against the rules, with the current settings' persona. */
+  private PromptValidation.Result check(PromptVersion version) {
+    return PromptValidation.validate(version, settings.current().persona());
   }
 
   /**
@@ -121,7 +128,7 @@ public class PromptStore {
             request.schemaJson(),
             request.toolsJson(),
             request.templatesJson());
-    PromptValidation.Result check = PromptValidation.validate(version, persona);
+    PromptValidation.Result check = check(version);
     if (!check.ok()) {
       return new SaveResult.Rejected(check.errors(), check.warnings());
     }
@@ -132,11 +139,15 @@ public class PromptStore {
 
   /**
    * Makes {@code id} the version new conversations pin. A version that cannot load is refused
-   * before anything changes, so the active one stays.
+   * before anything changes, so the active one stays. The check and the switch hold the settings,
+   * so no persona can be saved between them.
    */
   public void activate(String id) {
-    requireLoadable(id);
-    versions.activate(id);
+    settings.holding(
+        current -> {
+          bundle(id, current.persona());
+          versions.activate(id);
+        });
     log.info("prompt version {} activated", id);
   }
 
@@ -158,6 +169,23 @@ public class PromptStore {
                     version.createdBy(),
                     version.note(),
                     version.active()))
+        .toList();
+  }
+
+  /**
+   * Why {@code candidate} settings would stop the active version from loading, as when a longer
+   * company name pushes an opener over its cap. Versions that running conversations pinned are not
+   * checked: a turn on one that no longer loads hands off, as on any version that does not load.
+   */
+  private List<SettingsValidation.Problem> activeVersionProblems(Settings candidate) {
+    String active = activeId();
+    return PromptValidation.validate(get(active), candidate.persona()).errors().stream()
+        .map(error -> "Prompt " + active + " would not load with this persona: " + error)
+        .flatMap(
+            message ->
+                Stream.of(
+                    new SettingsValidation.Problem("persona", message),
+                    new SettingsValidation.Problem("company", message)))
         .toList();
   }
 

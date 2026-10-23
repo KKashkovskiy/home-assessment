@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.enrola.anna.AnnaApplication;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.conversation.ConflictException;
 import com.enrola.anna.conversation.ConversationService;
 import com.enrola.anna.conversation.InboundTurns;
@@ -76,8 +77,9 @@ class ConversationApiTest {
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
-  static void databaseInTempDir(DynamicPropertyRegistry registry) {
+  static void dataInTempDir(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", () -> "jdbc:h2:file:" + tempDir.resolve("anna"));
+    registry.add("anna.data-dir", tempDir::toString);
   }
 
   @Autowired WebApplicationContext context;
@@ -91,7 +93,7 @@ class ConversationApiTest {
   @BeforeEach
   void noConversations() {
     mvc = MockMvcBuilders.webAppContextSetup(context).build();
-    templates = prompts.bundle("v1").templates();
+    templates = prompts.bundle("v1", SettingsFixture.DEFAULTS.persona()).templates();
     jdbc.update("delete from trace_event");
     jdbc.update("delete from turn");
     jdbc.update("delete from message");

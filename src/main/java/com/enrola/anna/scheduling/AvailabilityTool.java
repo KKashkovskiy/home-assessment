@@ -1,7 +1,7 @@
 package com.enrola.anna.scheduling;
 
 import com.enrola.anna.AppClock;
-import com.enrola.anna.config.SchedulingProperties;
+import com.enrola.anna.config.Settings;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,11 +19,11 @@ import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.annotation.JsonNaming;
 
 /**
- * get_availability: dates and a part of day on the lead's clock in, at most {@code max-slots} slots
- * labelled for the lead out. The window is cut at the horizon here and held to the lead time and
- * range by the {@link FakeCalendar}; the model never sees an offset. A slot inside the advisors'
- * hours is offered only if the call also falls within the weekday hours on the lead's clock, so a
- * Perth lead is not called at 6:00.
+ * get_availability: dates and a part of day on the lead's clock in, at most the settings' {@code
+ * maxSlots} slots labelled for the lead out. The window is cut at the horizon here and held to the
+ * lead time and range by the {@link FakeCalendar}; the model never sees an offset. A slot inside
+ * the advisors' hours is offered only if the call also falls within the weekday hours on the lead's
+ * clock, so a Perth lead is not called at 6:00.
  */
 @Component
 public class AvailabilityTool {
@@ -41,12 +41,10 @@ public class AvailabilityTool {
       DateTimeFormatter.ofPattern("EEE d MMM h:mm a", Locale.ENGLISH);
 
   private final AppClock clock;
-  private final SchedulingProperties props;
   private final FakeCalendar calendar;
 
-  public AvailabilityTool(AppClock clock, SchedulingProperties props, FakeCalendar calendar) {
+  public AvailabilityTool(AppClock clock, FakeCalendar calendar) {
     this.clock = clock;
-    this.props = props;
     this.calendar = calendar;
   }
 
@@ -83,11 +81,13 @@ public class AvailabilityTool {
   }
 
   /**
-   * The first free slots from {@code date_from} through {@code date_to} in {@code leadZone}, in the
-   * lead's part of day. A date that does not parse or that {@code java.time} cannot place, or a
-   * range that runs backwards, is a failure; a window in the past is an empty offer.
+   * The first free slots from {@code date_from} through {@code date_to} in the lead's zone, in the
+   * lead's part of day, under the turn's scheduling settings. A date that does not parse or that
+   * {@code java.time} cannot place, or a range that runs backwards, is a failure; a window in the
+   * past is an empty offer.
    */
-  public ToolResult run(Args args, ZoneId leadZone) {
+  public ToolResult run(Args args, ToolContext context) {
+    ZoneId leadZone = context.leadZone();
     Instant first;
     Instant last;
     try {
@@ -101,7 +101,7 @@ public class AvailabilityTool {
     } catch (DateTimeException _) {
       return BAD_DATE;
     }
-    return offer(first, last, args.partOfDay(), leadZone);
+    return offer(first, last, args.partOfDay(), context);
   }
 
   /**
@@ -109,23 +109,27 @@ public class AvailabilityTool {
    * window lies beyond the horizon, was cut at it, or holds nothing free; the filtering counts say
    * what each step left out.
    */
-  private ToolResult.Slots offer(Instant first, Instant last, PartOfDay part, ZoneId leadZone) {
+  private ToolResult.Slots offer(Instant first, Instant last, PartOfDay part, ToolContext context) {
+    ZoneId leadZone = context.leadZone();
+    Settings.Scheduling scheduling = context.scheduling();
     Instant now = clock.now();
-    Instant horizon = now.plus(Duration.ofDays(props.horizonDays()));
+    Instant horizon = now.plus(Duration.ofDays(scheduling.horizonDays()));
     String timezone = LeadZones.abbreviation(leadZone, now);
     if (first.isAfter(horizon)) {
       return new ToolResult.Slots(
           timezone, List.of(), ToolResult.Note.BEYOND_HORIZON, ToolResult.Filtering.NONE);
     }
     boolean clamped = last.isAfter(horizon);
-    List<Instant> free = calendar.freeStarts(first, clamped ? horizon : last);
+    List<Instant> free = calendar.freeStarts(first, clamped ? horizon : last, scheduling);
     List<Instant> inPart =
         free.stream().filter(start -> part.contains(start.atZone(leadZone).toLocalTime())).toList();
     List<Instant> callable =
-        inPart.stream().filter(start -> withinLeadHours(start.atZone(leadZone))).toList();
+        inPart.stream()
+            .filter(start -> withinLeadHours(start.atZone(leadZone), scheduling))
+            .toList();
     List<Slot> slots =
         callable.stream()
-            .limit(props.maxSlots())
+            .limit(scheduling.maxSlots())
             .map(start -> new Slot(Slot.idFor(start), start, label(start, leadZone)))
             .toList();
     ToolResult.Filtering filtering =
@@ -145,12 +149,12 @@ public class AvailabilityTool {
   }
 
   /** The whole call within the weekday calling hours on the lead's clock. */
-  private boolean withinLeadHours(ZonedDateTime start) {
+  private static boolean withinLeadHours(ZonedDateTime start, Settings.Scheduling scheduling) {
     LocalDateTime local = start.toLocalDateTime();
-    return !local.toLocalTime().isBefore(props.hoursFrom())
+    return !local.toLocalTime().isBefore(scheduling.hoursFrom())
         && !local
-            .plusMinutes(props.eventMin())
-            .isAfter(local.toLocalDate().atTime(props.hoursTo()));
+            .plusMinutes(scheduling.eventMin())
+            .isAfter(local.toLocalDate().atTime(scheduling.hoursTo()));
   }
 
   /**

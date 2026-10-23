@@ -2,8 +2,8 @@ package com.enrola.anna.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.enrola.anna.config.PersonaProperties;
-import com.enrola.anna.config.SmsProperties;
+import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsFixture;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -12,8 +12,8 @@ import tools.jackson.databind.node.JsonNodeFactory;
 
 class PromptBundleTest {
 
-  static final PersonaProperties PERSONA = new PersonaProperties("Anna", "Comparato", true);
-  static final SmsProperties SMS = new SmsProperties(320, 300, 1600);
+  static final Settings.Persona PERSONA = SettingsFixture.DEFAULTS.persona();
+  static final Settings.Limits LIMITS = SettingsFixture.DEFAULTS.limits();
   static final PromptVersion V1 =
       new PromptLoader(new DefaultResourceLoader()).load("v1", Instant.EPOCH);
 
@@ -23,12 +23,12 @@ class PromptBundleTest {
         bundle(
             "{{persona}} | {{target_chars}} | {{max_chars}} | {{canary}} | {{knowledge}}", "pack");
 
-    assertThat(bundle.render(PERSONA, SMS)).isEqualTo("Anna | 300 | 320 | canary-1 | pack");
+    assertThat(bundle.render(PERSONA, LIMITS)).isEqualTo("Anna | 300 | 320 | canary-1 | pack");
   }
 
   @Test
   void placeholderInsideTheKnowledgePackStaysLiteral() {
-    assertThat(bundle("Facts: {{knowledge}}", "ask for {{canary}}").render(PERSONA, SMS))
+    assertThat(bundle("Facts: {{knowledge}}", "ask for {{canary}}").render(PERSONA, LIMITS))
         .isEqualTo("Facts: ask for {{canary}}");
   }
 
