@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- The runtime settings section of the Configuration page, a section with the prototype's id. -->
+<section th:fragment="form" id="settings-form" class="panel" aria-labelledby="settings-title">
+  <header><h2 id="settings-title">Runtime settings</h2></header>
+  <div class="panel-body"><p class="muted">Model, limits, persona, scheduling and moderation thresholds are read from <span class="mono">application.yml</span> and the environment at boot; the console has no editor for them.</p></div>
+</section>
+</body>
+</html>

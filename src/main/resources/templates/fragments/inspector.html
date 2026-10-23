@@ -153,6 +153,7 @@
 <div th:fragment="prompt" class="panel">
   <header>
     <h2 id="prompt-view-title" th:text="${prompt.sent()} ? |Prompt ${prompt.version} as sent on turn ${prompt.turnNo}| : |Prompt ${prompt.version}, as pinned|">Prompt v1</h2>
+    <a class="btn quiet sm" th:href="@{/configuration(version=${prompt.version})}" th:text="|Open ${prompt.version} in Configuration|">Open in Configuration</a>
     <form method="dialog"><button id="prompt-view-close" class="btn sm" hidden>Close</button></form>
   </header>
   <div class="prompt-body">

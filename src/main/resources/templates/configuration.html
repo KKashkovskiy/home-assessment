@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en-AU" xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: page('Configuration', 'configuration', ~{:: main})}">
+<body>
+  <!-- The prompt editor is one form: the five texts of the selected version sit in a textarea each and the open
+       file's shows. The script mounts Monaco over it and keeps the textarea in step, so the form posts what the
+       editor holds. Save and Activate are posts that redirect back; only the diff needs the script. -->
+  <main id="main" class="page stack config-page" tabindex="-1">
+    <section class="panel" aria-labelledby="prompts-title" id="prompts">
+      <header><h2 id="prompts-title">Prompts</h2>
+        <label class="row small" for="prompt-file">File
+          <select id="prompt-file" name="file" form="prompt-form">
+            <option th:each="f : ${@fmt.promptFiles()}" th:value="${f}" th:data-language="${f.language()}" th:selected="${f == config.form.file}" th:text="${f.label()}">System prompt</option>
+          </select></label>
+        <noscript><span class="small muted">Open: <th:block th:each="f, i : ${@fmt.promptFiles()}"><a th:href="@{/configuration(version=${config.selected.id}, file=${f})}" th:text="${f.label()}">file</a><th:block th:unless="${i.last}">, </th:block></th:block></span></noscript>
+        <div id="editor-mode" class="segmented" role="group" aria-label="Editor mode" hidden th:data-diffable="${config.canDiff()}"><button id="mode-edit" type="button" aria-pressed="true">Edit</button><button id="mode-diff" type="button" aria-pressed="false">Diff</button></div>
+      </header>
+      <form id="prompt-form" class="panel-body editor-layout" method="post" th:action="@{/configuration/versions}" th:data-unsaved="${config.unsaved}">
+        <div class="stack">
+          <h3 id="versions-title">Versions <span class="muted" th:text="${#lists.size(config.versions)}">1</span></h3>
+          <ul id="version-list" class="version-list" aria-labelledby="versions-title">
+            <li th:each="v : ${config.newestFirst()}" th:data-id="${v.id}" th:classappend="${config.isSelected(v)} ? 'selected'">
+              <a th:href="@{/configuration(version=${v.id}, file=${config.form.file})}" th:aria-current="${config.isSelected(v)} ? 'true'"><span class="id" th:text="${v.id}">v1</span><span class="what"><span class="note" th:if="${v.note != null}" th:title="${v.note}" th:text="${v.note}">note</span><span class="date" th:text="${@fmt.when(v.createdAt)}">26 Jul 10:00</span></span></a>
+              <span class="chip pass" th:if="${v.active}">✓ active</span>
+              <span class="chip fail" th:unless="${v.loads()}">load failed</span>
+            </li>
+          </ul>
+          <div id="diff-pick" class="stack" hidden th:with="left=${config.diffLeft()}">
+            <div class="field"><label for="diff-a">Compare</label><select id="diff-a"><option th:each="v : ${config.newestFirst()}" th:value="${v.id}" th:selected="${v.id == left.id}" th:text="${@fmt.versionOption(v)}">v1</option></select></div>
+            <div class="field"><label for="diff-b">with</label><select id="diff-b"><option th:each="v : ${config.newestFirst()}" th:value="${v.id}" th:selected="${config.isSelected(v)}" th:text="${@fmt.versionOption(v)}">v2</option></select></div>
+            <p class="small muted">Lines only in the first version are red, lines only in the second green; the view opens on the first change and folds what did not change. The diff compares saved versions, not unsaved edits.</p>
+            <p id="diff-same" class="notice info small" role="status" hidden>No changes in this file between the two versions.</p>
+            <p id="diff-failed" class="notice fail small" role="alert" hidden>The diff did not load. Reload the page and try again.</p>
+          </div>
+          <div id="edit-actions" class="stack">
+            <input type="hidden" name="base" th:value="${config.selected.id}">
+            <div class="field"><label for="version-note">Note for the new version</label><input id="version-note" name="note" type="text" th:maxlength="${config.noteMax()}" placeholder="what changed and why" th:value="${config.form.note}"></div>
+            <div class="row">
+              <button id="save-version" class="btn primary" type="submit">Save as new version</button>
+              <button id="activate-version" class="btn" type="submit" th:formaction="@{/configuration/versions/{id}/activate(id=${config.selected.id})}" th:disabled="${!config.canActivate()}" th:text="${@fmt.activateLabel(config)}">Activate</button>
+            </div>
+            <details id="prompt-rules" class="small muted"><summary>How saving works</summary>
+              <p>Saving never overwrites: it creates the next version beside the others. Each conversation keeps the version it started on. Activating applies to new conversations only and hot-reloads; if the new version fails to load, the old one stays active. Save refuses a missing placeholder, invalid JSON, a missing tool or a template over its length cap, and warns on characters outside GSM-7. The pack, schema, tools and templates are versioned alongside the prompt.</p>
+            </details>
+          </div>
+        </div>
+        <div class="stack editor-pane">
+          <div id="prompt-notice" tabindex="-1" th:if="${config.notice != null}"><div th:replace="~{fragments/parts :: notice(${config.notice})}"></div></div>
+          <p id="editor-unavailable" class="notice warn small" role="status" hidden>The editor did not load from cdnjs.cloudflare.com, so this is a plain text box with no highlighting. Saving and activating still work.</p>
+          <div id="editor" class="editor" aria-label="Prompt editor" hidden></div>
+          <!-- The newline after each opening tag is the parser's to drop, so a text's own first newline survives. -->
+          <textarea th:each="f : ${@fmt.promptFiles()}" class="editor-fallback" th:id="|text-${f}|" th:name="${f.field()}" th:hidden="${f != config.form.file}" th:aria-label="${f.label()}" rows="24" spellcheck="false">
+[[${config.form.text(f)}]]</textarea>
+          <p id="editor-meta" class="small muted"><span id="meta-file" th:text="${config.form.file.label()}">System prompt</span> <th:block th:text="${@fmt.editorSource(config)}">v1, created 26 Jul 10:00 by repo.</th:block> <span id="meta-chars" th:text="${@fmt.characters(config.form.text(config.form.file))}">0</span> characters.<span id="editor-keys" hidden> In the editor, Ctrl+M (Ctrl+Shift+M on Mac) makes Tab move focus.</span></p>
+        </div>
+      </form>
+    </section>
+
+    <section th:replace="~{fragments/settings :: form}"></section>
+  </main>
+</body>
+</html>

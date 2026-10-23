@@ -113,6 +113,24 @@ class PromptStoreTest {
   }
 
   @Test
+  void getReadsTheRowOrThrowsMissing() {
+    assertThat(store.get("v1")).isEqualTo(versions.findById("v1").orElseThrow());
+    assertThatThrownBy(() -> store.get("v9")).isInstanceOf(PromptVersionMissing.class);
+  }
+
+  @Test
+  void loadErrorsAreWhatActivationRefusesWith() {
+    store.save(copyOfV1("second"));
+    jdbc.update("update prompt_version set tools_json = '{' where id = 'v2'");
+
+    assertThat(store.loadErrors(store.get("v1"))).isEmpty();
+    assertThat(store.loadErrors(store.get("v2"))).containsExactly("tools are not valid JSON");
+    assertThatThrownBy(() -> store.activate("v2"))
+        .isInstanceOf(PromptVersionCorrupt.class)
+        .hasMessageEndingWith(": tools are not valid JSON");
+  }
+
+  @Test
   void contentColumnsAreNeverUpdated() {
     PromptVersion before = versions.findById("v1").orElseThrow();
 

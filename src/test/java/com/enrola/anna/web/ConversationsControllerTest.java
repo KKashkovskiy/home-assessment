@@ -556,7 +556,7 @@ class ConversationsControllerTest extends ConsoleFixture {
 
   @Test
   void placeholderTabsRenderInTheShell() throws Exception {
-    for (String tab : new String[] {"configuration", "analytics", "evals"}) {
+    for (String tab : new String[] {"analytics", "evals"}) {
       assertThat(body(mvc.perform(get("/" + tab)).andExpect(status().isOk())))
           .contains(
               "href=\"/" + tab + "\" aria-current=\"page\"", "class=\"panel placeholder-panel\"");

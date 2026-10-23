@@ -1,7 +1,7 @@
 /* Anna console. The server renders every page and fragment; this script adds the theme toggle, the start
-   panel as a dialog, filters that apply on change, the composer's optimistic send and the inspector's
-   toggles, prompt dialog and live log. Every action is also a plain form post or link, so the console works
-   without it. */
+   panel as a dialog, filters that apply on change, the composer's optimistic send, the inspector's
+   toggles, prompt dialog and live log, and Monaco over the prompt editor's form. Every action is also a plain
+   form post or link, so the console works without it. */
 (function () {
   'use strict';
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -22,6 +22,7 @@
       if (next === 'auto') delete root.dataset.theme; else root.dataset.theme = next;
       try { if (next === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', next); } catch (e) { /* private window */ }
       label();
+      document.dispatchEvent(new Event('themechange'));
     });
   }
 
@@ -149,8 +150,8 @@
     hint.textContent = 'Waiting for the agent. Another message for this conversation waits for this turn or gets 409.';
     const failed = (text) => { box.value = typed; updateCount(); hint.textContent = text; };
     request(form.action, { method: 'POST', body: new URLSearchParams({ text: message }) })
-      .then(({ ok, status, html }) => {
-        const root = fragmentRoot(html);
+      .then(({ ok, status, body }) => {
+        const root = fragmentRoot(body);
         pending.forEach((el) => el.remove());
         if (ok && root) {
           thread.append(...root.children);
@@ -173,9 +174,9 @@
      take them from a fresh copy of this page. */
   function refreshState() {
     request(location.pathname + location.search)
-      .then(({ ok, html }) => {
+      .then(({ ok, body }) => {
         if (!ok) return;
-        const page = new DOMParser().parseFromString(html, 'text/html');
+        const page = new DOMParser().parseFromString(body, 'text/html');
         ['#conv-list', '#conv-count', '#thread', '.state-head', '#status-strip .meter', '#conv-footer'].forEach((sel) => {
           const fresh = $(sel, page);
           const stale = $(sel);
@@ -189,7 +190,7 @@
   /* The one fetch helper. The header tells the server a script is asking, so a send answers with a fragment. */
   function request(url, options) {
     return fetch(url, Object.assign({ headers: { 'X-Requested-With': 'fetch' } }, options))
-      .then((res) => res.text().then((html) => ({ ok: res.ok, status: res.status, html })));
+      .then((res) => res.text().then((body) => ({ ok: res.ok, status: res.status, body })));
   }
 
   /* A send answers with one element carrying data-hint: the turn's items, or a problem line. */
@@ -287,8 +288,8 @@
 
   /* Puts turn n's card in place, open, the others closed. */
   function loadTurn(n) {
-    return request($('#turns').dataset.base + '/turns/' + n).then(({ ok, html }) => {
-      const card = ok ? parseFragment(html) : null;
+    return request($('#turns').dataset.base + '/turns/' + n).then(({ ok, body }) => {
+      const card = ok ? parseFragment(body) : null;
       if (!card) return false;
       setTurnsOpen(false);
       const stale = $('#turn-' + n);
@@ -313,8 +314,8 @@
       if (!link) return;
       e.preventDefault();
       opener = link;
-      request(link.href).then(({ ok, html }) => {
-        const content = ok ? parseFragment(html) : null;
+      request(link.href).then(({ ok, body }) => {
+        const content = ok ? parseFragment(body) : null;
         if (!content) { location.assign(link.href); return; }
         dialog.replaceChildren(content);
         $('#prompt-view-close', dialog).hidden = false;
@@ -325,6 +326,165 @@
     dialog.addEventListener('close', () => { dialog.replaceChildren(); if (opener) opener.focus(); });
   }
 
+  /* ---------- Configuration ---------- */
+
+  const MONACO = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs';
+
+  /* The form posts the five textareas. Monaco mounts over them with one model per file, so switching files
+     keeps each file's edits and undo, and every edit is written back into its textarea. Without the CDN the
+     textareas stay and the page still saves. The diff compares saved versions in Monaco's diff editor. */
+  function initConfiguration() {
+    const form = $('#prompt-form');
+    if (!form) return;
+    const editor = { monaco: null, code: null, diff: null, models: {}, diffModels: [], diffTicket: 0 };
+    $('#prompt-file').addEventListener('change', () => openFile(editor));
+    form.addEventListener('input', (e) => { if (e.target.matches('.editor-fallback')) countCharacters(); });
+    $$('#version-list a').forEach((link) => link.addEventListener('click', (e) => { if (!discardEdits(form)) e.preventDefault(); }));
+    $('#activate-version').addEventListener('click', (e) => { if (!discardEdits(form)) e.preventDefault(); });
+    $('#mode-edit').addEventListener('click', () => setMode(editor, false));
+    $('#mode-diff').addEventListener('click', () => setMode(editor, true));
+    $$('#diff-a, #diff-b').forEach((pick) => pick.addEventListener('change', () => renderDiff(editor)));
+    showSelectedVersion();
+    const notice = $('#prompt-notice');
+    if (notice) notice.focus();
+    loadMonaco((monaco) => {
+      editor.monaco = monaco;
+      mountCodeEditor(editor);
+      document.addEventListener('themechange', () => monaco.editor.setTheme(monacoTheme()));
+      matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => monaco.editor.setTheme(monacoTheme()));
+      $('#editor-mode').hidden = $('#editor-mode').dataset.diffable !== 'true';
+    }, () => { $('#editor-unavailable').hidden = false; });
+  }
+
+  function loadMonaco(onReady, onFail) {
+    const loader = document.createElement('script');
+    loader.src = MONACO + '/loader.min.js';
+    loader.onerror = onFail;
+    loader.onload = () => {
+      const worker = `self.MonacoEnvironment={baseUrl:'${MONACO}/../'};importScripts('${MONACO}/base/worker/workerMain.js');`;
+      window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob([worker], { type: 'text/javascript' })) };
+      window.require.config({ paths: { vs: MONACO } });
+      window.require(['vs/editor/editor.main'], () => onReady(window.monaco), onFail);
+    };
+    document.head.append(loader);
+  }
+
+  /* The list scrolls on its own, newest first, so an older selected version is scrolled to. */
+  function showSelectedVersion() {
+    const list = $('#version-list');
+    const selected = $('li.selected', list);
+    if (selected) list.scrollTop = selected.offsetTop - (list.clientHeight - selected.offsetHeight) / 2;
+  }
+
+  const openKey = () => $('#prompt-file').value;
+  const openLabel = () => $('#prompt-file').selectedOptions[0].textContent;
+  const fileText = (key) => $('#text-' + key);
+  const monacoTheme = () => {
+    const theme = document.documentElement.dataset.theme;
+    return theme === 'dark' || (!theme && matchMedia('(prefers-color-scheme: dark)').matches) ? 'vs-dark' : 'vs';
+  };
+
+  function mountCodeEditor(editor) {
+    const box = $('#editor');
+    box.hidden = false;
+    editor.code = editor.monaco.editor.create(box, Object.assign({
+      model: modelFor(editor, openKey()), ariaLabel: openLabel(), scrollBeyondLastLine: false
+    }, editorOptions()));
+    $$('.editor-fallback').forEach((area) => { area.hidden = true; });
+    $('#editor-keys').hidden = false;
+  }
+
+  /* What the code and diff editors share; a phone gets narrower gutters. */
+  function editorOptions() {
+    const phone = matchMedia('(max-width: 720px)').matches;
+    return Object.assign(
+      { theme: monacoTheme(), wordWrap: 'on', minimap: { enabled: false }, fontSize: 13, automaticLayout: true },
+      phone ? { lineNumbersMinChars: 3, folding: false } : {});
+  }
+
+  /* One model per file, made on first open from its textarea, which then follows every edit. */
+  function modelFor(editor, key) {
+    if (!editor.models[key]) {
+      const option = $(`#prompt-file option[value="${key}"]`);
+      const model = editor.monaco.editor.createModel(fileText(key).value, option.dataset.language);
+      model.onDidChangeContent(() => { fileText(key).value = model.getValue(); countCharacters(); });
+      editor.models[key] = model;
+    }
+    return editor.models[key];
+  }
+
+  function openFile(editor) {
+    const key = openKey();
+    if (editor.diff) { renderDiff(editor); return; }
+    if (editor.code) {
+      editor.code.setModel(modelFor(editor, key));
+      editor.code.updateOptions({ ariaLabel: openLabel() });
+    } else {
+      $$('.editor-fallback').forEach((area) => { area.hidden = area !== fileText(key); });
+    }
+    $('#meta-file').textContent = openLabel();
+    countCharacters();
+  }
+
+  function countCharacters() {
+    $('#meta-chars').textContent = fileText(openKey()).value.length.toLocaleString('en-AU');
+  }
+
+  /* Leaving with edits that are not saved, or with a refused save's texts, asks first. */
+  function discardEdits(form) {
+    const edited = form.dataset.unsaved === 'true' || $$('.editor-fallback', form).some((area) => area.value !== area.defaultValue);
+    return !edited || confirm('Discard unsaved edits?');
+  }
+
+  /* Edit and diff share the box: one editor is disposed for the other; the file models outlive both. */
+  function setMode(editor, diffing) {
+    $('#mode-edit').setAttribute('aria-pressed', String(!diffing));
+    $('#mode-diff').setAttribute('aria-pressed', String(diffing));
+    $('#diff-pick').hidden = !diffing;
+    $('#edit-actions').hidden = diffing;
+    $('#editor-meta').hidden = diffing;
+    if (diffing && !editor.diff) {
+      editor.code.dispose();
+      editor.code = null;
+      editor.diff = editor.monaco.editor.createDiffEditor($('#editor'), Object.assign({
+        readOnly: true, renderSideBySide: true, hideUnchangedRegions: { enabled: true }
+      }, editorOptions()));
+      renderDiff(editor);
+    } else if (!diffing && editor.diff) {
+      editor.diff.dispose();
+      editor.diff = null;
+      disposeDiffModels(editor);
+      mountCodeEditor(editor);
+      openFile(editor);
+    }
+  }
+
+  /* Only the latest request draws, so picks made in quick succession cannot end on an older pair. The view
+     opens on the first change; the old pair is disposed only once the editor holds the new one. */
+  function renderDiff(editor) {
+    const ticket = ++editor.diffTicket;
+    const query = new URLSearchParams({ a: $('#diff-a').value, b: $('#diff-b').value, file: openKey() });
+    $('#diff-failed').hidden = true;
+    $('#diff-same').hidden = true;
+    request('/configuration/diff?' + query)
+      .then(({ ok, body }) => { if (!ok) throw new Error('diff failed'); return JSON.parse(body); })
+      .then((texts) => {
+        if (ticket !== editor.diffTicket || !editor.diff) return;
+        const [original, modified] = [texts.a.text, texts.b.text].map((text) => editor.monaco.editor.createModel(text, texts.language));
+        const shown = editor.diff.onDidUpdateDiff(() => { shown.dispose(); editor.diff.revealFirstDiff(); });
+        editor.diff.setModel({ original, modified });
+        disposeDiffModels(editor);
+        editor.diffModels = [original, modified];
+        $('#diff-same').hidden = texts.a.text !== texts.b.text;
+      })
+      .catch(() => { if (ticket === editor.diffTicket) $('#diff-failed').hidden = false; });
+  }
+
+  function disposeDiffModels(editor) {
+    editor.diffModels.forEach((model) => model.dispose());
+    editor.diffModels = [];
+  }
+
   initTheme();
   trackChromeHeight();
   initCopyButtons();
@@ -333,4 +493,5 @@
   initComposer();
   initInspector();
   initPromptDialog();
+  initConfiguration();
 })();

@@ -68,6 +68,11 @@ public class ViewFormats {
     return PROVIDERS;
   }
 
+  /** The Configuration page's File select. */
+  public List<PromptFile> promptFiles() {
+    return List.of(PromptFile.values());
+  }
+
   public String statusClass(ConversationStatus status) {
     return switch (status) {
       case BOOKED -> "pass";
@@ -159,6 +164,7 @@ public class ViewFormats {
 
   public String noticeClass(Notice notice) {
     return switch (notice.level()) {
+      case PASS -> "notice pass";
       case INFO -> "notice info";
       case WARN -> "notice warn";
       case FAIL -> "notice fail";
@@ -328,6 +334,38 @@ public class ViewFormats {
   /** "26 Jul 10:00" in the advisors' zone, for the list's activity column. */
   public String when(Instant at) {
     return WHEN.format(at.atZone(advisorZone));
+  }
+
+  /** "v1 (26 Jul 10:00)": a version as the diff pickers offer it. */
+  public String versionOption(ConfigurationPage.VersionRow row) {
+    return row.id() + " (" + when(row.createdAt()) + ")";
+  }
+
+  /**
+   * What the editor shows, after the file's name: "v1, created 26 Jul 10:00 by repo, active for new
+   * conversations." or, for a refused save's texts, "edited from v1, not saved."
+   */
+  public String editorSource(ConfigurationPage page) {
+    ConfigurationPage.VersionRow row = page.selected();
+    if (page.unsaved()) {
+      return "edited from " + row.id() + ", not saved.";
+    }
+    return row.id()
+        + ", created "
+        + when(row.createdAt())
+        + " by "
+        + row.createdBy()
+        + (row.active() ? ", active for new conversations." : ".");
+  }
+
+  /** "Active" on the active version's button, else "Activate v2". */
+  public String activateLabel(ConfigurationPage page) {
+    return page.selected().active() ? "Active" : "Activate " + page.selected().id();
+  }
+
+  /** "11,842": an editor text's length, as the meta line counts it. */
+  public String characters(String text) {
+    return String.format(Locale.ENGLISH, "%,d", text.length());
   }
 
   /** An enum name for people: underscores become spaces. */

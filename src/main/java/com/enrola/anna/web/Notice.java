@@ -1,14 +1,18 @@
 package com.enrola.anna.web;
 
+import java.io.Serializable;
+
 /**
  * A message above a console page: a refused start or send, a page that is not there, a lead found
  * by its phone. {@code code} is stable, for the page's markup and its tests; {@code text} is for
- * people and never repeats what the request sent.
+ * people and never repeats what the request sent. Serializable because a redirect carries it in the
+ * session as a flash attribute.
  */
-public record Notice(Level level, String code, String text) {
+public record Notice(Level level, String code, String text) implements Serializable {
 
-  /** How the notice reads: information, a refusal, or a failed request. */
+  /** How the notice reads: done, information, a refusal, or a failed request. */
   public enum Level {
+    PASS,
     INFO,
     WARN,
     FAIL

@@ -183,7 +183,7 @@ The schema is a set of Flyway migrations under `src/main/resources/db/migration/
 tables and columns it lacks.
 
 The console is one server-rendered page over the services the API calls, with the markup and stylesheet of the
-clickable prototype; Configuration, Analytics and Evals are tabs with no page in this build. The left pane lists
+clickable prototype; Analytics and Evals are tabs with no page in this build. The left pane lists
 conversations, newest activity first, with six filters carried as GET parameters and combined with AND, each shown as
 a chip that removes it, and a search over name, id and summary. The middle pane is the SMS thread: the lead on the
 left, Anna on the right with a `n/320` count and a chip naming what wrote the reply (`TEMPLATE`, `LLM`, `FIXED`, or
@@ -213,11 +213,25 @@ the lead got something else and a field code overrode saying what code kept, wit
 session remembers and the turn's stored request and response one link away; and the state diff, where a value the
 model asked for and code overrode is struck through beside the one kept. Only the latest turn opens on load, and the
 thread's turn links open the others. A turn's prompt view shows the instructions and context its request carried,
-exactly as sent, so activating a newer version changes nothing there. The PII mask covers all of it, raw JSON
-included. Each trace payload is a record its writer and the inspector share, and an event this build cannot read shows
-as a gap rather than breaking the page. New turns arrive over Server-Sent Events that carry only the turn number and
-the event's type and name, sent once the turn has committed, and the page then fetches the turn and a fresh copy of
-itself; `anna.ui.sse-enabled: false` turns this live log off, and a reload still shows every turn.
+exactly as sent, so activating a newer version changes nothing there, and links to that version in Configuration. The
+PII mask covers all of it, raw JSON included. Each trace payload is a record its writer and the inspector share, and an
+event this build cannot read shows as a gap rather than breaking the page. New turns arrive over Server-Sent Events that
+carry only the turn number and the event's type and name, sent once the turn has committed, and the page then fetches
+the turn and a fresh copy of itself; `anna.ui.sse-enabled: false` turns this live log off, and a reload still shows
+every turn.
+
+The Configuration tab is the prompt editor over the version table. It lists every version, newest first, with its id,
+note and created time, and marks the active one and any that no longer loads; clicking one opens it. The File select
+switches between the five artifacts of the open version: the system prompt and the knowledge pack in Markdown, the
+decision schema, the tools and the ten templates in JSON, the templates' one object shown a template per line. Save as
+new version posts all five with a note and creates the next id, inactive, through the checks the seed uses: a missing
+placeholder, invalid JSON, a missing tool or a template over its cap refuses the save and keeps the edits in the form,
+and a character outside GSM-7 is a warning shown with the saved version. Activate moves new conversations to the open
+version and refuses, with the reason, one that does not load; running conversations keep theirs, and the status strip
+names the new version after the reload. Diff shows two saved versions of a file side by side. The editor is Monaco
+0.52.2 from `cdnjs.cloudflare.com`, the console's only external resource, mounted over a plain form, so without
+JavaScript or the CDN the page still lists, saves and activates; only the diff needs it. Runtime settings are read from
+`application.yml` and the environment; the console has no editor for them.
 
 ## What Anna does
 

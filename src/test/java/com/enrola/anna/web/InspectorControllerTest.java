@@ -109,6 +109,7 @@ class InspectorControllerTest extends ConsoleFixture {
         .contains("Prompt v1 as sent on turn 1", "Now: Sunday 26 July 2026", "given_name: Lauren")
         .doesNotContain(MARKER, PHONE);
     assertThat(pinned).contains("Prompt v1, as pinned", "{{persona}}").doesNotContain(MARKER);
+    assertThat(sent).contains("href=\"/configuration?version=v1\"");
   }
 
   @Test

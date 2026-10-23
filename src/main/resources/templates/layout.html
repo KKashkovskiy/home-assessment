@@ -34,7 +34,7 @@
       <div th:if="${shell.agentMissingKey()}" class="notice fail" role="alert" data-banner="NO_KEY"><b>Agent unavailable:</b> OPENAI_API_KEY is not set. STOP still works; every other message is stored and handed to a human with no reply.</div>
       <div th:if="${shell.agentCheckFailed()}" class="notice fail" role="alert" data-banner="MODEL_FAILED"><b>Agent unavailable:</b> model <span class="mono" th:text="${shell.model}">gpt-5.1</span> failed its boot check, so turns will likely hand off to a human. The log says why.</div>
       <div th:if="${shell.agentChecking()}" class="notice info" role="status" data-banner="CHECKING">Checking model <span class="mono" th:text="${shell.model}">gpt-5.1</span>; reload in a few seconds.</div>
-      <div th:if="${notice != null}" th:class="${@fmt.noticeClass(notice)}" role="alert" th:data-notice="${notice.code}" th:text="${notice.text}">notice</div>
+      <th:block th:if="${notice != null}"><div th:replace="~{fragments/parts :: notice(${notice})}"></div></th:block>
     </div>
   </th:block>
   <th:block th:replace="${content}"/>

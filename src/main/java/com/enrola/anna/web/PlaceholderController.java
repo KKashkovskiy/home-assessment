@@ -9,11 +9,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class PlaceholderController {
 
-  @GetMapping("/configuration")
-  public String configuration(Model model) {
-    return placeholder(model, "Configuration");
-  }
-
   @GetMapping("/analytics")
   public String analytics(Model model) {
     return placeholder(model, "Analytics");

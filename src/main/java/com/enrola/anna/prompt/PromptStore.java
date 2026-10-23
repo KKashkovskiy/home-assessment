@@ -67,7 +67,7 @@ public class PromptStore {
    * PromptVersionCorrupt} when the row no longer passes {@link PromptValidation}.
    */
   public PromptBundle bundle(String id) {
-    PromptVersion version = versions.findById(id).orElseThrow(() -> new PromptVersionMissing(id));
+    PromptVersion version = get(id);
     PromptVersion.Columns columns = version.parse();
     PromptValidation.Result check = PromptValidation.validate(version, columns, persona);
     if (!check.ok()) {
@@ -81,6 +81,22 @@ public class PromptStore {
         List.copyOf(columns.tools().orElseThrow().values()),
         new Templates(columns.templates().orElseThrow(), persona),
         canary);
+  }
+
+  /**
+   * The row of version {@code id}, its artifacts included; {@link PromptVersionMissing} without
+   * one.
+   */
+  public PromptVersion get(String id) {
+    return versions.findById(id).orElseThrow(() -> new PromptVersionMissing(id));
+  }
+
+  /**
+   * Why a turn could not load {@code version} under the running configuration, the errors {@link
+   * #activate} refuses it with; empty when it could.
+   */
+  public List<String> loadErrors(PromptVersion version) {
+    return PromptValidation.validate(version, persona).errors();
   }
 
   /** Throws what {@link #bundle} would for {@code id}; returns when a turn could load it. */
@@ -124,10 +140,16 @@ public class PromptStore {
     log.info("prompt version {} activated", id);
   }
 
-  /** Every version, lowest id first. */
-  public List<VersionSummary> list() {
+  /** Every version with its artifacts, lowest id first. */
+  public List<PromptVersion> all() {
     return StreamSupport.stream(versions.findAll().spliterator(), false)
         .sorted(Comparator.comparingInt(version -> PromptVersion.number(version.id())))
+        .toList();
+  }
+
+  /** Every version, lowest id first. */
+  public List<VersionSummary> list() {
+    return all().stream()
         .map(
             version ->
                 new VersionSummary(

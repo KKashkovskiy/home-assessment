@@ -3,6 +3,8 @@
 <body>
 <!-- Small pieces more than one fragment renders. -->
 
+<div th:fragment="notice(notice)" th:class="${@fmt.noticeClass(notice)}" role="alert" th:data-notice="${notice.code}" th:text="${notice.text}">notice</div>
+
 <span th:fragment="flag(flag)" th:class="'chip ' + ${@fmt.flagClass(flag)}" th:text="'⚑ ' + ${@fmt.words(flag)}">⚑ FLAG</span>
 
 <label th:fragment="filterSelect(name, label, options, selected)" class="small"><th:block th:text="${label}">Label</th:block>
