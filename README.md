@@ -24,7 +24,20 @@ No key is needed to build, test or run. Keys come from the environment only: exp
 `.env.example` to `.env`, fill it in and load it with `set -a; . ./.env; set +a`. Spring does not read `.env` on its
 own, and git ignores it.
 
-The server has no pages or endpoints yet, so the root URL answers with a 404.
+The server has no pages yet, so the root URL answers with a 404. The platform API is there: three leads are seeded
+on first boot (`lauren`, `john`, `jane`). Start a conversation and read it back:
+
+```
+curl -s -X POST localhost:8080/api/conversations -H 'content-type: application/json' -d '{"lead_id":"lauren"}'
+curl -s localhost:8080/api/conversations/<conversation_id>
+```
+
+Start answers 201 with the template opener as `reply`, the conversation's state and its transcript. A second start
+for the same lead answers 409 with the open conversation's id, an unknown lead or conversation 404, a malformed
+request 400 and a non-JSON body 415; those errors carry `{"error", "message", "conversation_id"}`. Conversations
+are rows, so a restart loses nothing.
+
+`schema.sql` creates missing tables and never changes existing ones, so delete `data/` after pulling a schema change.
 
 ## What Anna does
 

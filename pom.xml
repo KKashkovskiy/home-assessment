@@ -30,6 +30,10 @@
       <artifactId>spring-boot-starter-data-jdbc</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
       <scope>runtime</scope>
@@ -46,6 +50,15 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+
+      <!-- Tests run in a zone with daylight saving, so a timestamp that loses its offset fails on any machine. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <argLine>-Duser.timezone=Australia/Sydney</argLine>
+        </configuration>
       </plugin>
 
       <!--

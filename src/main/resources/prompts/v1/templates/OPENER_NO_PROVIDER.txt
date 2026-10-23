@@ -1,0 +1,1 @@
+Hi{name_part}, it's {persona}{disclosure}. We've been helping a lot of people who are new to private health cover lately. Is this your first time looking at cover? Reply STOP to opt out

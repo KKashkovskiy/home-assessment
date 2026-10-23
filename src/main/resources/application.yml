@@ -3,3 +3,18 @@ spring:
     name: anna
   datasource:
     url: jdbc:h2:file:./data/anna
+    hikari:
+      connection-init-sql: SET TIME ZONE 'UTC'  # instants round-trip, even in a repeated DST hour
+  sql:
+    init:
+      mode: always                        # schema.sql on every boot; IF NOT EXISTS keeps it idempotent
+  jackson:
+    property-naming-strategy: SNAKE_CASE  # one wire convention for every request and response body
+anna:
+  persona:
+    name: Anna                            # {persona} in the templates
+    company: Comparato                    # named in the opener and the disclosure
+    disclosure-in-opener: true            # ", Comparato's AI assistant" vs " from Comparato"
+  templates:
+    version: v1                           # stamped on each conversation as its prompt version
+    prefix: classpath:prompts/${anna.templates.version}/templates/
