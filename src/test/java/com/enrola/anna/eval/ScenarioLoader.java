@@ -25,8 +25,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 /**
  * Loads {@code evals/scenarios/*.yaml}. Each file is validated against {@code
  * evals/schema/scenario.schema.json} before it is mapped, so a typo such as {@code reply_match}
- * fails loudly with the file's name; its id must equal its file name, and every regex must compile,
- * so no trial can crash on one.
+ * fails loudly with the file's name; its id must equal its file name, every regex must compile and
+ * every {@code stop_when} entry must parse, so no trial can crash on one.
  */
 final class ScenarioLoader {
 
@@ -74,6 +74,10 @@ final class ScenarioLoader {
           default -> throw new ScenarioException(file, "unknown kind"); // the schema rejects it
         };
     compileRegexes(file, scenario.expect());
+    compile(file, "config.forbidden", scenario.config().forbidden());
+    if (scenario instanceof Scenario.Story story) {
+      parseStopWhen(file, story);
+    }
     return scenario;
   }
 
@@ -97,6 +101,15 @@ final class ScenarioLoader {
     compile(file, "transcript_matches", expect.transcriptMatches());
     if (expect.everyReply() != null) {
       compile(file, "every_reply.reply_not_matches", expect.everyReply().replyNotMatches());
+    }
+  }
+
+  /** Each entry in the grammar {@link StopWhen} reads, so no trial can stop on a typo. */
+  private static void parseStopWhen(Path file, Scenario.Story story) {
+    try {
+      StopWhen.parseAll(story.stopWhen());
+    } catch (ScenarioException e) {
+      throw new ScenarioException(file, e.getMessage());
     }
   }
 

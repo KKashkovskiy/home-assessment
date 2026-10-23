@@ -44,7 +44,8 @@ class MigrationTest {
               "2 SQL TRUE",
               "2.1 SQL TRUE",
               "2.2 SQL TRUE",
-              "3 SQL TRUE");
+              "3 SQL TRUE",
+              "4 SQL TRUE");
       assertThat(app.getBean(ConversationService.class).view("c-old").promptVersion())
           .isEqualTo("v1");
       assertThat(

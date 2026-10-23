@@ -22,21 +22,22 @@ class EvalBudgetTest {
 
   @Test
   void preflightRefusesAnEstimateOverTheCap() {
-    BigDecimal estimate = new EvalBudget(new BigDecimal("2"), FIVE_CENTS, "m").estimate(turns(41));
+    BigDecimal estimate =
+        new EvalBudget(new BigDecimal("2"), FIVE_CENTS, "m").estimate(turns(41), 1);
 
     assertThat(estimate).isEqualByComparingTo("4.10");
     assertThat(new EvalBudget(new BigDecimal("2"), FIVE_CENTS, "m").allows(estimate)).isFalse();
     assertThat(new EvalBudget(new BigDecimal("5"), FIVE_CENTS, "m").allows(estimate)).isTrue();
   }
 
-  /** No runner takes a story yet, so a story costs nothing in the estimate. */
+  /** Two turns at two calls and a story at fourteen, three trials each: 54 calls at $0.05. */
   @Test
-  void onlyRunnableKindsAreEstimated() {
+  void eachKindIsEstimatedPerTrial() {
     List<Scenario> mixed =
         Stream.concat(turns(2).stream(), Stream.of(ScenarioFixtures.story("story-x"))).toList();
 
-    assertThat(new EvalBudget(BigDecimal.ONE, FIVE_CENTS, "m").estimate(mixed))
-        .isEqualByComparingTo("0.20");
+    assertThat(new EvalBudget(BigDecimal.ONE, FIVE_CENTS, "m").estimate(mixed, 3))
+        .isEqualByComparingTo("2.70");
   }
 
   /** At $0.08 spent of $0.10, one more $0.05 call would pass the cap, so the next trial skips. */
@@ -50,9 +51,18 @@ class EvalBudgetTest {
     assertThat(budget.allowsAnotherCall()).isFalse();
   }
 
+  /** A story's own spend so far counts before the ledger has it. */
+  @Test
+  void aRunningStoryCountsWhatItSpent() {
+    var budget = new EvalBudget(new BigDecimal("0.10"), FIVE_CENTS, "m");
+
+    assertThat(budget.allowsAnotherCall(new BigDecimal("0.05"))).isTrue();
+    assertThat(budget.allowsAnotherCall(new BigDecimal("0.06"))).isFalse();
+  }
+
   @Test
   void anUnpricedModelIsNeverRefused() {
-    assertThat(new EvalBudget(BigDecimal.ONE, FIVE_CENTS, "other").estimate(turns(3)))
+    assertThat(new EvalBudget(BigDecimal.ONE, FIVE_CENTS, "other").estimate(turns(3), 1))
         .isEqualByComparingTo("0");
   }
 

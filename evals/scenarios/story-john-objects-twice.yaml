@@ -31,3 +31,9 @@ expect:
   replies_after_end_max: 1
 judge:
   - "Is there exactly one retry after the first objection, tied to what John said, and no attempt to persuade after the second objection?"
+config:
+  offline_lines:
+    - too busy for this mate
+    - nah not interested, insurance is all the same
+    - said no
+    - ok

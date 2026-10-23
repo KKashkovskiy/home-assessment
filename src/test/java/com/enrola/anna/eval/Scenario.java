@@ -22,8 +22,8 @@ import tools.jackson.databind.annotation.JsonDeserialize;
 /**
  * One eval scenario file, as {@code evals/README.md} documents it; YAML fields are snake_case. A
  * {@link Turn} is the primary unit: a seeded transcript, one lead message, one turn's expectations.
- * A {@link Story} runs a whole conversation against a simulated lead; it loads so the files stay
- * valid, and the runner skips it.
+ * A {@link Story} hands a hidden persona to a simulated lead and runs the whole conversation
+ * against end-state expectations.
  */
 sealed interface Scenario permits Scenario.Turn, Scenario.Story {
 
@@ -108,10 +108,16 @@ sealed interface Scenario permits Scenario.Turn, Scenario.Story {
   /**
    * Overrides for one trial. {@code moderation} is what the offline moderation answers ({@code
    * harassment}, {@code threat}, {@code self_harm}, 0 to 1); {@code maxTurns} replaces the
-   * settings' limit. Null means as configured.
+   * settings' limit. A story's {@code offlineLines} are what the offline actor sends, in order, and
+   * its {@code forbidden} regexes are lines the simulated lead must never send. Null means as
+   * configured.
    */
-  record Config(Map<String, Double> moderation, Integer maxTurns) {
-    static final Config NONE = new Config(null, null);
+  record Config(
+      Map<String, Double> moderation,
+      Integer maxTurns,
+      List<String> offlineLines,
+      List<String> forbidden) {
+    static final Config NONE = new Config(null, null, null, null);
   }
 
   /** A seeded transcript and state, then {@code message}, the lead message under test. */
@@ -163,8 +169,8 @@ sealed interface Scenario permits Scenario.Turn, Scenario.Story {
 
   /**
    * What a scenario asserts; null means not asserted. {@code turnStatus} unset means the turn must
-   * not end FALLBACK or ERROR. The fields from {@code bookingCount} on are the story's, unread by
-   * the turn runner.
+   * not end FALLBACK or ERROR. A story reads the state fields, {@code stage} and {@code toolCalled}
+   * at its end, and the fields from {@code bookingCount} on are its alone.
    */
   record Expect(
       LeadIntent leadIntent,

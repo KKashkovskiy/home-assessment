@@ -11,6 +11,8 @@ record RunHeader(
     String effort,
     RunMode mode,
     String selection,
+    int trials,
+    double validityThreshold,
     BigDecimal cap,
     Instant startedAt) {
 

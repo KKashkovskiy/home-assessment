@@ -21,13 +21,12 @@ class StandInModelTest {
   static final Slot MONDAY_NOON =
       new Slot("s1", Instant.parse("2026-07-27T02:00:00Z"), "Mon 27 Jul 12:00 PM AEST");
 
-  final StandInModel model = new StandInModel();
-
   @Test
   void replySatisfiesEachRegexAndAsksOneQuestion() {
-    model.arm(
-        turn("turn-x", "monday?", expect().matches("\\d{1,2}:\\d{2}", "(?i)\\bAI\\b").build()),
-        offered());
+    var model =
+        new StandInModel(
+            turn("turn-x", "monday?", expect().matches("\\d{1,2}:\\d{2}", "(?i)\\bAI\\b").build()),
+            offered());
 
     String reply = decided(model.call(request(new InputItem.UserText("context")))).reply();
 
@@ -37,7 +36,9 @@ class StandInModelTest {
 
   @Test
   void closingReplyAsksNothing() {
-    model.arm(turn("turn-x", "bye", expect().conversationEnded(true).build()), new Conversation());
+    var model =
+        new StandInModel(
+            turn("turn-x", "bye", expect().conversationEnded(true).build()), new Conversation());
 
     assertThat(decided(model.call(request(new InputItem.UserText("context")))).reply())
         .doesNotContain("?");
@@ -52,9 +53,10 @@ class StandInModelTest {
 
   @Test
   void callsTheExpectedToolBeforeDeciding() {
-    model.arm(
-        turn("turn-x", "tomorrow morning", expect().tools("get_availability").build()),
-        new Conversation());
+    var model =
+        new StandInModel(
+            turn("turn-x", "tomorrow morning", expect().tools("get_availability").build()),
+            new Conversation());
 
     InputItem.FunctionCall call =
         ((ModelResponse.ToolCalls) model.call(request(new InputItem.UserText("context"))))
@@ -77,7 +79,8 @@ class StandInModelTest {
 
   @Test
   void booksTheFirstSeededSlot() {
-    model.arm(turn("turn-x", "12", expect().tools("book_call").build()), offered());
+    var model =
+        new StandInModel(turn("turn-x", "12", expect().tools("book_call").build()), offered());
 
     ModelResponse response = model.call(request(new InputItem.UserText("context")));
 
@@ -87,26 +90,13 @@ class StandInModelTest {
 
   @Test
   void decidesTheExpectedIntent() {
-    model.arm(
-        turn("turn-x", "who are you", expect().intent(LeadIntent.AI_QUESTION).build()),
-        new Conversation());
+    var model =
+        new StandInModel(
+            turn("turn-x", "who are you", expect().intent(LeadIntent.AI_QUESTION).build()),
+            new Conversation());
 
     assertThat(decided(model.call(request(new InputItem.UserText("context")))).leadIntent())
         .isEqualTo(LeadIntent.AI_QUESTION);
-  }
-
-  @Test
-  void availabilityFollowsTheNamedDayAndPart() {
-    assertThat(
-            StandInModel.availabilityArgs(
-                turn("turn-x", "Thursday's better", Scenario.Expect.NONE)))
-        .containsEntry("date_from", "2026-07-30")
-        .containsEntry("date_to", "2026-07-30")
-        .containsEntry("part_of_day", "ANY");
-    assertThat(StandInModel.availabilityArgs(turn("turn-x", "sometime arvo", Scenario.Expect.NONE)))
-        .containsEntry("date_from", "2026-07-27")
-        .containsEntry("date_to", "2026-08-02")
-        .containsEntry("part_of_day", "AFTERNOON");
   }
 
   private static Conversation offered() {

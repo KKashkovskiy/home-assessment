@@ -8,12 +8,15 @@ import java.util.List;
 /**
  * One run's spend against its cap, a ledger of its own: an estimate before the first call, a
  * running total after each trial. A typical call is 6,000 tokens in and 400 out at the model's
- * price; a turn is budgeted at two calls, its decision and a possible repair, and a story at none,
- * since no runner takes stories yet.
+ * price; a turn is budgeted at two calls, its decision and a possible repair, and a story at {@link
+ * #STORY_CALLS}. The simulated lead's calls are far smaller and ride in that margin.
  */
 final class EvalBudget {
 
   private static final Usage TYPICAL_CALL = new Usage(6_000, 0, 400, 0);
+
+  /** Seven turns of a decision and a repair: a story that books with its probes. */
+  static final int STORY_CALLS = 14;
 
   private final BigDecimal cap;
   private final BigDecimal perCall;
@@ -33,18 +36,18 @@ final class EvalBudget {
     return spent;
   }
 
-  /** What {@code selected} would cost at the typical call's price. */
-  BigDecimal estimate(List<Scenario> selected) {
+  /** What {@code trials} of each of {@code selected} would cost at the typical call's price. */
+  BigDecimal estimate(List<Scenario> selected, int trials) {
     long calls =
         selected.stream()
             .mapToLong(
                 scenario ->
                     switch (scenario) {
                       case Scenario.Turn _ -> 2;
-                      case Scenario.Story _ -> 0;
+                      case Scenario.Story _ -> STORY_CALLS;
                     })
             .sum();
-    return perCall.multiply(BigDecimal.valueOf(calls));
+    return perCall.multiply(BigDecimal.valueOf(calls * trials));
   }
 
   /** True while {@code usd} more stays within the cap. */
@@ -54,7 +57,15 @@ final class EvalBudget {
 
   /** True while one more typical call stays within the cap; the next trial runs only then. */
   boolean allowsAnotherCall() {
-    return allows(perCall);
+    return allowsAnotherCall(BigDecimal.ZERO);
+  }
+
+  /**
+   * Likewise on top of {@code pending}, what a running story has spent and the ledger has not yet
+   * counted; its next line is sent only then.
+   */
+  boolean allowsAnotherCall(BigDecimal pending) {
+    return allows(pending.add(perCall));
   }
 
   void spend(BigDecimal usd) {

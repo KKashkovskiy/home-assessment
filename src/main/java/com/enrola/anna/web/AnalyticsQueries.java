@@ -120,8 +120,8 @@ class AnalyticsQueries {
   /** Conversations whose decisions named one objection type, and how many of them booked. */
   record ObjectionCount(String type, long conversations, long recovered) {}
 
-  /** One eval run's scenarios that passed, out of those it ran. */
-  record EvalRunCounts(long passed, long ran) {}
+  /** One eval run's trials that passed, out of those judged: PASS or FAIL. */
+  record EvalRunCounts(long passed, long judged) {}
 
   /**
    * The cohort's conversations. The turn that booked is the first whose book_call answered booked;
@@ -236,17 +236,18 @@ class AnalyticsQueries {
   }
 
   /**
-   * The latest keyed eval run on {@code promptVersion}: its passed scenarios over those it ran, the
-   * skipped ones left out. An offline run proves the harness, not the prompt, and a run that
-   * skipped everything says nothing, so neither counts.
+   * The latest keyed eval run on {@code promptVersion}: its passed trials over those judged, the
+   * run's own per-trial pass rate. Skipped and INVALID trials say nothing about the prompt and are
+   * left out. An offline run proves the harness, not the prompt, and a run that skipped everything
+   * says nothing, so neither counts.
    */
   Optional<EvalRunCounts> latestKeyedEvalRun(String promptVersion) {
     return db.sql(
-            "SELECT passed, selected - skipped AS ran FROM eval_run"
+            "SELECT passed, passed + failed AS judged FROM eval_run"
                 + " WHERE prompt_version = :version AND offline = FALSE AND verdict <> 'SKIPPED'"
                 + " ORDER BY started_at DESC LIMIT 1")
         .param("version", promptVersion)
-        .query((rs, _) -> new EvalRunCounts(rs.getLong("passed"), rs.getLong("ran")))
+        .query((rs, _) -> new EvalRunCounts(rs.getLong("passed"), rs.getLong("judged")))
         .optional();
   }
 

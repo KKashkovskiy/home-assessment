@@ -14,7 +14,7 @@ class TurnRunnerTest extends EvalFixture {
 
   @Test
   void stopIsAnsweredWithoutTheModel() {
-    Trial trial = runner.run(ScenarioFixtures.load("turn-stop-keyword"));
+    Trial trial = runner.run(ScenarioFixtures.load("turn-stop-keyword"), 1);
 
     assertThat(trial.status()).isEqualTo(TrialStatus.PASS);
     assertThat(trial.modelCalls()).isZero();
@@ -26,8 +26,8 @@ class TurnRunnerTest extends EvalFixture {
   void aScenarioRunsTwiceInOneDatabase() {
     Scenario.Turn stop = ScenarioFixtures.load("turn-stop-keyword");
 
-    assertThat(runner.run(stop).status()).isEqualTo(TrialStatus.PASS);
-    assertThat(runner.run(stop).status()).isEqualTo(TrialStatus.PASS);
+    assertThat(runner.run(stop, 1).status()).isEqualTo(TrialStatus.PASS);
+    assertThat(runner.run(stop, 2).status()).isEqualTo(TrialStatus.PASS);
   }
 
   /** Two inline leads on one phone: the first STOPs, so the product refuses the second's start. */
@@ -39,9 +39,9 @@ class TurnRunnerTest extends EvalFixture {
             null,
             new Lead(
                 null, "Kim", "+61491570111", null, "VIC", null, null, null, null, Instant.EPOCH));
-    runner.run(withLead(stop, "turn-kim-stops", kim));
+    runner.run(withLead(stop, "turn-kim-stops", kim), 1);
 
-    Trial refused = runner.run(withLead(stop, "turn-kim-again", kim));
+    Trial refused = runner.run(withLead(stop, "turn-kim-again", kim), 1);
 
     assertThat(refused.status()).isEqualTo(TrialStatus.FAIL);
     assertThat(refused.checks())
@@ -58,7 +58,7 @@ class TurnRunnerTest extends EvalFixture {
   void maxTurnsOverrideIsRestored() {
     int before = settings.current().limits().maxTurns();
 
-    Trial trial = runner.run(ScenarioFixtures.load("turn-max-turns"));
+    Trial trial = runner.run(ScenarioFixtures.load("turn-max-turns"), 1);
 
     assertThat(trial.status()).isEqualTo(TrialStatus.PASS);
     assertThat(settings.current().limits().maxTurns()).isEqualTo(before);

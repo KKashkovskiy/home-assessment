@@ -12,9 +12,8 @@ persona: |
   arvo". When offered concrete times, pick the first one by saying "the first one". After a booking confirmation
   reply "cheers" once and stop.
 stop_when:
-  - the agent confirms a booking
-  - the agent dodges the money question twice
-  - 8 lead messages have been sent
+  - goal_met
+  - 10 lead messages have been sent
 expect:
   goal_met: true
   conversation_ended: true
@@ -32,3 +31,12 @@ expect:
   replies_after_goal_max: 1
 judge:
   - "Does each answer about cost and commission use the knowledge pack's wording (free, same price as direct, referral fee from the chosen fund) and then return to the script in the same message?"
+config:
+  offline_lines:
+    - yeah first time. is this free?
+    - how do you make money then
+    - ok fair. hospital and extras i think
+    - any weekday arvo
+    - the first one
+    - cheers
+    - ok

@@ -12,8 +12,7 @@ persona: |
   offered concrete times, pick the earliest one by saying just its time, like "12". After a booking confirmation,
   reply "thanks" once and then stop.
 stop_when:
-  - the agent confirms a booking
-  - the agent asks the same question twice in a row
+  - goal_met
   - 8 lead messages have been sent
 expect:
   goal_met: true
@@ -32,3 +31,11 @@ expect:
   replies_after_goal_max: 1
 judge:
   - "Does the booking confirmation state the weekday, date, time and timezone of the booked slot and that an advisor will call for about 15 minutes?"
+config:
+  offline_lines:
+    - all of the above
+    - silver plus hospital, 500 excess, with extras
+    - working tomorrow monday, mid-morning works
+    - "12"
+    - thanks
+    - ok

@@ -138,6 +138,33 @@ class ScenarioLoaderTest {
         .hasMessageContaining("file name");
   }
 
+  /** A stop condition outside the grammar fails at load, named with the file. */
+  @Test
+  void rejectsAStoryStopConditionOutsideTheGrammar() throws IOException {
+    Path file = write("story-typo", story("stop_when: [goal met]\n"));
+
+    assertThatThrownBy(() -> loader.load(file))
+        .isInstanceOf(ScenarioException.class)
+        .hasMessage("story-typo.yaml: unknown stop_when: goal met");
+  }
+
+  /** A turn limit is a turn scenario's override; a story would ignore it. */
+  @Test
+  void rejectsMaxTurnsOnAStory() throws IOException {
+    Path file = write("story-max-turns", story("stop_when: [goal_met]\nconfig:\n  max_turns: 3\n"));
+
+    assertThatThrownBy(() -> loader.load(file))
+        .isInstanceOf(ScenarioException.class)
+        .hasMessageStartingWith("story-max-turns.yaml: ");
+  }
+
+  /** A story's header and persona, then {@code rest}. */
+  private static String story(String rest) {
+    return HEADER.replace("kind: turn", "kind: story")
+        + "persona: be nice\nexpect:\n  goal_met: true\n"
+        + rest;
+  }
+
   /** A scenario file named after {@code id}, with that id. */
   private Path write(String id, String body) throws IOException {
     Path file = dir.resolve(id + ".yaml");

@@ -17,8 +17,8 @@ final class ScenarioModeration implements ModerationClient {
 
   private volatile Map<String, Double> scores = Map.of();
 
-  /** Set before each trial. */
-  void arm(Scenario.Turn scenario) {
+  /** Set before each trial; a story's scores hold for each of its lines. */
+  void arm(Scenario scenario) {
     scores =
         scenario.config().moderation() != null
             ? scenario.config().moderation()

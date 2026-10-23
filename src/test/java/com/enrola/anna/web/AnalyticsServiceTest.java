@@ -273,16 +273,16 @@ class AnalyticsServiceTest extends AnalyticsFixture {
     }
 
     /**
-     * The latest keyed run per version, passed over run: skipped scenarios are out of the base, and
-     * an offline run or one that skipped everything is ignored however recent.
+     * The latest keyed run per version, passed over judged: skipped and INVALID trials are out of
+     * the base, and an offline run or one that skipped everything is ignored however recent.
      */
     @Test
     void evalPassRateReadsTheLatestKeyedRun() {
-      evalRun("r1", "v1", "2026-07-20T00:00:00Z", new Counts(40, 40, 0), false);
-      evalRun("r2", "v1", "2026-07-21T00:00:00Z", new Counts(44, 39, 3), false);
-      evalRun("r3", "v1", "2026-07-22T00:00:00Z", new Counts(44, 44, 0), true);
-      evalRun("r4", "v1", "2026-07-23T00:00:00Z", new Counts(2, 0, 2), false);
-      evalRun("r5", "v2", "2026-07-22T00:00:00Z", new Counts(10, 10, 0), false);
+      evalRun("r1", "v1", "2026-07-20T00:00:00Z", new Counts(40, 40, 0, 0), false);
+      evalRun("r2", "v1", "2026-07-21T00:00:00Z", new Counts(46, 39, 2, 3), false);
+      evalRun("r3", "v1", "2026-07-22T00:00:00Z", new Counts(44, 44, 0, 0), true);
+      evalRun("r4", "v1", "2026-07-23T00:00:00Z", new Counts(2, 0, 0, 2), false);
+      evalRun("r5", "v2", "2026-07-22T00:00:00Z", new Counts(10, 10, 0, 0), false);
 
       CompareView.Row evalPass = row(analytics.compare("v1", "v2", allTime()), "evalPass");
 
@@ -306,14 +306,18 @@ class AnalyticsServiceTest extends AnalyticsFixture {
     return analytics.view(allTime());
   }
 
-  /** Scenarios an eval run selected, passed and skipped; the rest failed. */
-  private record Counts(int selected, int passed, int skipped) {
+  /** Trials an eval run selected, passed, found INVALID and skipped; the rest failed. */
+  private record Counts(int selected, int passed, int invalid, int skipped) {
+
+    int failed() {
+      return selected - passed - invalid - skipped;
+    }
 
     String verdict() {
       if (skipped == selected) {
         return "SKIPPED";
       }
-      return passed + skipped == selected ? "PASS" : "FAIL";
+      return failed() == 0 ? "PASS" : "FAIL";
     }
   }
 
@@ -321,15 +325,16 @@ class AnalyticsServiceTest extends AnalyticsFixture {
       String id, String version, String startedAt, Counts counts, boolean offline) {
     jdbc.update(
         "insert into eval_run (id, started_at, prompt_version, model, offline, selected, passed,"
-            + " failed, skipped, verdict, cost_usd, report_path)"
-            + " values (?, ?, ?, 'gpt-5.1', ?, ?, ?, ?, ?, ?, 0, 'evals/runs/x/report.md')",
+            + " failed, invalid, skipped, verdict, cost_usd, report_path)"
+            + " values (?, ?, ?, 'gpt-5.1', ?, ?, ?, ?, ?, ?, ?, 0, 'evals/runs/x/report.md')",
         id,
         OffsetDateTime.parse(startedAt),
         version,
         offline,
         counts.selected(),
         counts.passed(),
-        counts.selected() - counts.passed() - counts.skipped(),
+        counts.failed(),
+        counts.invalid(),
         counts.skipped(),
         counts.verdict());
   }

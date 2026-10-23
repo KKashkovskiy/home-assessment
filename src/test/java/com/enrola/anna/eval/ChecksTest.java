@@ -164,7 +164,10 @@ class ChecksTest {
         .isEmpty();
   }
 
-  /** The production guards name what fails; a template reply is not held to the question rule. */
+  /**
+   * The production guards name what fails, on the hard gate; the turn's status and one question per
+   * reply fail only their scenario. A template reply is not held to the question rule.
+   */
   @Test
   void suiteWideRunsTheReplyGuards() {
     List<Check> checks =
@@ -179,7 +182,11 @@ class ChecksTest {
         .filteredOn(check -> !check.pass())
         .extracting(Check::name)
         .containsExactly("url", "pii", "deny");
-    assertThat(checks).allMatch(check -> check.gate() == Check.Gate.HARD && check.turn() == 3);
+    assertThat(checks).allMatch(check -> check.turn() == 3);
+    assertThat(checks)
+        .filteredOn(check -> check.gate() == Check.Gate.EXPECTATION)
+        .extracting(Check::name)
+        .containsOnly("turn_status", "one_question_max");
   }
 
   /** A turn that fell back or failed fails unless the scenario expects exactly that. */

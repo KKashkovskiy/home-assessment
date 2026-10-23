@@ -13,21 +13,25 @@ import java.time.Instant;
 
 /**
  * Prepares a run of the suite on this context from its options, the same way for the CLI and the
- * offline test: the app's active prompt version, the cap, the selection, the header and the budget.
+ * offline test: the app's active prompt version, the cap, the selection, the header, the budget and
+ * the runners of both kinds.
  */
 final class EvalRuns {
 
-  private final TurnRunner runner;
+  private final TurnRunner turns;
+  private final StoryRunner stories;
   private final SettingsStore settings;
   private final PromptStore prompts;
   private final PromptVersionRepository versions;
 
   EvalRuns(
-      TurnRunner runner,
+      TurnRunner turns,
+      StoryRunner stories,
       SettingsStore settings,
       PromptStore prompts,
       PromptVersionRepository versions) {
-    this.runner = runner;
+    this.turns = turns;
+    this.stories = stories;
     this.settings = settings;
     this.prompts = prompts;
     this.versions = versions;
@@ -47,6 +51,8 @@ final class EvalRuns {
             agent.reasoning().value(),
             options.mode(),
             options.selection().describe(),
+            options.trials(),
+            options.validityThreshold(),
             cap,
             Instant.now());
     var plan =
@@ -57,7 +63,8 @@ final class EvalRuns {
             options.appDbUrl());
     var budget =
         new EvalBudget(cap, new PriceTable(settings.current().priceTable()), agent.model());
-    return new EvalRun(runner::run, budget, plan);
+    return new EvalRun(
+        turns::run, (story, trialNo) -> stories.run(story, trialNo, budget), budget, plan);
   }
 
   /** The app's version, added to this run's database when the repo did not seed it. */

@@ -1,10 +1,11 @@
 package com.enrola.anna.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import java.io.IOException;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -18,8 +19,10 @@ import org.springframework.test.context.DynamicPropertySource;
  * The eval entry point: {@code evals/run.sh} runs it with {@code -Dtest=EvalSuiteTest} and the
  * {@code -Deval.*} properties {@link EvalOptions} reads; the normal build leaves it out. The run
  * gets a fresh database and data directory under {@code evals/runs/<id>/}, starting from the
- * owner's settings, and one dynamic test per scenario it runs. A FAIL or INVALID trial fails its
- * test, a skipped one is aborted, and a refused or crashed run fails the factory.
+ * owner's settings, one dynamic test per trial ({@code <id> #k}) and a last one for the gates. Only
+ * the gates fail the build: a trial that did not pass is aborted with its reason, since a FAIL
+ * outside the core set and the hard checks is reported, not gating. A crashed trial fails its test,
+ * and a refused run the factory.
  */
 @SpringBootTest
 @Import(EvalConfig.class)
@@ -47,13 +50,24 @@ class EvalSuiteTest {
   @TestFactory
   Stream<DynamicTest> scenarios() throws IOException {
     EvalRun run = runs.prepare(OPTIONS);
-    return run.begin().stream()
-        .map(scenario -> dynamicTest(scenario.id(), () -> assertPassed(run.trial(scenario))))
-        .onClose(run::finish);
+    Stream<DynamicTest> trials =
+        run.begin().stream()
+            .flatMap(
+                scenario ->
+                    IntStream.rangeClosed(1, OPTIONS.trials())
+                        .mapToObj(
+                            trialNo ->
+                                dynamicTest(
+                                    scenario.id() + " #" + trialNo,
+                                    () -> abortUnlessPassed(run.trial(scenario, trialNo)))));
+    return Stream.concat(trials, Stream.of(dynamicTest("gates", () -> assertGreen(run.finish()))));
   }
 
-  private static void assertPassed(Trial trial) {
-    assumeFalse(trial.status().skipped(), trial.status()::name);
-    assertEquals(TrialStatus.PASS, trial.status(), () -> String.join(", ", trial.failedNames()));
+  private static void abortUnlessPassed(Trial trial) {
+    assumeTrue(trial.passed(), () -> trial.status() + " " + String.join(", ", trial.failedNames()));
+  }
+
+  private static void assertGreen(GateResult gates) {
+    assertEquals(0, gates.exitCode(), () -> gates + "; see " + OPTIONS.dir().resolve("report.md"));
   }
 }

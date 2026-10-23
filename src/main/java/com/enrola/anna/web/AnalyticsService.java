@@ -66,8 +66,8 @@ public class AnalyticsService {
   }
 
   /**
-   * Passed scenarios over scenarios run in the latest keyed eval run on {@code promptVersion};
-   * empty while the version has none. No link: the run's report is a file under {@code evals/runs}.
+   * Passed trials over judged trials in the latest keyed eval run on {@code promptVersion}; empty
+   * while the version has none. No link: the run's report is a file under {@code evals/runs}.
    */
   public Optional<Kpi> evalPassRate(String promptVersion) {
     return queries
@@ -78,7 +78,7 @@ public class AnalyticsService {
                     CompareView.EVAL_PASS,
                     CompareView.EVAL_PASS_LABEL,
                     run.passed(),
-                    run.ran(),
+                    run.judged(),
                     Kpi.Unit.RATE,
                     null,
                     null,

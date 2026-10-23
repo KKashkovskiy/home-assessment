@@ -115,18 +115,36 @@
             "self_harm": { "type": "number", "minimum": 0, "maximum": 1 }
           }
         },
-        "max_turns": { "type": "integer", "minimum": 1 }
+        "max_turns": { "type": "integer", "minimum": 1 },
+        "offline_lines": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "description": "Story: what the offline actor sends, in order; without them the story is skipped offline"
+        },
+        "forbidden": {
+          "$ref": "#/$defs/regexes",
+          "description": "Story: lines the simulated lead must never send; one that matches marks the trial INVALID"
+        }
       }
     }
   },
   "allOf": [
     {
       "if": { "properties": { "kind": { "const": "turn" } } },
-      "then": { "required": ["message"], "not": { "anyOf": [{ "required": ["persona"] }, { "required": ["stop_when"] }] } }
+      "then": {
+        "required": ["message"],
+        "not": { "anyOf": [{ "required": ["persona"] }, { "required": ["stop_when"] }] },
+        "properties": { "config": { "not": { "anyOf": [{ "required": ["offline_lines"] }, { "required": ["forbidden"] }] } } }
+      }
     },
     {
       "if": { "properties": { "kind": { "const": "story" } } },
-      "then": { "required": ["persona", "stop_when"], "not": { "anyOf": [{ "required": ["history"] }, { "required": ["message"] }, { "required": ["seed"] }] } }
+      "then": {
+        "required": ["persona", "stop_when"],
+        "not": { "anyOf": [{ "required": ["history"] }, { "required": ["message"] }, { "required": ["seed"] }] },
+        "properties": { "config": { "not": { "required": ["max_turns"] } } }
+      }
     }
   ],
   "$defs": {

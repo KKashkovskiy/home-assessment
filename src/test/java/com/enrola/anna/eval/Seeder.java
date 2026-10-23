@@ -31,11 +31,11 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
- * Writes a turn scenario's starting state as the rows the product would have left, after fixing the
+ * Writes a scenario's starting state as the rows the product would have left, after fixing the
  * clock and the calendar preset. The conversation starts through {@link ConversationService}, so
- * the opener, the prompt pin and the lead's zone are the product's; the history becomes message
- * rows with turn numbers, offered labels become real slots, and the seed's booking and end go
- * through the product's state rules, as a turn would set them.
+ * the opener, the prompt pin and the lead's zone are the product's. A story starts there; for a
+ * turn the history becomes message rows with turn numbers, offered labels become real slots, and
+ * the seed's booking and end go through the product's state rules, as a turn would set them.
  *
  * <p>Each seed gets a lead row of its own: id the scenario id, with {@code -2}, {@code -3} and on
  * for a repeat in the same database, and a copy of the named seeded lead, or of the inline record,
@@ -78,21 +78,35 @@ final class Seeder {
    * product refuses is its {@link ConflictException}.
    */
   Conversation seed(Scenario.Turn scenario) {
-    clock.fixAt(scenario.clock().toInstant());
-    calendar.preset(scenario.calendar());
+    fixClockAndCalendar(scenario);
     Lead template = template(scenario);
     Map<String, Slot> slots = resolveLabels(scenario, template);
-    Lead lead = leadFor(scenario, template);
-    Conversation conversation =
-        rows.require(conversations.start(lead.id(), Source.EVAL).conversationId());
+    Conversation conversation = start(scenario, template);
     Instant now = clock.now();
     writeHistory(conversation, scenario.history(), slots, now);
     applySeed(conversation, scenario.seed(), slots, now);
     return rows.save(conversation);
   }
 
+  /** A story's conversation as the product started it: the opener sent, nothing else. */
+  Conversation seed(Scenario.Story scenario) {
+    fixClockAndCalendar(scenario);
+    return start(scenario, template(scenario));
+  }
+
+  private void fixClockAndCalendar(Scenario scenario) {
+    clock.fixAt(scenario.clock().toInstant());
+    calendar.preset(scenario.calendar());
+  }
+
+  /** A conversation started for a new lead copied from {@code template}. */
+  private Conversation start(Scenario scenario, Lead template) {
+    Lead lead = leadFor(scenario, template);
+    return rows.require(conversations.start(lead.id(), Source.EVAL).conversationId());
+  }
+
   /** The lead the scenario names, unsaved: the seeded row, or the inline record. */
-  private Lead template(Scenario.Turn scenario) {
+  private Lead template(Scenario scenario) {
     if (scenario.lead().inline() != null) {
       return scenario.lead().inline();
     }
@@ -102,7 +116,7 @@ final class Seeder {
   }
 
   /** A new lead row for this seed, a copy of {@code template}. */
-  private Lead leadFor(Scenario.Turn scenario, Lead template) {
+  private Lead leadFor(Scenario scenario, Lead template) {
     String id = freeLeadId(scenario.id());
     boolean ownPhone = scenario.lead().inline() != null && id.equals(scenario.id());
     return leads.save(

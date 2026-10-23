@@ -15,20 +15,26 @@ import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Writes a run's files under {@code evals/runs/<id>/}: {@code report.md} (header, gates, coverage
- * by tag, one row per scenario, cost, notes), one {@link ScenarioPage} per trial, and {@code
- * trials.jsonl}. Markdown because a reviewer reads it on GitHub; JSONL so later columns do not
- * change the shape of a line.
+ * Writes a run's files under {@code evals/runs/<id>/}: {@code report.md} (header with the
+ * statistics, the three gates, coverage by tag, one row per scenario with its trials, cost, notes),
+ * one {@link ScenarioPage} per trial, {@code trials.jsonl}, and {@code exit-code}, the gates' code
+ * that {@code run.sh} exits with. Markdown because a reviewer reads it on GitHub; JSONL so later
+ * columns do not change the shape of a line. The numbers come from {@link RunSummary} and {@link
+ * Gates}; nothing is computed here.
  */
 final class ReportWriter {
 
   private static final JsonMapper JSON =
       JsonMapper.builder().propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE).build();
 
+  /** The file whose one line is the gates' exit code. */
+  static final String EXIT_CODE = "exit-code";
+
   /** One {@code trials.jsonl} line; each check carries its gate and its turn. */
   private record Line(
       String run,
       String scenario,
+      int trialNo,
       String kind,
       TrialStatus status,
       List<Check> checks,
@@ -37,13 +43,14 @@ final class ReportWriter {
       int modelCalls,
       String conversationId,
       int turnNo,
+      String stopReason,
       long durationMs) {}
 
-  /** Scenarios and passes under one tag. */
-  private record TagCount(int scenarios, int passed) {
+  /** Scenarios and clean ones under one tag. */
+  private record TagCount(int scenarios, int clean) {
 
     TagCount plus(TagCount other) {
-      return new TagCount(scenarios + other.scenarios, passed + other.passed);
+      return new TagCount(scenarios + other.scenarios, clean + other.clean);
     }
   }
 
@@ -54,6 +61,7 @@ final class ReportWriter {
     Map<String, Scenario> byId =
         plan.selected().stream().collect(Collectors.toMap(Scenario::id, Function.identity()));
     writeFile(plan.dir().resolve("report.md"), report(plan, summary, notes));
+    writeFile(plan.dir().resolve(EXIT_CODE), summary.gates().exitCode() + "\n");
     writeFile(
         plan.dir().resolve("trials.jsonl"),
         summary.trials().stream()
@@ -61,7 +69,7 @@ final class ReportWriter {
             .collect(Collectors.joining()));
     for (Trial trial : summary.trials()) {
       writeFile(
-          plan.dir().resolve(trial.scenarioId() + ".md"),
+          plan.dir().resolve(ScenarioPage.fileName(trial)),
           ScenarioPage.render(byId.get(trial.scenarioId()), trial));
     }
   }
@@ -74,7 +82,7 @@ final class ReportWriter {
         """
         # Eval run %s (dry run)
 
-        Estimate: $%s of $%s cap for %d scenarios (%s). No model call, no eval_run row.
+        Estimate: $%s of $%s cap for %d scenarios (%s) x %d trials. No model call, no eval_run row.
 
         %s
         """
@@ -84,6 +92,7 @@ final class ReportWriter {
                 cents(header.cap()),
                 plan.selected().size(),
                 header.selection(),
+                header.trials(),
                 plan.selected().stream()
                     .map(scenario -> "- " + scenario.id())
                     .collect(Collectors.joining("\n"))));
@@ -92,8 +101,8 @@ final class ReportWriter {
   static String report(RunPlan plan, RunSummary summary, List<String> notes) {
     return headerSection(plan, summary)
         + gatesSection(summary)
-        + coverageSection(plan.selected(), summary.trials())
-        + scenariosSection(summary.trials())
+        + coverageSection(plan.selected(), summary)
+        + scenariosSection(summary)
         + costSection(plan.header(), summary)
         + notes.stream().map(note -> "\n" + note + "\n").collect(Collectors.joining());
   }
@@ -110,7 +119,11 @@ final class ReportWriter {
         | Key | %s |
         | Offline stand-in | %s |
         | Clock | per scenario |
-        | Scenarios | %d selected (%s), %d run, %d skipped, %d crashed |
+        | Scenarios | %d selected (%s) |
+        | Trials per scenario | %d |
+        | Trials | %d run, %d skipped, %d crashed |
+        | Pass^k | %s |
+        | Per-trial pass rate | %s |
         | Cost | $%s of $%s cap |
         | Verdict | %s |
         """
@@ -121,61 +134,127 @@ final class ReportWriter {
             header.effort(),
             header.keyLine(),
             header.offline()
-                ? "yes (answers from each scenario's expect block: proves the harness, not the prompt)"
+                ? "yes (turns answer from their expect block, stories from scripted lines and"
+                    + " keyword rules: proves the harness, not the prompt)"
                 : "no",
-            summary.selected(),
+            plan.selected().size(),
             header.selection(),
+            header.trials(),
             summary.ran(),
             summary.skipped(),
             summary.crashed(),
+            passK(summary),
+            passRate(summary),
             usd(summary.cost()),
             cents(header.cap()),
             summary.verdict());
   }
 
-  /** The hard gate: every HARD check on every trial, each failure listed. */
-  private static String gatesSection(RunSummary summary) {
-    List<String> failures =
-        summary.trials().stream()
-            .flatMap(
-                trial ->
-                    trial.checks().stream()
-                        .filter(check -> check.gate() == Check.Gate.HARD && !check.pass())
-                        .map(
-                            check ->
-                                "- %s: %s, %s%n"
-                                    .formatted(trial.scenarioId(), check.name(), check.evidence())))
-            .toList();
-    return """
-
-        ## Gates
-        hard: %s
-        """
-            .formatted(hardGate(summary, failures.size()))
-        + String.join("", failures);
-  }
-
-  private static String hardGate(RunSummary summary, int failures) {
-    if (summary.ran() == 0) {
-      return "SKIPPED   (no trial ran)";
+  /** {@code 87% (26 of 30 scenarios clean)}. */
+  private static String passK(RunSummary summary) {
+    if (summary.judged() == 0) {
+      return "n/a (no trial judged)";
     }
-    return failures == 0
-        ? "PASS   (every hard check on every reply passed)"
-        : "FAIL   (failed: %d)".formatted(failures);
+    return "%s (%d of %d scenarios clean)"
+        .formatted(percent(summary.passK()), summary.cleanScenarios(), summary.judgedScenarios());
   }
 
-  private static String coverageSection(List<Scenario> selected, List<Trial> trials) {
-    Map<String, Boolean> passed =
-        trials.stream().collect(Collectors.toMap(Trial::scenarioId, Trial::passed));
+  /** {@code 80% (49% to 94%, n=10)}: the rate with its 95% Wilson interval. */
+  private static String passRate(RunSummary summary) {
+    if (summary.judged() == 0) {
+      return "n/a (no trial judged)";
+    }
+    Stats.Interval interval = summary.passRateInterval();
+    return "%s (%s to %s, n=%d)"
+        .formatted(
+            percent((double) summary.count(TrialStatus.PASS) / summary.judged()),
+            percent(interval.low()),
+            percent(interval.high()),
+            summary.judged());
+  }
+
+  /**
+   * The three gates, each failure listed under its gate, and the exit code they add up to. With
+   * nothing run each gate says so.
+   */
+  private static String gatesSection(RunSummary summary) {
+    if (summary.ran() == 0) {
+      return """
+
+          ## Gates
+          hard: SKIPPED   (no trial ran)
+          global: SKIPPED   (no trial ran)
+          validity: SKIPPED   (no trial ran)
+          exit code: 0
+          """;
+    }
+    GateResult gates = summary.gates();
+    return "\n## Gates\n"
+        + hardGate(gates)
+        + globalGate(gates)
+        + validityGate(gates)
+        + "exit code: "
+        + gates.exitCode()
+        + "\n";
+  }
+
+  private static String hardGate(GateResult gates) {
+    return gate(
+        "hard",
+        "every hard check on every reply passed",
+        gates.hardFailures().stream()
+            .map(
+                failure ->
+                    "%s: %s, %s"
+                        .formatted(
+                            failure.trial().label(),
+                            failure.check().name(),
+                            failure.check().evidence()))
+            .toList());
+  }
+
+  private static String globalGate(GateResult gates) {
+    return gate(
+        "global",
+        "every trial of a core scenario passed",
+        gates.coreFailures().stream()
+            .map(trial -> trial.label() + ": " + String.join(", ", trial.failedNames()))
+            .toList());
+  }
+
+  private static String validityGate(GateResult gates) {
+    return "validity: %s   (%d of %d trials INVALID; the gate allows %s)%n"
+        .formatted(
+            gates.validity() ? "PASS" : "FAIL",
+            gates.invalid(),
+            gates.ran(),
+            percent(gates.validityThreshold()));
+  }
+
+  /** {@code gate: PASS (why)}, or FAIL with the count and one line per failure. */
+  private static String gate(String gate, String passedBecause, List<String> failures) {
+    if (failures.isEmpty()) {
+      return "%s: PASS   (%s)%n".formatted(gate, passedBecause);
+    }
+    return "%s: FAIL   (failed: %d)%n".formatted(gate, failures.size())
+        + failures.stream().map(failure -> "- " + failure + "\n").collect(Collectors.joining());
+  }
+
+  /** Per tag, the scenarios and those clean: a judged trial and no FAIL. */
+  private static String coverageSection(List<Scenario> selected, RunSummary summary) {
+    Map<String, List<Trial>> byId =
+        summary.byScenario().stream()
+            .collect(Collectors.toMap(trials -> trials.getFirst().scenarioId(), trials -> trials));
     Map<String, TagCount> byTag = new TreeMap<>();
     for (Scenario scenario : selected) {
-      var one = new TagCount(1, passed.getOrDefault(scenario.id(), false) ? 1 : 0);
+      boolean clean = Stats.clean(byId.getOrDefault(scenario.id(), List.of()));
+      var one = new TagCount(1, clean ? 1 : 0);
       scenario.tags().forEach(tag -> byTag.merge(tag, one, TagCount::plus));
     }
     return """
 
         ## Coverage by tag
-        | Tag | Scenarios | Pass |
+        | Tag | Scenarios | Clean |
         |---|---|---|
         """
         + byTag.entrySet().stream()
@@ -183,29 +262,72 @@ final class ReportWriter {
                 tag ->
                     "| %s | %d | %d |%n"
                         .formatted(
-                            tag.getKey(), tag.getValue().scenarios(), tag.getValue().passed()))
+                            tag.getKey(), tag.getValue().scenarios(), tag.getValue().clean()))
             .collect(Collectors.joining());
   }
 
-  private static String scenariosSection(List<Trial> trials) {
+  /** One row per scenario: a link per trial, the trials cell, the result, failures and cost. */
+  private static String scenariosSection(RunSummary summary) {
     return """
 
         ## Scenarios
-        | Scenario | Result | Failed checks | Cost | Model calls |
-        |---|---|---|---|---|
+        | Scenario | Trials | Result | Failed checks | Cost | Model calls |
+        |---|---|---|---|---|---|
         """
-        + trials.stream()
+        + summary.byScenario().stream()
+            .map(ReportWriter::scenarioRow)
+            .collect(Collectors.joining());
+  }
+
+  private static String scenarioRow(List<Trial> trials) {
+    String links =
+        trials.stream()
             .map(
                 trial ->
-                    "| [%s](%s.md) | %s | %s | $%s | %d |%n"
+                    "[%s](%s)"
                         .formatted(
-                            trial.scenarioId(),
-                            trial.scenarioId(),
-                            trial.status(),
-                            cell(String.join(", ", trial.failedNames())),
-                            usd(trial.costUsd()),
-                            trial.modelCalls()))
-            .collect(Collectors.joining());
+                            trial.trialNo() == 1 ? trial.scenarioId() : "#" + trial.trialNo(),
+                            ScenarioPage.fileName(trial)))
+            .collect(Collectors.joining(" "));
+    String failed =
+        trials.stream()
+            .filter(trial -> !trial.failedNames().isEmpty())
+            .map(
+                trial ->
+                    (trials.size() > 1 ? "#" + trial.trialNo() + ": " : "")
+                        + String.join(", ", trial.failedNames()))
+            .collect(Collectors.joining("; "));
+    return "| %s | %s | %s | %s | $%s | %d |%n"
+        .formatted(
+            links,
+            trialsCell(trials),
+            result(trials),
+            cell(failed),
+            usd(trials.stream().map(Trial::costUsd).reduce(BigDecimal.ZERO, BigDecimal::add)),
+            trials.stream().mapToInt(Trial::modelCalls).sum());
+  }
+
+  /** {@code 2/3}: passes of judged trials, then any INVALID and skipped ones. */
+  static String trialsCell(List<Trial> trials) {
+    long passed = trials.stream().filter(Trial::passed).count();
+    long judged = trials.stream().filter(trial -> trial.status().judged()).count();
+    long invalid = trials.stream().filter(trial -> trial.status() == TrialStatus.INVALID).count();
+    long skipped = trials.stream().filter(trial -> trial.status().skipped()).count();
+    return passed
+        + "/"
+        + judged
+        + (invalid > 0 ? " INVALID " + invalid : "")
+        + (skipped > 0 ? " skipped " + skipped : "");
+  }
+
+  /** FAIL on any FAIL, else PASS on any PASS, else the first trial's status. */
+  static String result(List<Trial> trials) {
+    if (trials.stream().anyMatch(trial -> trial.status() == TrialStatus.FAIL)) {
+      return TrialStatus.FAIL.name();
+    }
+    return trials.stream().anyMatch(Trial::passed)
+        ? TrialStatus.PASS.name()
+        : trials.getFirst().status().name();
   }
 
   /** A keyed run's boot also makes the product's model check, one small call not counted here. */
@@ -217,7 +339,7 @@ final class ReportWriter {
     return """
 
         ## Cost
-        Total $%s. Per scenario: see table. Judges: none.%s
+        Total $%s. Per scenario: see table; a story's includes its simulated lead. Judges: none.%s
         """
         .formatted(usd(summary.cost()), check);
   }
@@ -226,6 +348,7 @@ final class ReportWriter {
     return new Line(
         header.runId(),
         trial.scenarioId(),
+        trial.trialNo(),
         trial.kind(),
         trial.status(),
         trial.checks(),
@@ -233,13 +356,19 @@ final class ReportWriter {
         trial.costUsd(),
         trial.modelCalls(),
         trial.conversationId(),
-        trial.turnNo(),
+        trial.lastTurn(),
+        trial.stopReason(),
         trial.durationMs());
   }
 
   /** Dollars to four places, as a model call's cost shows. */
   static String usd(BigDecimal amount) {
     return amount.setScale(4, RoundingMode.HALF_UP).toPlainString();
+  }
+
+  /** A share as a whole percentage: {@code 0.875} is {@code 88%}. */
+  static String percent(double share) {
+    return Math.round(share * 100) + "%";
   }
 
   /** Dollars to the cent, as a cap is set. */

@@ -2,7 +2,6 @@ package com.enrola.anna.eval;
 
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.conversation.Conversation;
-import com.enrola.anna.conversation.TraceEvent;
 import com.enrola.anna.conversation.TraceEventType;
 import com.enrola.anna.conversation.TurnStatus;
 import com.enrola.anna.eval.Scenario.Expect;
@@ -20,11 +19,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * The deterministic checks on one turn, every one about that turn. {@link #forTurn} turns a
- * scenario's {@code expect} block into one EXPECTATION check per field it sets, each with the value
- * seen. {@link #suiteWide} makes the HARD checks that hold on every trial unasked: the production
- * {@link ReplyGuards} on every reply, so a check here cannot drift from the guard it mirrors, and
- * the turn's status.
+ * The deterministic checks. {@link #forTurn} turns a scenario's {@code expect} block into one
+ * EXPECTATION check per field it sets, each with the value seen and about the turn; {@link
+ * #endState} does the same for a story's end. {@link #suiteWide} makes the checks every turn gets
+ * unasked: the HARD ones, the production {@link ReplyGuards} on every reply, so a check here cannot
+ * drift from the guard it mirrors, and at most one closing reply after an end; and two that fail
+ * only their scenario, the turn's status and one question per reply.
  */
 final class Checks {
 
@@ -62,9 +62,28 @@ final class Checks {
   }
 
   /**
-   * The checks that hold whatever the scenario says: the turn did not end FALLBACK or ERROR unless
-   * {@code expect} names that status, at most one closing reply after an end, and the reply guards
-   * and at most one question on every reply.
+   * A story's end state, about no one turn: the state fields, {@code stage} as the conversation
+   * holds it, {@code tool_called} as the set called across the run, and {@code booking_count}.
+   */
+  static List<Check> endState(
+      Expect expect, Conversation conversation, Set<String> toolsCalled, int bookings) {
+    Stream<Check> tools =
+        expect.toolCalled() == null
+            ? Stream.empty()
+            : Stream.of(toolCheck(Set.copyOf(expect.toolCalled()), toolsCalled));
+    return Stream.of(
+            equal("stage", expect.stage(), conversation.stage),
+            stateChecks(expect, conversation),
+            tools,
+            equal("booking_count", expect.bookingCount(), bookings))
+        .flatMap(Function.identity())
+        .toList();
+  }
+
+  /**
+   * The checks that hold whatever the scenario says: at most one closing reply after an end and the
+   * reply guards on every reply, HARD; the turn did not end FALLBACK or ERROR unless {@code expect}
+   * names that status, and at most one question on every reply, its own expectations.
    */
   static List<Check> suiteWide(Expect expect, TurnRows rows) {
     Stream<Check> turn =
@@ -154,7 +173,7 @@ final class Checks {
     Stream<Check> tools =
         expect.toolCalled() == null
             ? Stream.empty()
-            : Stream.of(toolCheck(Set.copyOf(expect.toolCalled()), rows));
+            : Stream.of(toolCheck(Set.copyOf(expect.toolCalled()), rows.toolNames()));
     return Stream.of(
             equal("model_called", expect.modelCalled(), rows.modelCalled()),
             tools,
@@ -162,11 +181,7 @@ final class Checks {
         .flatMap(Function.identity());
   }
 
-  private static Check toolCheck(Set<String> expected, TurnRows rows) {
-    Set<String> called =
-        rows.eventsOf(TraceEventType.TOOL_CALL).stream()
-            .map(TraceEvent::name)
-            .collect(Collectors.toSet());
+  private static Check toolCheck(Set<String> expected, Set<String> called) {
     return Check.expectation("tool_called", called.equals(expected), "called=" + called);
   }
 
@@ -177,7 +192,7 @@ final class Checks {
             .map(error -> error.name() + " " + error.payloadJson())
             .collect(Collectors.joining("; "));
     return Stream.of(
-        Check.hard(
+        Check.expectation(
             "turn_status",
             !FAILED.contains(rows.status()),
             "status=" + rows.status() + (errors.isEmpty() ? "" : " " + errors)));
@@ -198,7 +213,7 @@ final class Checks {
     long questions = reply.chars().filter(c -> c == '?').count();
     return Stream.concat(
         GUARDED.stream().map(rule -> guardCheck(rule, violations, reply)),
-        Stream.of(Check.hard("one_question_max", questions <= 1, "questions=" + questions)));
+        Stream.of(Check.expectation("one_question_max", questions <= 1, "questions=" + questions)));
   }
 
   /** Named as the guard is, in the report's snake_case: {@code time_mention}. */

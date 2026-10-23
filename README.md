@@ -280,12 +280,13 @@ The eval suite runs from the command line: `evals/run.sh --offline` runs every s
 --scenario turn-are-you-a-bot` runs one scenario on the real model. A turn scenario in `evals/scenarios/` seeds a
 transcript and state as rows, sends one lead message through the same pipeline the API calls, and checks the
 decision, the state, the reply and the tool calls in code; checks that hold for every reply reuse the production
-guards. Each run gets its own database under `evals/runs/<id>/` (ignored by git) and writes `report.md`, a page per
-scenario and `trials.jsonl` there, then one `eval_run` row with the counts into the app database, which the compare
-pane reads, whether or not the app is running. Offline, a stand-in model answers from each scenario's
-expectations, which proves the harness, not the prompt. A keyed run spends its own key and cap, never the app's key
-unless `EVAL_ALLOW_SHARED_KEY=true`, and refuses an estimate over the cap before any call. Fields, flags and presets
-are in `evals/README.md`.
+guards; a story scenario plays a whole conversation against a simulated lead, and `--trials K` repeats each one for
+pass^k and a Wilson interval. Each run gets its own database under `evals/runs/<id>/` (ignored by git) and writes
+`report.md`, a page per trial and `trials.jsonl` there, then one `eval_run` row into the app database, which the
+compare pane reads, whether or not the app is running. Three gates (hard checks, `core` scenarios, few enough INVALID
+trials) set the exit code. A keyed run spends its own key and cap, never the app's key unless
+`EVAL_ALLOW_SHARED_KEY=true`. **A prompt or model change needs a green core run (`evals/run.sh --tag core`, exit code
+0) before it is committed.** Kinds, fields, flags, gates and presets are in [`evals/README.md`](evals/README.md).
 
 ## What Anna does
 
@@ -343,8 +344,8 @@ timezone, booking as a database row, terminal states and the silence that follow
 idempotent inbound, so a message delivered twice is answered once. Four UI pages: Conversations, Configuration,
 Analytics, Evals. Prompt versioning with an editor, activation, diff and per-conversation pinning, so "v3 is better
 than v2" is a sentence with evidence behind it. An eval harness with turn scenarios whose deterministic checks
-reuse the production guards, a Markdown report per run, and a stand-in model that runs the suite at no cost without
-a key.
+reuse the production guards, story scenarios against a simulated lead, k trials with pass^k and a Wilson interval,
+gates that set the exit code, a Markdown report per run, and stand-ins that run the suite at no cost without a key.
 
 The build order is vertical slices. The gates come first, because nothing can be reviewed until format, lint and
 tests exist. The opener and persistence come before the model, because they prove the API shape and the lead record

@@ -1,0 +1,44 @@
+id: story-john-books
+kind: story
+title: John skips ahead and books a weekday evening call in Perth time
+tags: [core, happy-path, scheduling, timezone]
+lead: john
+clock: "2026-07-26T10:00:00+08:00"
+calendar: normal
+persona: |
+  You are John, 41, a tradie in Perth, with HBF paying about $400 a month for the family. You are blunt and busy
+  but happy to sort a quick call if it is easy. Reply in very short lowercase texts, no emoji, never swear at the
+  agent. First reply "just want to save money, hbf is bleeding me". If asked what you are covered for, say
+  "hospital and extras for the family". If asked when suits, say "weekday evening, perth time". When offered
+  concrete times, pick the first one by saying "the first one". If a time looks like eastern time (AEST or AEDT),
+  ask "is that perth time?". After a booking confirmation, reply "sweet thanks" once and then stop. Never write
+  STOP, unsubscribe or ask to be removed.
+stop_when:
+  - goal_met
+  - 8 lead messages have been sent
+expect:
+  goal_met: true
+  conversation_ended: true
+  end_reason: BOOKED
+  stage: BOOKED
+  unsubscribed: false
+  needs_human: false
+  tool_called: [get_availability, book_call]
+  booking_count: 1
+  transcript_matches: ["AWST"]
+  every_reply:
+    max_chars: 320
+    reply_not_matches: ["!", "AEST", "AEDT", "(?i)cheaper", "(?i)all funds"]
+    one_question_max: true
+    ends_with_question_until_goal: true
+  replies_after_goal_max: 1
+judge:
+  - "Does Anna move to offering times as soon as John asks for a call, without forcing the save-or-improve and cover questions first?"
+config:
+  offline_lines:
+    - just want to save money, hbf is bleeding me
+    - hospital and extras for the family
+    - weekday evening, perth time
+    - the first one
+    - sweet thanks
+    - ok

@@ -8,7 +8,10 @@ import com.enrola.anna.conversation.TraceEventType;
 import com.enrola.anna.conversation.Turn;
 import com.enrola.anna.conversation.TurnStatus;
 import com.enrola.anna.guard.ReplyContext;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -38,6 +41,29 @@ record TurnRows(
   /** The events of one type, in order. */
   List<TraceEvent> eventsOf(TraceEventType type) {
     return events.stream().filter(event -> event.type() == type).toList();
+  }
+
+  /** What the turn's model calls cost; zero without a turn row. */
+  BigDecimal costUsd() {
+    return turn == null ? BigDecimal.ZERO : turn.modelCall().costUsd();
+  }
+
+  int modelCalls() {
+    return eventsOf(TraceEventType.MODEL_CALL).size();
+  }
+
+  /** The names of the tools the turn called. */
+  Set<String> toolNames() {
+    return eventsOf(TraceEventType.TOOL_CALL).stream()
+        .map(TraceEvent::name)
+        .collect(Collectors.toSet());
+  }
+
+  /** Each tool call as its name and payload JSON, for the report. */
+  List<String> toolCalls() {
+    return eventsOf(TraceEventType.TOOL_CALL).stream()
+        .map(event -> event.name() + " " + event.payloadJson())
+        .toList();
   }
 
   /** How the turn ended; null without a turn row. */

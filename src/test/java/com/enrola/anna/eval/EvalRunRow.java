@@ -1,5 +1,7 @@
 package com.enrola.anna.eval;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -12,10 +14,10 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 /**
  * Records a finished run as one {@code eval_run} row in the app database, not the run's own, since
- * the Analytics compare pane reads it there: counts and the report path, never transcripts. It
- * connects as the app does, with no user and, through H2's auto-server, while the app runs; it
- * never creates or migrates that database, so one the app has not opened since {@code V3} gets no
- * row, and the report says why.
+ * the Analytics compare pane reads it there: trial counts, the statistics, the gates and the report
+ * path, never transcripts. A statistic with nothing judged is null. It connects as the app does,
+ * with no user and, through H2's auto-server, while the app runs; it never creates or migrates that
+ * database, so one the app has not opened since {@code V4} gets no row, and the report says why.
  */
 final class EvalRunRow {
 
@@ -42,18 +44,22 @@ final class EvalRunRow {
 
   private static void insert(JdbcClient db, RunPlan plan, RunSummary summary) {
     RunHeader header = plan.header();
+    Stats.Interval interval = summary.passRateInterval();
     db.sql(
             "INSERT INTO eval_run (id, started_at, finished_at, prompt_version, model, offline,"
-                + " selected, passed, failed, invalid, skipped, verdict, cost_usd, report_path)"
+                + " selected, passed, failed, invalid, skipped, verdict, cost_usd, report_path,"
+                + " trials, pass_k, wilson_low, wilson_high, gate_hard, gate_global,"
+                + " gate_validity)"
                 + " VALUES (:id, :started, :finished, :version, :model, :offline, :selected,"
-                + " :passed, :failed, :invalid, :skipped, :verdict, :cost, :report)")
+                + " :passed, :failed, :invalid, :skipped, :verdict, :cost, :report, :trials,"
+                + " :passK, :wilsonLow, :wilsonHigh, :hard, :global, :validity)")
         .param("id", header.runId())
         .param("started", utc(header.startedAt()))
         .param("finished", utc(Instant.now()))
         .param("version", header.promptVersion())
         .param("model", header.model())
         .param("offline", header.offline())
-        .param("selected", summary.selected())
+        .param("selected", summary.expected())
         .param("passed", summary.count(TrialStatus.PASS))
         .param("failed", summary.count(TrialStatus.FAIL) + summary.crashed())
         .param("invalid", summary.count(TrialStatus.INVALID))
@@ -61,7 +67,19 @@ final class EvalRunRow {
         .param("verdict", summary.verdict().name())
         .param("cost", summary.cost())
         .param("report", plan.dir().resolve("report.md").toString())
+        .param("trials", header.trials())
+        .param("passK", share(summary.passK()))
+        .param("wilsonLow", share(interval.low()))
+        .param("wilsonHigh", share(interval.high()))
+        .param("hard", summary.gates().hard())
+        .param("global", summary.gates().global())
+        .param("validity", summary.gates().validity())
         .update();
+  }
+
+  /** A share to the column's four places; null for NaN, when nothing was judged. */
+  private static BigDecimal share(double value) {
+    return Double.isNaN(value) ? null : BigDecimal.valueOf(value).setScale(4, RoundingMode.HALF_UP);
   }
 
   private static OffsetDateTime utc(Instant at) {

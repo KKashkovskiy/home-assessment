@@ -4,62 +4,111 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * One scenario's run: its status, every check with its evidence, what it cost and where its rows
- * are. {@code judges} stays empty until judges exist. {@code tools} is each TOOL_CALL trace event
- * of the turn as its name and payload JSON, for the scenario's report page.
+ * One trial of one scenario, {@code trialNo} counting from 1 among its scenario's trials: its
+ * status, every check with its evidence, what it cost, where its conversation is, and what the
+ * kind's page shows, in {@code detail}. {@code judges} stays empty until judges exist.
  */
 record Trial(
     String scenarioId,
-    String kind,
+    int trialNo,
     TrialStatus status,
     List<Check> checks,
     List<String> judges,
     BigDecimal costUsd,
     int modelCalls,
     String conversationId,
-    int turnNo,
-    String reply,
-    List<String> tools,
+    Detail detail,
     long durationMs) {
+
+  /** What a trial of each kind leaves for its page. */
+  sealed interface Detail permits TurnDetail, StoryDetail {}
+
+  /**
+   * The turn under test: its number, the reply it sent or null, and each TOOL_CALL trace event of
+   * it as its name and payload JSON.
+   */
+  record TurnDetail(int turnNo, String reply, List<String> tools) implements Detail {
+    static final TurnDetail NONE = new TurnDetail(0, null, List.of());
+  }
+
+  /** The story turn by turn, opener first, and why it stopped; null before it started. */
+  record StoryDetail(List<StoryTurn> transcript, String stopReason) implements Detail {
+    static final StoryDetail NONE = new StoryDetail(List.of(), null);
+  }
+
+  /** {@code turn} or {@code story}, as the YAML spells it. */
+  String kind() {
+    return switch (detail) {
+      case TurnDetail _ -> "turn";
+      case StoryDetail _ -> "story";
+    };
+  }
+
+  /** The last turn the trial ran; 0 when it ran none. */
+  int lastTurn() {
+    return switch (detail) {
+      case TurnDetail turn -> turn.turnNo();
+      case StoryDetail story ->
+          story.transcript().isEmpty() ? 0 : story.transcript().getLast().turnNo();
+    };
+  }
+
+  /** Why a story stopped; null for a turn, or a story that never started. */
+  String stopReason() {
+    return switch (detail) {
+      case TurnDetail _ -> null;
+      case StoryDetail story -> story.stopReason();
+    };
+  }
 
   boolean passed() {
     return status == TrialStatus.PASS;
   }
 
-  /** The names of the failed checks, for the report table and the JUnit failure message. */
+  /** {@code story-troll#2}: the trial in a gate's failure lines. */
+  String label() {
+    return scenarioId + "#" + trialNo;
+  }
+
+  /** The names of the failed checks, for the report table and the JUnit abort message. */
   List<String> failedNames() {
     return checks.stream().filter(check -> !check.pass()).map(Check::name).toList();
   }
 
-  /** A scenario that did not run, for the reason {@code status} names. */
-  static Trial skipped(Scenario scenario, TrialStatus status) {
-    return notRun(scenario, status, List.of());
+  /** A trial that did not run, for the reason {@code status} names. */
+  static Trial skipped(Scenario scenario, int trialNo, TrialStatus status) {
+    return notRun(scenario, trialNo, status, List.of());
   }
 
   /** A scenario the product refused before its turn; {@code refusal} says how. */
-  static Trial refused(Scenario scenario, Check refusal) {
-    return notRun(scenario, TrialStatus.FAIL, List.of(refusal));
+  static Trial refused(Scenario scenario, int trialNo, Check refusal) {
+    return notRun(scenario, trialNo, TrialStatus.FAIL, List.of(refusal));
   }
 
-  /** A scenario the harness could not run, for {@code reason}. */
-  static Trial invalid(Scenario scenario, String reason) {
+  /**
+   * A scenario the harness could not run, such as a label the calendar cannot produce: a FAIL on
+   * the hard gate, since a broken scenario must fail the run, not pass it unproved.
+   */
+  static Trial scenarioFault(Scenario scenario, int trialNo, String reason) {
     return notRun(
-        scenario, TrialStatus.INVALID, List.of(Check.expectation("scenario", false, reason)));
+        scenario, trialNo, TrialStatus.FAIL, List.of(Check.hard("scenario", false, reason)));
   }
 
-  private static Trial notRun(Scenario scenario, TrialStatus status, List<Check> checks) {
+  private static Trial notRun(
+      Scenario scenario, int trialNo, TrialStatus status, List<Check> checks) {
     return new Trial(
         scenario.id(),
-        scenario.kind(),
+        trialNo,
         status,
         checks,
         List.of(),
         BigDecimal.ZERO,
         0,
         null,
-        0,
-        null,
-        List.of(),
+        switch (scenario) {
+          case Scenario.Turn _ -> TurnDetail.NONE;
+          case Scenario.Story _ -> StoryDetail.NONE;
+        },
         0);
   }
 }

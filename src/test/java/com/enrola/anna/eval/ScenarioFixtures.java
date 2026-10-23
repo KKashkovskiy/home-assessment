@@ -6,6 +6,7 @@ import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.config.Settings.CalendarPreset;
 import com.enrola.anna.conversation.TurnStatus;
 import com.enrola.anna.eval.Scenario.Expect;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -19,6 +20,12 @@ final class ScenarioFixtures {
   /** The turn scenario file {@code id}. */
   static Scenario.Turn load(String id) {
     return (Scenario.Turn)
+        new ScenarioLoader().load(ScenarioLoader.SCENARIOS.resolve(id + ".yaml"));
+  }
+
+  /** The story scenario file {@code id}. */
+  static Scenario.Story loadStory(String id) {
+    return (Scenario.Story)
         new ScenarioLoader().load(ScenarioLoader.SCENARIOS.resolve(id + ".yaml"));
   }
 
@@ -48,10 +55,28 @@ final class ScenarioFixtures {
         SUNDAY,
         CalendarPreset.NORMAL,
         "Books Monday morning.",
-        List.of("booked", "12 messages"),
+        List.of("goal_met", "8 lead messages have been sent"),
         Expect.NONE,
         null,
         null);
+  }
+
+  /** A trial of {@code scenario} that ended {@code status} with {@code checks}, at no cost. */
+  static Trial trial(Scenario scenario, int trialNo, TrialStatus status, Check... checks) {
+    return new Trial(
+        scenario.id(),
+        trialNo,
+        status,
+        List.of(checks),
+        List.of(),
+        BigDecimal.ZERO,
+        1,
+        "c-" + scenario.id(),
+        switch (scenario) {
+          case Scenario.Turn _ -> Trial.TurnDetail.NONE;
+          case Scenario.Story _ -> Trial.StoryDetail.NONE;
+        },
+        0);
   }
 
   static ExpectBuilder expect() {
