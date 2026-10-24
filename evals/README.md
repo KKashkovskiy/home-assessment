@@ -34,7 +34,7 @@ why the story stopped. Each run has its own H2 database and data directory there
 `data/settings.json` when one exists and from the app's active prompt version, so it evaluates the model, limits and
 prompt the owner runs, and it never writes the app's files. When it finishes, the run adds one `eval_run` row to the
 app database, which the Analytics compare pane reads: trial counts (`selected` is every scenario times the trials),
-pass^k, the Wilson bounds, the three gates and the report path, never transcripts. That database is
+pass^k and its scenario counts, the Wilson bounds, the gates and the report path, never transcripts. That database is
 `jdbc:h2:file:./data/anna;AUTO_SERVER=TRUE`, or the JDBC URL in `-Deval.appDb` when Maven runs the suite directly; the
 app opens it with H2's auto-server on 127.0.0.1, so the row lands while the app runs. The run never creates or
 migrates it: one the app has not opened since this harness arrived gets no row, and the report says why.
@@ -54,7 +54,7 @@ check, one small call the report's cost does not count.
 Trials and gates. `--trials K` runs every selected scenario K times, each trial on a conversation and lead of its
 own. The report gives **pass^k**, the share of scenarios whose every trial passed, and the per-trial pass rate with
 its 95% **Wilson interval**: `80% (49% to 94%, n=10)` reads as "not known yet", not as 80%. Only PASS and FAIL
-trials count, here and in the compare pane's pass rate. A story trial is `INVALID` when its simulated lead broke its
+trials count, here and in the compare pane's pass^k. A story trial is `INVALID` when its simulated lead broke its
 persona (said it is an AI, sent an empty or overlong line, wrote what its persona forbids) or its call failed: it
 proves nothing about Anna. A scenario the harness cannot run (a label the calendar cannot produce, scripted lines that
 run out) is a `FAIL` with a failed hard `scenario` check, so a broken file turns the run red. Three gates set the exit

@@ -58,7 +58,8 @@ class AnnaApplicationTest {
             "2.2 SQL TRUE",
             "3 SQL TRUE",
             "4 SQL TRUE",
-            "5 SQL TRUE");
+            "5 SQL TRUE",
+            "6 SQL TRUE");
     assertThat(jdbcTemplate.queryForObject("select count(*) from prompt_version", Integer.class))
         .isEqualTo(1);
   }

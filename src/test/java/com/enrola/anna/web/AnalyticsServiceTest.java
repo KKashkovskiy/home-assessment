@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.within;
 import com.enrola.anna.guard.PreGuards;
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
@@ -301,7 +300,7 @@ class AnalyticsServiceTest extends AnalyticsFixture {
     }
 
     @Test
-    void evalPassRateNoRuns() {
+    void evalPassKNoRuns() {
       CompareView.Row evalPass = row(analytics.compare("v1", "v2", allTime()), "evalPass");
 
       assertThat(evalPass.a()).isNull();
@@ -310,22 +309,38 @@ class AnalyticsServiceTest extends AnalyticsFixture {
     }
 
     /**
-     * The latest keyed run per version, passed over judged: skipped and INVALID trials are out of
-     * the base, and an offline run or one that skipped everything is ignored however recent.
+     * pass^k of the latest keyed run per version that judged a scenario, clean scenarios over
+     * judged ones, linked to its report: an offline run, a SKIPPED one and one whose every trial
+     * was INVALID are passed over however recent, and a red run with judged scenarios still counts.
      */
     @Test
-    void evalPassRateReadsTheLatestKeyedRun() {
-      evalRun("r1", "v1", "2026-07-20T00:00:00Z", new Counts(40, 40, 0, 0), false);
-      evalRun("r2", "v1", "2026-07-21T00:00:00Z", new Counts(46, 39, 2, 3), false);
-      evalRun("r3", "v1", "2026-07-22T00:00:00Z", new Counts(44, 44, 0, 0), true);
-      evalRun("r4", "v1", "2026-07-23T00:00:00Z", new Counts(2, 0, 0, 2), false);
-      evalRun("r5", "v2", "2026-07-22T00:00:00Z", new Counts(10, 10, 0, 0), false);
+    void evalPassKReadsTheLatestKeyedJudgedRun() {
+      evalRun("2026-07-20T00:00:00Z", "v1", false, new EvalCounts(1, 40, 0, 0, 0, 40, 40, "PASS"));
+      evalRun("2026-07-21T00:00:00Z", "v1", false, new EvalCounts(3, 37, 3, 2, 0, 14, 11, "FAIL"));
+      evalRun("2026-07-22T00:00:00Z", "v1", true, new EvalCounts(1, 44, 0, 0, 0, 44, 44, "PASS"));
+      evalRun("2026-07-23T00:00:00Z", "v1", false, new EvalCounts(1, 0, 0, 0, 2, 0, 0, "SKIPPED"));
+      evalRun("2026-07-24T00:00:00Z", "v1", false, new EvalCounts(1, 0, 0, 3, 0, 0, 0, "FAIL"));
+      evalRun("2026-07-22T06:00:00Z", "v2", false, new EvalCounts(1, 10, 0, 0, 0, 10, 10, "PASS"));
 
       CompareView.Row evalPass = row(analytics.compare("v1", "v2", allTime()), "evalPass");
 
-      assertFraction(evalPass.a(), 39, 41);
+      assertFraction(evalPass.a(), 11, 14);
+      assertThat(evalPass.a().href()).isEqualTo("/evals?run=2026-07-21T00-00-00Z#report-panel");
       assertFraction(evalPass.b(), 10, 10);
       assertThat(evalPass.verdict()).isEqualTo(CompareView.Verdict.BETTER);
+      assertThat(evalPass.lowN()).isTrue();
+    }
+
+    /** A run started straight from Maven is named {@code manual}, which the Evals page refuses. */
+    @Test
+    void evalPassKOfARunTheEvalsPageCannotOpenHasNoLink() {
+      evalRun("2026-07-21T00:00:00Z", "v1", false, new EvalCounts(1, 8, 2, 0, 0, 10, 8, "PASS"));
+      jdbc.update("update eval_run set id = 'manual'");
+
+      Kpi evalPass = row(analytics.compare("v1", "v2", allTime()), "evalPass").a();
+
+      assertFraction(evalPass, 8, 10);
+      assertThat(evalPass.href()).isNull();
     }
 
     @Test
@@ -341,39 +356,6 @@ class AnalyticsServiceTest extends AnalyticsFixture {
 
   private AnalyticsView view() {
     return analytics.view(allTime());
-  }
-
-  /** Trials an eval run selected, passed, found INVALID and skipped; the rest failed. */
-  private record Counts(int selected, int passed, int invalid, int skipped) {
-
-    int failed() {
-      return selected - passed - invalid - skipped;
-    }
-
-    String verdict() {
-      if (skipped == selected) {
-        return "SKIPPED";
-      }
-      return failed() == 0 ? "PASS" : "FAIL";
-    }
-  }
-
-  private void evalRun(
-      String id, String version, String startedAt, Counts counts, boolean offline) {
-    jdbc.update(
-        "insert into eval_run (id, started_at, prompt_version, model, offline, selected, passed,"
-            + " failed, invalid, skipped, verdict, cost_usd, report_path)"
-            + " values (?, ?, ?, 'gpt-5.1', ?, ?, ?, ?, ?, ?, ?, 0, 'evals/runs/x/report.md')",
-        id,
-        OffsetDateTime.parse(startedAt),
-        version,
-        offline,
-        counts.selected(),
-        counts.passed(),
-        counts.failed(),
-        counts.invalid(),
-        counts.skipped(),
-        counts.verdict());
   }
 
   private static CompareView.Row row(CompareView compare, String key) {

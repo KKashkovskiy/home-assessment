@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * The analytics page, read fresh for every request: every query for one filter runs once into
@@ -50,7 +51,7 @@ public class AnalyticsService {
 
   /**
    * The tiles for conversations started on {@code a} beside those started on {@code b}, the rest of
-   * {@code filter} applied to both, and the eval pass rate of each version.
+   * {@code filter} applied to both, and the eval pass^k of each version.
    */
   public CompareView compare(String a, String b, AnalyticsFilter filter) {
     AnalyticsRows onA = read(filter.withPromptVersion(a));
@@ -61,15 +62,16 @@ public class AnalyticsService {
     for (Kpi kpi : AnalyticsKpis.of(onA)) {
       rows.add(CompareView.row(kpi, kpisOnB.get(kpi.key())));
     }
-    rows.add(CompareView.evalPassRow(evalPassRate(a), evalPassRate(b)));
+    rows.add(CompareView.evalPassRow(evalPassK(a), evalPassK(b)));
     return new CompareView(a, b, onA.started().size(), onB.started().size(), rows);
   }
 
   /**
-   * Passed trials over judged trials in the latest keyed eval run on {@code promptVersion}; empty
-   * while the version has none. No link: the run's report is a file under {@code evals/runs}.
+   * pass^k of the latest keyed eval run on {@code promptVersion} that judged a scenario: its clean
+   * scenarios over its judged ones, linking to its report on the Evals page; empty while the
+   * version has none.
    */
-  public Optional<Kpi> evalPassRate(String promptVersion) {
+  public Optional<Kpi> evalPassK(String promptVersion) {
     return queries
         .latestKeyedEvalRun(promptVersion)
         .map(
@@ -77,10 +79,10 @@ public class AnalyticsService {
                 new Kpi(
                     CompareView.EVAL_PASS,
                     CompareView.EVAL_PASS_LABEL,
-                    run.passed(),
+                    run.clean(),
                     run.judged(),
                     Kpi.Unit.RATE,
-                    null,
+                    reportUrl(run.id()),
                     null,
                     Kpi.Better.UP));
   }
@@ -88,6 +90,20 @@ public class AnalyticsService {
   /** Every model a conversation has started on. */
   public List<String> models() {
     return queries.models();
+  }
+
+  /**
+   * The run's report on the Evals page, or null for an id that page does not take, such as one a
+   * run started straight from Maven was given.
+   */
+  private static String reportUrl(String runId) {
+    if (!runId.matches(EvalReports.RUN_ID)) {
+      return null;
+    }
+    return UriComponentsBuilder.fromPath(EvalsController.PATH)
+        .queryParam("run", runId)
+        .fragment("report-panel")
+        .toUriString();
   }
 
   private AnalyticsRows read(AnalyticsFilter filter) {

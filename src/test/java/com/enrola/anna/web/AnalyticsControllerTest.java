@@ -26,6 +26,9 @@ class AnalyticsControllerTest extends AnalyticsFixture {
   private static final Pattern LISTED =
       Pattern.compile("class=\"conv-row\" href=\"/conversations/([^\"?]+)");
 
+  private static final Pattern EVAL_ROW =
+      Pattern.compile("data-key=\"evalPass\">(.*?)</tr>", Pattern.DOTALL);
+
   @Test
   void emptyDatabaseRendersEveryPanelEmpty() throws Exception {
     jdbc.update("delete from booking");
@@ -81,6 +84,20 @@ class AnalyticsControllerTest extends AnalyticsFixture {
 
     assertThat(fragment).startsWith("<div").doesNotContain("<html");
     assertThat(fragment).contains("data-key=\"reply\"", "data-key=\"evalPass\"");
+  }
+
+  @Test
+  void evalRowShowsEachVersionsPassKLinkedToItsReport() throws Exception {
+    evalRun("2026-07-25T00:00:00Z", "v1", false, new EvalCounts(1, 8, 2, 0, 0, 10, 8, "PASS"));
+
+    String page =
+        body(mvc.perform(get("/analytics?range=ALL&a=v1&b=v2")).andExpect(status().isOk()));
+    Matcher evalRow = EVAL_ROW.matcher(page);
+
+    assertThat(evalRow.find()).isTrue();
+    assertThat(evalRow.group(1))
+        .contains(
+            "href=\"/evals?run=2026-07-25T00-00-00Z#report-panel\"", "80.0%", "8 of 10", "no runs");
   }
 
   @Test

@@ -12,7 +12,7 @@ import java.util.OptionalDouble;
 public record CompareView(String a, String b, long startedA, long startedB, List<Row> rows) {
 
   static final String EVAL_PASS = "evalPass";
-  static final String EVAL_PASS_LABEL = "Eval pass rate";
+  static final String EVAL_PASS_LABEL = "Eval pass^k";
 
   /** Counts compare per this many conversations started, so cohorts of different size line up. */
   static final int PER = 100;
@@ -32,7 +32,7 @@ public record CompareView(String a, String b, long startedA, long startedB, List
   /**
    * One figure side by side. {@code change} is b minus a in the compared unit: the figure's own,
    * except a count, which compares per {@link #PER} conversations started. {@code a} and {@code b}
-   * are null in the eval pass rate row until a run exists.
+   * are null in the eval pass^k row until a run exists.
    */
   public record Row(String key, String label, Kpi a, Kpi b, double change, Verdict verdict) {
 
@@ -78,7 +78,7 @@ public record CompareView(String a, String b, long startedA, long startedB, List
     return new Row(a.key(), label, a, b, change, verdict(change, a, b));
   }
 
-  /** The eval pass rate per version, or "no runs" while either side has none. */
+  /** The eval pass^k per version, or "no runs" on a side that has none. */
   static Row evalPassRow(Optional<Kpi> a, Optional<Kpi> b) {
     if (a.isPresent() && b.isPresent()) {
       return row(a.get(), b.get());

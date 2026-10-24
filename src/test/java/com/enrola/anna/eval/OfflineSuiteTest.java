@@ -120,7 +120,8 @@ class OfflineSuiteTest extends EvalFixture {
     Map<String, Object> row =
         jdbc.queryForMap(
             "select selected, passed, skipped, offline, verdict, trials, pass_k, wilson_high,"
-                + " gate_hard, gate_global, gate_validity, judge_model, judge_cost_usd"
+                + " gate_hard, gate_global, gate_validity, judge_model, judge_cost_usd,"
+                + " judged_scenarios, clean_scenarios"
                 + " from eval_run where id = 'offline'");
 
     assertThat(row)
@@ -133,7 +134,9 @@ class OfflineSuiteTest extends EvalFixture {
         .containsEntry("GATE_HARD", true)
         .containsEntry("GATE_GLOBAL", true)
         .containsEntry("GATE_VALIDITY", true)
-        .containsEntry("JUDGE_MODEL", null);
+        .containsEntry("JUDGE_MODEL", null)
+        .containsEntry("JUDGED_SCENARIOS", selected.size())
+        .containsEntry("CLEAN_SCENARIOS", selected.size());
     assertThat((BigDecimal) row.get("JUDGE_COST_USD")).isZero();
     assertThat((BigDecimal) row.get("PASS_K")).isEqualByComparingTo("1");
     assertThat((BigDecimal) row.get("WILSON_HIGH")).isEqualByComparingTo("1");

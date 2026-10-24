@@ -120,8 +120,11 @@ class AnalyticsQueries {
   /** Conversations whose decisions named one objection type, and how many of them booked. */
   record ObjectionCount(String type, long conversations, long recovered) {}
 
-  /** One eval run's trials that passed, out of those judged: PASS or FAIL. */
-  record EvalRunCounts(long passed, long judged) {}
+  /**
+   * One eval run's pass^k as its counts: scenarios with no FAIL trial out of those with a PASS or
+   * FAIL trial.
+   */
+  record EvalRunScenarios(String id, long clean, long judged) {}
 
   /**
    * The cohort's conversations. The turn that booked is the first whose book_call answered booked;
@@ -236,18 +239,23 @@ class AnalyticsQueries {
   }
 
   /**
-   * The latest keyed eval run on {@code promptVersion}: its passed trials over those judged, the
-   * run's own per-trial pass rate. Skipped and INVALID trials say nothing about the prompt and are
-   * left out. An offline run proves the harness, not the prompt, and a run that skipped everything
-   * says nothing, so neither counts.
+   * The latest keyed eval run on {@code promptVersion} that judged a scenario. An offline run
+   * proves the harness, not the prompt, so it never counts. {@code judged_scenarios} is 0 when no
+   * trial was judged, as in a SKIPPED run or one whose every trial was INVALID, and null on rows
+   * from before {@code V6}; either way the run says nothing here.
    */
-  Optional<EvalRunCounts> latestKeyedEvalRun(String promptVersion) {
+  Optional<EvalRunScenarios> latestKeyedEvalRun(String promptVersion) {
     return db.sql(
-            "SELECT passed, passed + failed AS judged FROM eval_run"
-                + " WHERE prompt_version = :version AND offline = FALSE AND verdict <> 'SKIPPED'"
+            "SELECT id, clean_scenarios, judged_scenarios FROM eval_run"
+                + " WHERE prompt_version = :version AND offline = FALSE AND judged_scenarios > 0"
                 + " ORDER BY started_at DESC LIMIT 1")
         .param("version", promptVersion)
-        .query((rs, _) -> new EvalRunCounts(rs.getLong("passed"), rs.getLong("judged")))
+        .query(
+            (rs, _) ->
+                new EvalRunScenarios(
+                    rs.getString("id"),
+                    rs.getLong("clean_scenarios"),
+                    rs.getLong("judged_scenarios")))
         .optional();
   }
 

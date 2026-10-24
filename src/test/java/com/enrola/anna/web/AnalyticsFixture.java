@@ -17,8 +17,11 @@ import com.enrola.anna.lead.LeadService;
 import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.PromptVersion;
 import com.enrola.anna.scheduling.Slot;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,6 +97,58 @@ abstract class AnalyticsFixture extends ConsoleFixture {
   /** All time, every source, model and version. */
   static AnalyticsFilter allTime() {
     return new AnalyticsFilter(AnalyticsFilter.Range.ALL, null, null, null);
+  }
+
+  /**
+   * An eval run's counts as the harness records them: {@code k} trials per scenario, the trials by
+   * result, the scenarios with a judged trial and those of them with no FAIL, and the verdict,
+   * which the gates can make FAIL even with nothing judged.
+   */
+  record EvalCounts(
+      int k,
+      int passed,
+      int failed,
+      int invalid,
+      int skipped,
+      int judgedScenarios,
+      int cleanScenarios,
+      String verdict) {
+
+    int selected() {
+      return passed + failed + invalid + skipped;
+    }
+
+    /** Clean over judged scenarios at the column's four places; null with none judged. */
+    BigDecimal passK() {
+      return judgedScenarios == 0
+          ? null
+          : BigDecimal.valueOf(cleanScenarios)
+              .divide(BigDecimal.valueOf(judgedScenarios), 4, RoundingMode.HALF_UP);
+    }
+  }
+
+  /** The eval_run row of a run started at {@code startedAt}, which its id names as run.sh does. */
+  void evalRun(String startedAt, String version, boolean offline, EvalCounts counts) {
+    jdbc.update(
+        "insert into eval_run (id, started_at, prompt_version, model, offline, selected, passed,"
+            + " failed, invalid, skipped, verdict, cost_usd, report_path, trials, pass_k,"
+            + " judged_scenarios, clean_scenarios)"
+            + " values (?, ?, ?, 'gpt-5.1', ?, ?, ?, ?, ?, ?, ?, 0, 'evals/runs/x/report.md', ?, ?,"
+            + " ?, ?)",
+        startedAt.replace(':', '-'),
+        OffsetDateTime.parse(startedAt),
+        version,
+        offline,
+        counts.selected(),
+        counts.passed(),
+        counts.failed(),
+        counts.invalid(),
+        counts.skipped(),
+        counts.verdict(),
+        counts.k(),
+        counts.passK(),
+        counts.judgedScenarios(),
+        counts.cleanScenarios());
   }
 
   private String laurenBooks(Instant now) {
