@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -48,64 +49,92 @@ class PromptSeedTest {
   @Autowired TransactionTemplate tx;
   @Autowired JdbcTemplate jdbc;
 
+  /** Back to what a fresh database seeds: every repo version, the newest active. */
   @AfterEach
-  void onlyTheSeededV1() {
-    jdbc.update("delete from prompt_version where id <> 'v1'");
-    versions.activate("v1");
+  void onlyTheSeededRepoVersions() {
+    jdbc.update("delete from prompt_version where created_by <> 'repo'");
+    jdbc.update("update prompt_version set active = false");
+    seed.seed();
   }
 
   @Test
-  void seedsV1ActiveOnEmptyDatabase() {
+  void seedsEveryRepoVersionAndActivatesTheNewestOnEmptyDatabase() {
     assertThat(store.list())
-        .singleElement()
-        .satisfies(
-            v1 -> {
-              assertThat(v1.id()).isEqualTo("v1");
-              assertThat(v1.active()).isTrue();
-              assertThat(v1.createdBy()).isEqualTo("repo");
-            });
+        .extracting(PromptStore.VersionSummary::id)
+        .isEqualTo(loader.availableVersions());
+    assertThat(store.list())
+        .allSatisfy(version -> assertThat(version.createdBy()).isEqualTo("repo"));
+    assertThat(store.activeId()).isEqualTo(newestRepoVersion());
   }
 
   @Test
   void secondSeedDoesNotDuplicate() {
+    int seeded = store.list().size();
+
     seed.seed();
 
-    assertThat(store.list()).hasSize(1);
+    assertThat(store.list()).hasSize(seeded);
   }
 
   @Test
   void seededContentIsByteIdentical() throws IOException {
-    PromptVersion v1 = versions.findById("v1").orElseThrow();
-    Map<String, String> templates = v1.parse().templates().orElseThrow();
+    for (String id : loader.availableVersions()) {
+      PromptVersion seeded = versions.findById(id).orElseThrow();
+      Map<String, String> templates = seeded.parse().templates().orElseThrow();
 
-    assertThat(v1.promptMd()).isEqualTo(repoFile("v1.md"));
-    assertThat(v1.knowledgeMd()).isEqualTo(repoFile("knowledge.md"));
-    assertThat(v1.schemaJson()).isEqualTo(repoFile("agent-decision.schema.json"));
-    assertThat(v1.toolsJson()).isEqualTo(repoFile("tools.json"));
-    for (Template template : Template.values()) {
-      assertThat(templates.get(template.name()))
-          .isEqualTo(repoFile("templates/" + template.name() + ".txt"));
+      assertThat(seeded.promptMd()).isEqualTo(repoFile(id, id + ".md"));
+      assertThat(seeded.knowledgeMd()).isEqualTo(repoFile(id, "knowledge.md"));
+      assertThat(seeded.schemaJson()).isEqualTo(repoFile(id, "agent-decision.schema.json"));
+      assertThat(seeded.toolsJson()).isEqualTo(repoFile(id, "tools.json"));
+      for (Template template : Template.values()) {
+        assertThat(templates.get(template.name()))
+            .isEqualTo(repoFile(id, "templates/" + template.name() + ".txt"));
+      }
     }
   }
 
+  /** An existing data/ keeps running what it ran: a version new to it arrives inactive. */
   @Test
-  void seedKeepsTheActivatedVersion() {
-    store.save(copyOfV1());
-    store.activate("v2");
+  void seedKeepsTheActivatedVersionAndAddsANewRepoVersionInactive() {
+    versions.activate("v1");
+    jdbc.update("delete from prompt_version where id = ?", newestRepoVersion());
 
     seed.seed();
 
-    assertThat(store.activeId()).isEqualTo("v2");
+    assertThat(store.activeId()).isEqualTo("v1");
+    assertThat(versions.findById(newestRepoVersion()))
+        .hasValueSatisfying(newest -> assertThat(newest.active()).isFalse());
   }
 
   @Test
-  void seedActivatesTheLowestWhenNoneIsActive() {
+  void seedActivatesTheNewestRepoVersionNotASaveWhenNoneIsActive() {
     store.save(copyOfV1());
     jdbc.update("update prompt_version set active = false");
 
     seed.seed();
 
-    assertThat(store.activeId()).isEqualTo("v1");
+    assertThat(store.activeId()).isEqualTo(newestRepoVersion());
+  }
+
+  /**
+   * A save made before the repo shipped a directory with the same id keeps the id; the seed skips
+   * the repo's copy and activates the newest version it did seed.
+   */
+  @Test
+  void seedNeverActivatesASaveHoldingARepoVersionsId() {
+    List<String> repo = loader.availableVersions();
+    String newest = repo.getLast();
+    jdbc.update("delete from prompt_version where id = ?", newest);
+    jdbc.update(
+        "insert into prompt_version select ?, created_at, 'console', 'saved first', false,"
+            + " prompt_md, knowledge_md, schema_json, tools_json, templates_json"
+            + " from prompt_version where id = 'v1'",
+        newest);
+    jdbc.update("update prompt_version set active = false");
+
+    seed.seed();
+
+    assertThat(store.activeId()).isEqualTo(repo.get(repo.size() - 2));
   }
 
   /**
@@ -118,7 +147,7 @@ class PromptSeedTest {
         new PromptLoader(new DefaultResourceLoader()) {
           @Override
           public List<String> availableVersions() {
-            return List.of("v1", "v2");
+            return Stream.concat(super.availableVersions().stream(), Stream.of("v99")).toList();
           }
 
           @Override
@@ -143,8 +172,8 @@ class PromptSeedTest {
     assertThatIllegalStateException()
         .isThrownBy(() -> seedWith(repoWithCurlyQuoteV2, store, settings).seed())
         .withMessage(
-            "prompts/v2 is invalid: errors [], warnings [FALLBACK has characters outside GSM-7]");
-    assertThat(store.list()).hasSize(1);
+            "prompts/v99 is invalid: errors [], warnings [FALLBACK has characters outside GSM-7]");
+    assertThat(versions.existsById("v99")).isFalse();
   }
 
   /**
@@ -158,7 +187,9 @@ class PromptSeedTest {
     assertThatThrownBy(() -> seedWith(longerCompany).seed())
         .isInstanceOf(PromptVersionCorrupt.class)
         .hasMessage(
-            "prompt version v1 cannot be loaded: OPENER_PROVIDER renders to 322 chars, over 320");
+            "prompt version "
+                + store.activeId()
+                + " cannot be loaded: OPENER_PROVIDER renders to 322 chars, over 320");
   }
 
   /**
@@ -203,7 +234,12 @@ class PromptSeedTest {
         "copy");
   }
 
-  private static String repoFile(String path) throws IOException {
-    return new ClassPathResource("prompts/v1/" + path).getContentAsString(StandardCharsets.UTF_8);
+  private String newestRepoVersion() {
+    return loader.availableVersions().getLast();
+  }
+
+  private static String repoFile(String id, String path) throws IOException {
+    return new ClassPathResource("prompts/" + id + "/" + path)
+        .getContentAsString(StandardCharsets.UTF_8);
   }
 }

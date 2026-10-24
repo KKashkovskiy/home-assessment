@@ -52,9 +52,9 @@ class MigrationTest {
           .isEqualTo("v1");
       assertThat(
               jdbc.queryForList(
-                  "select id || ' ' || active || ' ' || created_by from prompt_version",
+                  "select id || ' ' || active || ' ' || created_by from prompt_version order by id",
                   String.class))
-          .containsExactly("v1 TRUE repo");
+          .containsExactly("v1 FALSE repo", "v2 TRUE repo");
     }
   }
 

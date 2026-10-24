@@ -94,7 +94,7 @@ class ConversationApiTest {
   @BeforeEach
   void noConversations() {
     mvc = MockMvcBuilders.webAppContextSetup(context).build();
-    templates = prompts.bundle("v1", SettingsFixture.DEFAULTS.persona()).templates();
+    templates = prompts.bundle(prompts.activeId(), SettingsFixture.DEFAULTS.persona()).templates();
     jdbc.update("delete from trace_event");
     jdbc.update("delete from turn");
     jdbc.update("delete from message");
@@ -115,7 +115,7 @@ class ConversationApiTest {
       started
           .andExpect(status().isCreated())
           .andExpect(jsonPath("$.conversation_id").value(matchesPattern("c-[0-9a-f-]{36}")))
-          .andExpect(jsonPath("$.prompt_version").value("v1"))
+          .andExpect(jsonPath("$.prompt_version").value(prompts.activeId()))
           .andExpect(jsonPath("$.reply").value(opener))
           .andExpect(jsonPath("$.stage").value("ENGAGE"))
           .andExpect(jsonPath("$.end_reason").value("NONE"))
@@ -143,7 +143,7 @@ class ConversationApiTest {
                       + " from conversation where id = ?",
                   id))
           .containsEntry("SOURCE", "API")
-          .containsEntry("PROMPT_VERSION", "v1")
+          .containsEntry("PROMPT_VERSION", prompts.activeId())
           .containsEntry("MODEL", "gpt-5.1")
           .containsEntry("REASONING_EFFORT", "low")
           .hasEntrySatisfying(
@@ -307,7 +307,7 @@ class ConversationApiTest {
       mvc.perform(get("/api/conversations/{id}", id))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.conversation_id").value(id))
-          .andExpect(jsonPath("$.prompt_version").value("v1"))
+          .andExpect(jsonPath("$.prompt_version").value(prompts.activeId()))
           .andExpect(jsonPath("$.reply").value(nullValue()))
           .andExpect(jsonPath("$.no_reply").value(nullValue()))
           .andExpect(jsonPath("$.transcript.length()").value(1))

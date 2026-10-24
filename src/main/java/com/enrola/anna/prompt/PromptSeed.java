@@ -4,6 +4,7 @@ import com.enrola.anna.AppClock;
 import com.enrola.anna.config.Settings;
 import com.enrola.anna.config.SettingsStore;
 import jakarta.annotation.PostConstruct;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -42,12 +43,13 @@ class PromptSeed {
   }
 
   /**
-   * In one transaction: inserts every repo version that has no row, activates the lowest when none
-   * is active, and loads the active one, all with the yml's persona. A repo version with any
-   * finding fails the boot, since the repo and the yml are under the owner's control, and so does
-   * an active version the yml's persona cannot load. An id the table already has is skipped, with a
-   * warning when the row was a save: the repo and the table then disagree. Then the settings file
-   * is checked against the versions, and set aside when its persona does not fit.
+   * In one transaction: inserts every repo version that has no row, activates the newest repo
+   * version when none is active, and loads the active one, all with the yml's persona. A repo
+   * version with any finding fails the boot, since the repo and the yml are under the owner's
+   * control, and so does an active version the yml's persona cannot load. An id the table already
+   * has is skipped, with a warning when the row was a save: the repo and the table then disagree.
+   * Then the settings file is checked against the versions, and set aside when its persona does not
+   * fit.
    */
   @PostConstruct
   void seed() {
@@ -55,8 +57,9 @@ class PromptSeed {
     tx.executeWithoutResult(
         _ -> {
           warnIfDamaged();
-          loader.availableVersions().forEach(id -> seedIfAbsent(id, yml));
-          activateLowestIfNoneActive();
+          List<String> repoIds = loader.availableVersions();
+          repoIds.forEach(id -> seedIfAbsent(id, yml));
+          activateNewestIfNoneActive(repoIds);
           store.bundle(store.activeId(), yml);
         });
     settings.recheck();
@@ -97,20 +100,32 @@ class PromptSeed {
   /** Rows with none active is damage done by hand: an empty table is the only normal way. */
   private void warnIfDamaged() {
     if (versions.count() > 0 && versions.findByActiveTrue().isEmpty()) {
-      log.warn("prompt versions in the table and none active; the lowest is activated");
+      log.warn(
+          "prompt versions in the table and none active; the newest repo version is activated");
     }
   }
 
-  private void activateLowestIfNoneActive() {
+  /**
+   * A fresh database runs the newest version the repo ships. A save is never activated by the seed,
+   * since only a person decides a save is ready, not even one that holds a repo directory's id.
+   */
+  private void activateNewestIfNoneActive(List<String> repoIds) {
     if (versions.findByActiveTrue().isPresent()) {
       return;
     }
-    String lowest =
-        store.list().stream()
+    String newest =
+        repoIds.reversed().stream()
+            .filter(this::seededFromRepo)
             .findFirst()
-            .orElseThrow(() -> new IllegalStateException("no prompt version to activate"))
-            .id();
-    versions.activate(lowest);
-    log.info("prompt version {} activated", lowest);
+            .orElseThrow(() -> new IllegalStateException("no repo prompt version to activate"));
+    versions.activate(newest);
+    log.info("prompt version {} activated", newest);
+  }
+
+  private boolean seededFromRepo(String id) {
+    return versions
+        .findById(id)
+        .map(version -> PromptVersion.REPO.equals(version.createdBy()))
+        .orElse(false);
   }
 }

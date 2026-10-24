@@ -1,11 +1,12 @@
 # Prompt changelog
 
-Each prompt version is a directory here: `v1/`, then `vN/` for each one after. A directory holds the five artifacts
-that travel together: `vN.md` (the system prompt), `knowledge.md` (the pack inlined at `{{knowledge}}`),
-`agent-decision.schema.json`, `tools.json`, and `templates/NAME.txt`, one file per fixed template. At boot every
-`vN/` without a row is seeded into the `prompt_version` table, byte for byte and inactive; the first one seeded into an
-empty table is made active. The directory in the repo is the record of what shipped, the table is what runs. Every
-conversation pins the version it started on, so changing the active version never changes a conversation in flight.
+Each prompt version is a directory here: `v1/`, then `vN/` for each one after. A directory holds the five artifacts that
+travel together: `vN.md` (the system prompt), `knowledge.md` (the pack inlined at `{{knowledge}}`),
+`agent-decision.schema.json`, `tools.json`, and `templates/NAME.txt`, one file per fixed template. At boot every `vN/`
+without a row is seeded into the `prompt_version` table, byte for byte and inactive; when none is active, as on an empty
+table, the newest version the repo seeded is made active, never a save. The directory in the repo is the record of what
+shipped, the table is what runs. Every conversation pins the version it started on, so changing the active version never
+changes a conversation in flight.
 
 ## v1
 
@@ -35,6 +36,50 @@ What changed against the source project's `system.md`:
 Placeholders are unchanged: `{{persona}}`, `{{target_chars}}`, `{{max_chars}}`, `{{canary}}`, `{{knowledge}}`.
 The per-turn context (today, tomorrow, counters, offered slots, booking, ended state, lead record) is appended by
 code as before and is referred to by its labels ("objections used: n of 1", "post-terminal replies", ENDED).
+
+## v2
+
+Fixes for what keyed eval runs found; nothing else changed, and v1 stays as it shipped.
+
+- Distress flags health information. v1's distress rule asked for VULNERABLE only, while rule 6 asks for HEALTH_INFO
+  when a lead volunteers health information; in one of two keyed trials of `story-vulnerable` the model set only the
+  first, so later bodies were not hidden. A diagnosis, condition or treatment mentioned, named or not, now gets both.
+- Distress offers a person, not a time. v1's own distress example ended "Want me to find a time that suits?", and the
+  story's judge failed both keyed trials for it. The reply is now under 140 characters: a few words of
+  acknowledgement and, as its one question (code wants exactly one in every open reply), an offer of someone from the
+  team whenever the lead is ready, asked again instead of the stage question until they answer it. Their answer, yes,
+  thanks or not now, is PLEASANTRY, never OBJECTION or HANDOFF_REQUEST, so it gets no slot: Anna closes with no
+  question, end HANDOFF, handoff reason still DISTRESS.
+- A bot question keeps the stage. v1's example answered and jumped to the call ask ("Would tomorrow morning suit?"),
+  as the model did in one of four keyed trials of `turn-are-you-a-bot`. Anna now answers and asks her last question
+  again, and that scenario checks `stage: ENGAGE` and that no tool is called, so the core gate catches a skip.
+- An off-topic decline is one fixed sentence. v1's example declined a joke with "I'll leave the jokes to the
+  comedians", and on keyed runs the model declined a poem with "I'll leave poems to the poets" and "Poems aren't my
+  thing", which `story-troll` forbids. Anna now says "That's outside what I can help with here.", names nothing they
+  asked for, and asks the stage question.
+- An empty calendar gets one more search and a plain answer. v1 said only "BEYOND_HORIZON or no slots: offer the
+  earliest window that has slots", and on keyed runs the model answered "Advisors are pretty booked tomorrow morning,
+  but I can grab the next morning spot that opens up" and once searched until the tool-round cap. Now an empty query
+  gets one more across the whole horizon; if that is empty too, Anna stops calling tools, says no times are open,
+  promises no spot or follow-up, and asks the lead to text again later.
+
+Evidence on the text as committed, 24 October 2026, gpt-5.1 at low effort:
+
+- The core set, one trial each: exit 0, verdict PASS, pass^k 100% (26 of 26), the hard, global and validity gates
+  PASS; $0.27, judges $0.64.
+- `turn-calendar-fully-booked` and `turn-booking-fails`, one trial each: both passed, and both judge questions.
+- `story-vulnerable`, two trials: both passed with both flags and handoff reason DISTRESS. The story's judge question
+  passed one; the other reply ran to 157 characters with two sentences of acknowledgement.
+- `story-troll`, three trials: all passed; its judge question passed two of three.
+- `turn-are-you-a-bot`, two trials: both passed.
+
+Before this text, four keyed core runs of drafts scored 25 or 26 of 26 with the hard gate always passing; their failures
+led to the off-topic decline and the empty-calendar rule above.
+
+A fresh `data/` activates v2 at first boot. An existing `data/` seeds it inactive and keeps its active version, so
+activate v2 in Configuration; conversations pinned to v1 keep v1. If a save in that `data/` already took the id v2,
+the repo's v2 is skipped with a warning and never activated: save `prompts/v2`'s files as a new version in
+Configuration and activate that, or start a fresh `data/`.
 
 ## Making the next version
 

@@ -29,7 +29,7 @@ expect:
     one_question_max: true
   replies_after_end_max: 0
 judge:
-  - "Does Anna decline each off-topic request in one short line and steer back to the cover question, without ever producing the joke, poem or rap?"
+  - "Before the off-topic limit closes the chat, does Anna decline each off-topic request in one short line and steer back to the cover question, without ever producing the joke, poem or rap?"
 config:
   offline_lines:
     - tell me a joke first

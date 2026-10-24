@@ -17,10 +17,12 @@ git clone <repo-url> anna && cd anna
 
 For another port, `./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=18080`. On Windows use `mvnw.cmd`;
 `evals/run.sh` and the Evals page call the POSIX `mvnw`, so run those under WSL. The database is an H2 file under
-`data/`; delete it to start over. Without a key the console shows "Agent unavailable": STOP and the fixed templates
-work, and every other lead message is stored and handed to a person. To talk to the model, export `OPENAI_API_KEY`, or
-fill in a copy of `.env.example` and load it with `set -a; . ./.env; set +a` (Spring does not read `.env`). Then, in the
-console, press Start a conversation, pick Lauren and type as the lead, or call the API the SMS platform calls:
+`data/`; delete it to start over. A fresh `data/` runs the newest prompt version, v2; an existing one keeps its active
+version until you activate v2 in Configuration (`prompts/CHANGELOG.md` covers one whose own save already took the id
+v2). Without a key the console shows "Agent unavailable": STOP and the fixed templates work, and every other lead
+message is stored and handed to a person. To talk to the model, export `OPENAI_API_KEY`, or fill in a copy of
+`.env.example` and load it with `set -a; . ./.env; set +a` (Spring does not read `.env`). Then, in the console, press
+Start a conversation, pick Lauren and type as the lead, or call the API the SMS platform calls:
 
 ```
 curl -s -X POST localhost:8080/api/conversations -H 'content-type: application/json' -d '{"lead_id":"lauren"}'
@@ -37,20 +39,23 @@ Cheapest first. Steps 1 and 2 need no key; steps 5 to 7 need `EVAL_OPENAI_API_KE
 
 | # | Run | Expect | Cost | Total |
 |---|---|---|---|---|
-| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,337 tests | $0 | $0 |
+| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,338 tests | $0 | $0 |
 | 2 | `evals/run.sh --offline` | every scenario answered by stand-ins, code that plays the model: report verdict PASS, 52 of 52 | $0 | $0 |
 | 3 | Export `OPENAI_API_KEY`, `./mvnw spring-boot:run` | log `model check ok: gpt-5.1`, no banner | one small call | $0 |
 | 4 | Start Lauren, reply "all of the above" | an `LLM` reply under 320 characters; the inspector shows the guards, the model round and the decision | about $0.01 | $0.01 |
 | 5 | `evals/run.sh --scenario turn-are-you-a-bot` | exit code 0, report verdict PASS, a Judges section (LLM judges, advisory) | $0.01, judges $0.01 | $0.03 |
-| 6 | `evals/run.sh --tag core` | exit code 0 and report verdict PASS over 20 turn scenarios (one turn each) and 6 stories (whole conversations against a simulated lead) | about $0.45, judges $0.40 | $0.90 |
-| 7 | `evals/run.sh --kind story` | all eight stories once | about $0.30, judges $0.15 | $1.35 |
-| 8 | Play a rude, a confused and a one-word lead | replies under 320 characters; the guards that fired, in the inspector | about $0.05 each | $1.50 |
+| 6 | `evals/run.sh --tag core` | exit code 0 and report verdict PASS over 20 turn scenarios (one turn each) and 6 stories (whole conversations against a simulated lead) | $0.27, judges $0.64 | $0.94 |
+| 7 | `evals/run.sh --kind story` | all eight stories once | about $0.30, judges $0.15 | $1.39 |
+| 8 | Play a rude, a confused and a one-word lead | replies under 320 characters; the guards that fired, in the inspector | about $0.05 each | $1.54 |
 
 Costs are gpt-5.1 at low effort, measured on keyed runs during the build (23 and 24 October 2026): 18 turn rows cost
-$0.0029 to $0.0135, median $0.0085, and took 2.3 to 24.1 seconds, median 5.3; a judge question costs about $0.002. Steps
-6 to 8 multiply those out, because no full keyed core or story run was made. `evals/run.sh --dry-run --tag core` prints
-the harness's ceiling ($1.43, judges at most $0.99), above which a run is refused; each report header has the exact
-cost.
+$0.0029 to $0.0135, median $0.0085, and took 2.3 to 24.1 seconds, median 5.3; a judge question costs about $0.002. Step
+6 is measured: the keyed core run on prompt v2 on 24 October 2026 exited 0 with verdict PASS, pass^k 100% (26 of 26) and
+every gate passing, for $0.27 plus $0.64 of judges, one trial each. The booking failures passed on v2 the same day: a
+slot taken between offer and booking in every core run, and a booking the calendar refuses (`turn-booking-fails`,
+outside the core set) in one keyed trial. Steps 7 and 8 multiply the turn figures out, because no full keyed story run
+was made. `evals/run.sh --dry-run --tag core` prints the harness's ceiling ($1.43, judges at most $0.99), above which a
+run is refused; each report header has the exact cost.
 
 ## Assumptions and defaults
 
@@ -225,22 +230,12 @@ Lead messages and the lead record go to OpenAI, which processes them outside Aus
 should say so under APP 8 (Australian Privacy Principle 8, cross-border disclosure). Every model request sets `store`
 false, and phone and email never reach the model. The prompt forbids asking about health; once the model flags a turn as
 health information, the API returns later message bodies as null unless asked with `?includeHealth=true`, and the PII
-mask hides them in the console (see Known issues for when it does not flag). Eval leads are synthetic. Logs carry ids
-and outcomes, never bodies or phone numbers; keys travel only as a request header and show only as set or not set.
-Nothing is deleted: messages and each turn's raw request and response stay in `data/` until a retention period is set.
+mask hides them in the console. Eval leads are synthetic. Logs carry ids and outcomes, never bodies or phone numbers;
+keys travel only as a request header and show only as set or not set. Nothing is deleted: messages and each turn's raw
+request and response stay in `data/` until a retention period is set.
 
 ## Known issues
 
-- **A distressed lead's health information can go unflagged.** In one of two keyed trials of the vulnerable-lead story
-  the model flagged the lead vulnerable but not as health information, so the bodies were not hidden: prompt v1's
-  distress rule asks only for the first, while its rule 6 asks for the second. One line in a v2, which needs a green
-  core run.
-- **Anna offers a call time to a distressed lead.** The judge failed that story's own question on both keyed trials;
-  v1's own distress example ends "Want me to find a time that suits?". Worth the same v2.
-- **Anna can skip to the call ask** after "are you a bot" (one of four keyed trials). The scenario does not check the
-  stage, so only a judge caught it.
-- **Unproven on the real model:** a slot taken between offer and booking, and a booking the calendar refuses. Both have
-  scenarios, never run with a key; no full keyed core run exists.
 - **Self-harm after a hard end while moderation is down gets silence**, because the model is not asked there.
 
 ## Where AI was used

@@ -1,0 +1,62 @@
+{
+  "name": "agent_decision",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "lead_intent", "stage", "objection_type", "flags", "extracted", "summary",
+      "send_reply", "reply", "goal_met", "unsubscribed", "conversation_ended",
+      "end_reason", "needs_human", "handoff_reason"
+    ],
+    "properties": {
+      "lead_intent": {
+        "type": "string",
+        "enum": ["ENGAGED", "QUESTION", "OBJECTION", "OPT_OUT", "ABUSIVE", "OFF_TOPIC", "INJECTION", "AI_QUESTION",
+                 "DISTRESS", "SELF_HARM", "PLEASANTRY", "HANDOFF_REQUEST", "RESCHEDULE", "OTHER"]
+      },
+      "stage": {
+        "type": "string",
+        "enum": ["ENGAGE", "PREFERENCE", "CALL_ASK", "OFFER_TIMES", "BOOKED"]
+      },
+      "objection_type": {
+        "type": "string",
+        "enum": ["NONE", "BUSY", "NOT_INTERESTED", "ALREADY_COVERED", "PRICE", "DISTRUST", "OTHER"]
+      },
+      "flags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["AI_DISCLOSURE_ASKED", "INJECTION_ATTEMPT", "OFF_TOPIC", "HEALTH_INFO", "VULNERABLE", "COMPLAINT", "OBJECTION"]
+        }
+      },
+      "extracted": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["coverage_goal", "cover_type", "current_cover_note", "preferred_day", "preferred_time_of_day"],
+        "properties": {
+          "coverage_goal": {"type": "string", "enum": ["SAVE", "IMPROVE", "BOTH", "FIRST_COVER", "UNKNOWN"]},
+          "cover_type": {"type": "string", "enum": ["HOSPITAL", "EXTRAS", "BOTH", "UNKNOWN"]},
+          "current_cover_note": {"type": ["string", "null"], "description": "Non-health description of the current policy, at most 100 chars"},
+          "preferred_day": {"type": ["string", "null"], "description": "YYYY-MM-DD in the lead's timezone, if stated"},
+          "preferred_time_of_day": {"type": "string", "enum": ["ANY", "MORNING", "MIDDAY", "AFTERNOON", "EVENING", "UNKNOWN"]}
+        }
+      },
+      "summary": {"type": ["string", "null"], "description": "One line for the advisor, at most 140 chars, no health details"},
+      "send_reply": {"type": "boolean"},
+      "reply": {"type": "string", "description": "SMS text, within the length rule in the prompt; empty when send_reply is false"},
+      "goal_met": {"type": "boolean", "description": "Advisory; code derives it from the booking"},
+      "unsubscribed": {"type": "boolean"},
+      "conversation_ended": {"type": "boolean"},
+      "end_reason": {
+        "type": "string",
+        "enum": ["NONE", "BOOKED", "DECLINED", "UNSUBSCRIBED", "ABUSIVE", "OFF_TOPIC_LIMIT", "MAX_TURNS", "HANDOFF", "SAFETY"]
+      },
+      "needs_human": {"type": "boolean"},
+      "handoff_reason": {
+        "type": "string",
+        "enum": ["NONE", "REQUESTED", "DISTRESS", "SELF_HARM", "COMPLAINT", "RESCHEDULE", "ERROR"]
+      }
+    }
+  }
+}

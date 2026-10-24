@@ -163,7 +163,7 @@ class InboundTurnsTest {
             id);
     assertThat(turn)
         .containsEntry("MODEL", "gpt-5.1")
-        .containsEntry("PROMPT_VERSION", "v1")
+        .containsEntry("PROMPT_VERSION", prompts.activeId())
         .containsEntry("TOKENS_IN", 1000)
         .containsEntry("TOKENS_OUT", 100)
         .containsEntry("COST_USD", new BigDecimal("0.002250"))

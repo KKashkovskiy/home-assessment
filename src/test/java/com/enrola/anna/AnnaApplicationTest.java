@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.LeadRepository;
+import com.enrola.anna.prompt.PromptLoader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -34,6 +35,7 @@ class AnnaApplicationTest {
 
   @Autowired JdbcTemplate jdbcTemplate;
   @Autowired LeadRepository leads;
+  @Autowired PromptLoader prompts;
 
   @Test
   void databaseFileLivesInTempDirectory() throws IOException {
@@ -60,8 +62,8 @@ class AnnaApplicationTest {
             "4 SQL TRUE",
             "5 SQL TRUE",
             "6 SQL TRUE");
-    assertThat(jdbcTemplate.queryForObject("select count(*) from prompt_version", Integer.class))
-        .isEqualTo(1);
+    assertThat(jdbcTemplate.queryForList("select id from prompt_version", String.class))
+        .containsExactlyInAnyOrderElementsOf(prompts.availableVersions());
   }
 
   /** 02:30 on 5 April 2026 happens twice in Sydney; this is the second one, AEST. */
