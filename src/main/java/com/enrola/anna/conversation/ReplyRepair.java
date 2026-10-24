@@ -2,6 +2,7 @@ package com.enrola.anna.conversation;
 
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.agent.Flag;
+import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.guard.ReplyCheck;
 import com.enrola.anna.guard.ReplyContext;
 import com.enrola.anna.guard.ReplyGuards;
@@ -42,38 +43,46 @@ class ReplyRepair {
   }
 
   /**
-   * What an open conversation's turn sends for the model's {@code reply}; a repair draws on the
+   * What an open conversation's turn sends for the {@code decision}'s reply; a repair draws on the
    * turn's {@code rounds}.
    */
   TurnOutcome send(
       RunningTurn turn,
-      String reply,
+      Decision decision,
       TurnQuestions.Question question,
       AgentCall.ToolRounds rounds) {
-    ReplyGuards.Checked first = check(turn, reply, TraceOutcome.REPAIR);
+    LeadIntent intent = decision.leadIntent();
+    ReplyGuards.Checked first = check(turn, decision.reply(), intent, TraceOutcome.REPAIR);
     if (first.passed()) {
       return TurnOutcome.decided(first.text());
     }
     TurnQuestions.Question again =
         questions.repairOf(turn, question, ReplyGuards.note(first.violations()));
     AgentCall.Answer repair = calls.repair(turn, again, rounds);
-    return rewriteOrReplacement(turn, repair).withRepairCall(repair.call());
+    return rewriteOrReplacement(turn, intent, repair).withRepairCall(repair.call());
   }
 
-  /** A closing reply after an end: the same checks, each failure traced BLOCK, and no repair. */
-  ReplyGuards.Checked checkClosing(RunningTurn turn, String reply) {
-    return check(turn, reply, TraceOutcome.BLOCK);
+  /**
+   * The {@code decision}'s closing reply after an end: the same checks, each failure traced BLOCK,
+   * and no repair.
+   */
+  ReplyGuards.Checked checkClosing(RunningTurn turn, Decision decision) {
+    return check(turn, decision.reply(), decision.leadIntent(), TraceOutcome.BLOCK);
   }
 
-  /** The rewrite when it passes, marked LENGTH_REPAIRED whatever the cause; else a replacement. */
-  private TurnOutcome rewriteOrReplacement(RunningTurn turn, AgentCall.Answer repair) {
+  /**
+   * The rewrite when it passes the checks the first decision's {@code intent} sets, marked
+   * LENGTH_REPAIRED whatever the cause; else a replacement.
+   */
+  private TurnOutcome rewriteOrReplacement(
+      RunningTurn turn, LeadIntent intent, AgentCall.Answer repair) {
     Optional<String> rewrite = rewriteOf(repair);
     if (rewrite.isEmpty()) {
-      return outcomes.replyRejected(turn);
+      return outcomes.replyRejected(turn, intent);
     }
-    ReplyGuards.Checked checked = check(turn, rewrite.get(), TraceOutcome.BLOCK);
+    ReplyGuards.Checked checked = check(turn, rewrite.get(), intent, TraceOutcome.BLOCK);
     if (!checked.passed()) {
-      return outcomes.replyRejected(turn);
+      return outcomes.replyRejected(turn, intent);
     }
     turn.conversation().addFlag(Flag.LENGTH_REPAIRED);
     return TurnOutcome.repaired(checked.text());
@@ -87,8 +96,9 @@ class ReplyRepair {
     };
   }
 
-  private ReplyGuards.Checked check(RunningTurn turn, String reply, TraceOutcome onFailure) {
-    ReplyGuards.Checked checked = guards.validate(reply, contextFor(turn));
+  private ReplyGuards.Checked check(
+      RunningTurn turn, String reply, LeadIntent intent, TraceOutcome onFailure) {
+    ReplyGuards.Checked checked = guards.validate(reply, contextFor(turn, intent));
     for (ReplyCheck check : ReplyCheck.values()) {
       List<String> notes =
           checked.violations().stream()
@@ -117,10 +127,11 @@ class ReplyRepair {
    * The reply may name only times from the latest offer and the booking, this turn's tool calls
    * included. After an end, or on the turn that ends it, the reply closes the conversation.
    */
-  private ReplyContext contextFor(RunningTurn turn) {
+  private ReplyContext contextFor(RunningTurn turn, LeadIntent intent) {
     Conversation conversation = turn.conversation();
     return new ReplyContext(
         turn.lead(),
+        intent,
         turn.prompt().canary(),
         conversation.lastOfferedLabels(),
         questions.bookingLabel(conversation),

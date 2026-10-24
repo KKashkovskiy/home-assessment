@@ -928,6 +928,9 @@ class InboundTurnsTest {
     static final String TOO_LONG = "x".repeat(399) + "?";
     static final String SHORT = "Got it, hospital or extras?";
 
+    /** Within the 320 cap, one over the distress cap. */
+    static final String DISTRESS_TOO_LONG = "x".repeat(140) + "?";
+
     @Test
     void repairedReplyIsSentAndMarked() throws Exception {
       model
@@ -1074,6 +1077,72 @@ class InboundTurnsTest {
       assertThat(response.reply()).isNull();
       assertThat(response.handoffReason()).isEqualTo(HandoffReason.DISTRESS);
       assertThat(response.conversationEnded()).isFalse();
+    }
+
+    @Test
+    void overLongDistressReplyIsRepaired() {
+      String gentle = "I'm sorry, that's a lot. Would it help to talk to someone from our team?";
+      model
+          .decide(distress().handsOff(HandoffReason.DISTRESS).reply(DISTRESS_TOO_LONG).build())
+          .decide(distress().handsOff(HandoffReason.DISTRESS).reply(gentle).build());
+
+      TurnResponse response = turns.handle(id, "just got a diagnosis, it's a lot", "p1");
+
+      assertThat(response.reply()).isEqualTo(gentle);
+      assertThat(turnStatus()).isEqualTo("REPAIRED");
+      assertThat(text(model.calls().get(1).input().getLast())).contains("distress-length:", "140");
+      assertThat(trace())
+          .filteredOn(event -> event.startsWith("GUARD distress-length "))
+          .containsExactly("GUARD distress-length REPAIR", "GUARD distress-length PASS");
+    }
+
+    /** A decision that forgot the handoff gets one from code, and the lead no call offer. */
+    @Test
+    void twiceFailingDistressReplyNeverSendsTheFallback() {
+      model
+          .decide(distress().reply(DISTRESS_TOO_LONG).build())
+          .decide(distress().reply(DISTRESS_TOO_LONG).build());
+
+      TurnResponse response = turns.handle(id, "it's all too much", "p1");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.needsHuman()).isTrue();
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.DISTRESS);
+      assertThat(response.conversationEnded()).isFalse();
+      assertThat(turnStatus()).isEqualTo("NO_REPLY");
+    }
+
+    /** The handoff already asked for keeps its reason: a person has that request to act on. */
+    @Test
+    void twiceFailingDistressReplyKeepsAnEarlierHandoffReason() {
+      model
+          .decide(Decisions.engaged().handsOff(HandoffReason.RESCHEDULE).reply(SHORT).build())
+          .decide(distress().reply(DISTRESS_TOO_LONG).build())
+          .decide(distress().reply(DISTRESS_TOO_LONG).build());
+      turns.handle(id, "can we do another day?", "p1");
+
+      TurnResponse response = turns.handle(id, "it's all too much", "p2");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.needsHuman()).isTrue();
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.RESCHEDULE);
+    }
+
+    @Test
+    void overLongDistressClosingReplyIsSuppressed() {
+      model
+          .decide(Decisions.engaged().ends(EndReason.DECLINED).noReply().build())
+          .decide(distress().reply("x".repeat(149) + ".").build());
+      turns.handle(id, "no thanks", "p1");
+
+      TurnResponse response = turns.handle(id, "sorry, it's been a hard week", "p2");
+
+      assertThat(response.reply()).isNull();
+      assertThat(trace()).contains("GUARD distress-length BLOCK", "GUARD closing-reply BLOCK");
+    }
+
+    private static Decisions.Builder distress() {
+      return Decisions.engaged().intent(LeadIntent.DISTRESS);
     }
 
     /** Every check is traced under its own name, a deny-list rule under "deny". */

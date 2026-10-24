@@ -1,5 +1,6 @@
 package com.enrola.anna.eval;
 
+import com.enrola.anna.agent.Decision;
 import com.enrola.anna.config.Settings;
 import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.conversation.Conversation;
@@ -10,6 +11,7 @@ import com.enrola.anna.conversation.Message;
 import com.enrola.anna.conversation.MessageRepository;
 import com.enrola.anna.conversation.TraceEvent;
 import com.enrola.anna.conversation.TraceEventRepository;
+import com.enrola.anna.conversation.Turn;
 import com.enrola.anna.conversation.TurnRepository;
 import com.enrola.anna.conversation.TurnResponse;
 import com.enrola.anna.guard.ReplyContext;
@@ -19,8 +21,9 @@ import java.util.List;
 
 /**
  * Reads back what a conversation's latest turn left in the database, and what its replies are
- * checked against: the lead, the prompt's canary, the offered and booked labels as the product's
- * own view reports them, and the length limit; and, for the judges, a trial's whole conversation.
+ * checked against: the lead, the decision's intent, the prompt's canary, the offered and booked
+ * labels as the product's own view reports them, and the length limit; and, for the judges, a
+ * trial's whole conversation.
  */
 final class TurnRowsReader {
 
@@ -64,13 +67,14 @@ final class TurnRowsReader {
         messages.transcript(conversationId).stream()
             .filter(message -> message.turnNo() == turnNo && message.direction() == Direction.OUT)
             .toList();
+    Turn turn = turns.findByConversationIdAndTurnNo(conversationId, turnNo).orElse(null);
     return new TurnRows(
         conversation,
         turnNo,
-        turns.findByConversationIdAndTurnNo(conversationId, turnNo).orElse(null),
+        turn,
         events,
         outbound,
-        replyContext(conversation));
+        replyContext(conversation, TurnRows.decisionOf(turn)));
   }
 
   /** What a judge reads about a finished trial: its conversation's lead and every SMS in order. */
@@ -84,11 +88,12 @@ final class TurnRowsReader {
   }
 
   /** The suite-wide checks ask nothing of questions, so goal and closing only fill the record. */
-  private ReplyContext replyContext(Conversation conversation) {
+  private ReplyContext replyContext(Conversation conversation, Decision decision) {
     Settings current = settings.current();
     TurnResponse view = conversations.view(conversation.id);
     return new ReplyContext(
         leads.findById(conversation.leadId).orElseThrow(),
+        decision == null ? null : decision.leadIntent(),
         prompts.bundle(conversation.promptVersion, current.persona()).canary(),
         view.lastOfferedSlots(),
         view.booking() == null ? null : view.booking().localLabel(),

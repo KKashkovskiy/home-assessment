@@ -150,7 +150,7 @@ class AgentTurn {
       AgentCall.ToolRounds rounds) {
     Conversation conversation = turn.conversation();
     if (decision.sendReply()) {
-      return replies.send(turn, decision.reply(), question, rounds);
+      return replies.send(turn, decision, question, rounds);
     }
     if (conversation.ended) {
       return TurnOutcome.silent(NoReply.ENDED_NOW, "model ended without a reply");
@@ -212,7 +212,7 @@ class AgentTurn {
     if (!decision.sendReply()) {
       return TurnOutcome.silent(NoReply.MODEL_SILENT, "model chose silence");
     }
-    ReplyGuards.Checked checked = replies.checkClosing(turn, decision.reply());
+    ReplyGuards.Checked checked = replies.checkClosing(turn, decision);
     boolean sendable =
         checked.passed() && StateRules.closingReplyAllowed(conversation, checked.text());
     Map<String, Integer> counts =

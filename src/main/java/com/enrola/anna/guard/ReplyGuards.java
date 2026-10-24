@@ -1,5 +1,6 @@
 package com.enrola.anna.guard;
 
+import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.lead.Lead;
 import com.enrola.anna.lead.Phones;
 import com.enrola.anna.prompt.Gsm7;
@@ -21,6 +22,12 @@ import org.springframework.stereotype.Component;
 public final class ReplyGuards {
 
   private static final int MAX_SLOTS = 3;
+
+  /**
+   * A reply to a lead in distress is at most 140 characters: a few kind words and an offer of a
+   * person, not a paragraph.
+   */
+  private static final int DISTRESS_MAX_CHARS = 140;
 
   /** Headings, bold, links and bullets: markdown that survives normalisation. */
   private static final Pattern MARKDOWN =
@@ -50,7 +57,8 @@ public final class ReplyGuards {
     List<Violation> violations =
         Stream.of(
                 failsIf(reply.isBlank(), ReplyCheck.EMPTY, "reply is empty"),
-                length(reply, context.maxChars()),
+                length(reply, ReplyCheck.LENGTH, context.maxChars()),
+                distressLength(reply, context.leadIntent()),
                 questions(reply, context),
                 failsIf(reply.indexOf('!') >= 0, ReplyCheck.EXCLAMATION, "no exclamation marks"),
                 canary(reply, context.canary()),
@@ -72,11 +80,17 @@ public final class ReplyGuards {
         .collect(Collectors.joining("; "));
   }
 
-  private static Stream<Violation> length(String reply, int maxChars) {
+  private static Stream<Violation> length(String reply, ReplyCheck check, int maxChars) {
     return failsIf(
         reply.length() > maxChars,
-        ReplyCheck.LENGTH,
+        check,
         "reply is %d chars, limit %d".formatted(reply.length(), maxChars));
+  }
+
+  private static Stream<Violation> distressLength(String reply, LeadIntent intent) {
+    return intent == LeadIntent.DISTRESS
+        ? length(reply, ReplyCheck.DISTRESS_LENGTH, DISTRESS_MAX_CHARS)
+        : Stream.empty();
   }
 
   /** Exactly one question until the goal is met; none in a reply that closes the conversation. */

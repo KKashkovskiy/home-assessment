@@ -133,10 +133,10 @@ class GuardOutcomes {
 
   /**
    * The model's reply failed the reply guards and its repair did not fix it; what goes instead
-   * follows the state the turn's decision left.
+   * follows the state the turn's decision left and the lead's {@code intent} it read.
    */
-  TurnOutcome replyRejected(RunningTurn turn) {
-    TurnOutcome outcome = replacement(turn);
+  TurnOutcome replyRejected(RunningTurn turn, LeadIntent intent) {
+    TurnOutcome outcome = replacement(turn, intent);
     trace.record(
         turn,
         TraceLog.Entry.guard(
@@ -146,10 +146,11 @@ class GuardOutcomes {
 
   /**
    * After the goal nothing, and a person follows up. On the turn the model ended, the fixed close
-   * for that end. While a person is asked to take over, as for distress, nothing: a scripted sales
-   * line is wrong there. Otherwise the FALLBACK template.
+   * for that end. While a person is asked to take over, nothing: a scripted sales line is wrong
+   * there, so a lead in distress is handed over even when the decision did not ask. Otherwise the
+   * FALLBACK template.
    */
-  private TurnOutcome replacement(RunningTurn turn) {
+  private TurnOutcome replacement(RunningTurn turn, LeadIntent intent) {
     Conversation conversation = turn.conversation();
     if (conversation.goalMet) {
       StateRules.handoff(conversation, HandoffReason.ERROR);
@@ -157,6 +158,9 @@ class GuardOutcomes {
     }
     if (conversation.ended) {
       return closeFor(turn, conversation.endReason);
+    }
+    if (intent == LeadIntent.DISTRESS && !conversation.needsHuman) {
+      StateRules.handoff(conversation, HandoffReason.DISTRESS);
     }
     if (conversation.needsHuman) {
       return TurnOutcome.silent(NoReply.HANDOFF, "reply rejected during a handoff");

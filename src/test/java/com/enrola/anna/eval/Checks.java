@@ -2,6 +2,8 @@ package com.enrola.anna.eval;
 
 import com.enrola.anna.agent.Decision;
 import com.enrola.anna.conversation.Conversation;
+import com.enrola.anna.conversation.Message;
+import com.enrola.anna.conversation.MessageSource;
 import com.enrola.anna.conversation.TraceEventType;
 import com.enrola.anna.conversation.TurnStatus;
 import com.enrola.anna.eval.Scenario.Expect;
@@ -41,6 +43,10 @@ final class Checks {
           ReplyCheck.DENY,
           ReplyCheck.TIME_MENTION,
           ReplyCheck.MAX_SLOTS);
+
+  /** The production caps only the model's reply to a lead in distress, not a fixed template. */
+  private static final Set<ReplyCheck> GUARDED_MODEL_REPLY =
+      EnumSet.of(ReplyCheck.DISTRESS_LENGTH, GUARDED.toArray(ReplyCheck[]::new));
 
   /** A turn that ends so failed: the model or the reply guards gave out, unless expected. */
   private static final Set<TurnStatus> FAILED = EnumSet.of(TurnStatus.FALLBACK, TurnStatus.ERROR);
@@ -91,8 +97,7 @@ final class Checks {
             expect.turnStatus() == null ? turnStatus(rows) : Stream.empty(),
             replyAfterEnd(rows.conversation()));
     Stream<Check> replies =
-        rows.outbound().stream()
-            .flatMap(message -> replyGuards(message.text(), rows.replyContext()));
+        rows.outbound().stream().flatMap(message -> replyGuards(message, rows.replyContext()));
     return Stream.concat(turn, replies).map(check -> check.at(rows.turnNo())).toList();
   }
 
@@ -208,11 +213,13 @@ final class Checks {
   }
 
   /** One check per guarded reply rule, failing with the guard's notes, and the question count. */
-  private static Stream<Check> replyGuards(String reply, ReplyContext context) {
+  private static Stream<Check> replyGuards(Message message, ReplyContext context) {
+    String reply = message.text();
     List<Violation> violations = GUARDS.validate(reply, context).violations();
     long questions = reply.chars().filter(c -> c == '?').count();
+    Set<ReplyCheck> guarded = message.source() == MessageSource.LLM ? GUARDED_MODEL_REPLY : GUARDED;
     return Stream.concat(
-        GUARDED.stream().map(rule -> guardCheck(rule, violations, reply)),
+        guarded.stream().map(rule -> guardCheck(rule, violations, reply)),
         Stream.of(Check.expectation("one_question_max", questions <= 1, "questions=" + questions)));
   }
 

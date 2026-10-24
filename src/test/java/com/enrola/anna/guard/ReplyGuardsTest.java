@@ -2,6 +2,7 @@ package com.enrola.anna.guard;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.lead.Lead;
 import java.time.Instant;
 import java.util.List;
@@ -12,7 +13,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-/** Lauren, canary CANARY-7f3a, no slot labels, 320 chars, before the goal unless a test says. */
+/**
+ * Lauren, canary CANARY-7f3a, no slot labels, 320 chars, an ENGAGED lead before the goal unless a
+ * test says.
+ */
 class ReplyGuardsTest {
 
   static final ReplyGuards GUARDS = new ReplyGuards();
@@ -28,14 +32,28 @@ class ReplyGuardsTest {
           null,
           null,
           Instant.EPOCH);
-  static final ReplyContext PRE_GOAL = context(false, false, List.of());
-  static final ReplyContext POST_GOAL = context(true, false, List.of());
-  static final ReplyContext TERMINAL = context(false, true, List.of());
+  static final ReplyContext PRE_GOAL = context(LeadIntent.ENGAGED, false, false, List.of());
+  static final ReplyContext POST_GOAL = context(LeadIntent.ENGAGED, true, false, List.of());
+  static final ReplyContext TERMINAL = context(LeadIntent.ENGAGED, false, true, List.of());
+  static final ReplyContext DISTRESSED = context(LeadIntent.DISTRESS, false, false, List.of());
 
   @Test
   void lengthBoundary() {
     assertThat(guards(ofLength(320), PRE_GOAL)).isEmpty();
     assertThat(guards(ofLength(321), PRE_GOAL)).containsExactly("length");
+  }
+
+  static Stream<Arguments> distressLength() {
+    return Stream.of(
+        Arguments.of(DISTRESSED, 140, List.of()),
+        Arguments.of(DISTRESSED, 141, List.of("distress-length")),
+        Arguments.of(PRE_GOAL, 200, List.of()));
+  }
+
+  @ParameterizedTest(name = "{1} chars")
+  @MethodSource
+  void distressLength(ReplyContext context, int length, List<String> violated) {
+    assertThat(guards(ofLength(length), context)).isEqualTo(violated);
   }
 
   /** 322 chars as written, 320 as sent: the emoji goes, each curly quote stays one character. */
@@ -123,6 +141,7 @@ class ReplyGuardsTest {
   void moreThanThreeSlots() {
     ReplyContext offered =
         context(
+            LeadIntent.ENGAGED,
             false,
             false,
             List.of(
@@ -161,8 +180,9 @@ class ReplyGuardsTest {
         .contains("; deny: savings-promise: ");
   }
 
-  private static ReplyContext context(boolean goalMet, boolean terminal, List<String> offered) {
-    return new ReplyContext(LAUREN, "CANARY-7f3a", offered, null, goalMet, terminal, 320);
+  private static ReplyContext context(
+      LeadIntent intent, boolean goalMet, boolean terminal, List<String> offered) {
+    return new ReplyContext(LAUREN, intent, "CANARY-7f3a", offered, null, goalMet, terminal, 320);
   }
 
   private static List<String> guards(String reply, ReplyContext context) {

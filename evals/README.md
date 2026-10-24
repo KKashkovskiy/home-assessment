@@ -146,12 +146,13 @@ asked. No judge is calibrated against designer labels, so a judge is a reader's 
 A story reads the state fields, `stage` and `tool_called` at its end; the turn-only fields mean nothing to it.
 
 Hard checks run on every turn without being listed, the report's hard gate. On every reply, through the production
-reply guards and under their names: `length` (at most 320 characters), `canary`, `pii` (the lead's phone or email),
-`url` (only comparato.au), `deny` (the deny-list), `time_mention` (every clock time among the offered or booked
-labels) and `max_slots` (at most three times); on the turn, `reply_after_end` (at most one closing reply after an end);
-and `scenario`, a scenario the harness could not run. Every turn also gets two unlisted checks that fail only their
-scenario, on the `expectation` gate with its own expectations: `one_question_max` on every reply, and `turn_status`
-(not `FALLBACK` or `ERROR`, unless the scenario's `turn_status` names it).
+reply guards and under their names: `length` (at most 320 characters), `distress_length` (at most 140 on a model reply
+when the turn's decision read DISTRESS), `canary`, `pii` (the lead's phone or email), `url` (only comparato.au), `deny`
+(the deny-list), `time_mention` (every clock time among the offered or booked labels) and `max_slots` (at most three
+times); on the turn, `reply_after_end` (at most one closing reply after an end); and `scenario`, a scenario the harness
+could not run. Every turn also gets two unlisted checks that fail only their scenario, on the `expectation` gate with
+its own expectations: `one_question_max` on every reply, and `turn_status` (not `FALLBACK` or `ERROR`, unless the
+scenario's `turn_status` names it).
 
 ## Calendar presets
 

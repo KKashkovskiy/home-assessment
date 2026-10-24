@@ -189,6 +189,19 @@ class ChecksTest {
         .containsOnly("turn_status", "one_question_max");
   }
 
+  /** The production caps the model's reply to a lead in distress; a fixed template is not held. */
+  @Test
+  void distressCapHoldsModelRepliesOnly() {
+    String overCap = "x".repeat(140) + ".";
+    Message template = Message.outbound("c-1", 3, overCap, MessageSource.FIXED, Instant.EPOCH);
+
+    assertThat(distressChecks(reply(overCap)))
+        .filteredOn(check -> !check.pass())
+        .extracting(Check::name, Check::gate)
+        .containsExactly(tuple("distress_length", Check.Gate.HARD));
+    assertThat(distressChecks(template)).extracting(Check::name).doesNotContain("distress_length");
+  }
+
   /** A turn that fell back or failed fails unless the scenario expects exactly that. */
   @Test
   void fallbackFailsUnlessExpected() {
@@ -247,7 +260,16 @@ class ChecksTest {
   }
 
   private static ReplyContext context() {
-    return new ReplyContext(LAUREN, "canary-token", List.of(), null, false, false, 320);
+    return new ReplyContext(LAUREN, null, "canary-token", List.of(), null, false, false, 320);
+  }
+
+  /** The suite-wide checks of one reply on a turn whose decision read DISTRESS. */
+  private static List<Check> distressChecks(Message sent) {
+    ReplyContext distressed =
+        new ReplyContext(
+            LAUREN, LeadIntent.DISTRESS, "canary-token", List.of(), null, false, false, 320);
+    return Checks.suiteWide(
+        Expect.NONE, new TurnRows(conversation(), 3, null, List.of(), List.of(sent), distressed));
   }
 
   private static List<Boolean> passes(Expect expect, List<TraceEvent> events) {

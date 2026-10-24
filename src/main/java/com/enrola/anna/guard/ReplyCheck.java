@@ -6,6 +6,7 @@ import java.util.Locale;
 public enum ReplyCheck {
   EMPTY,
   LENGTH,
+  DISTRESS_LENGTH,
   ONE_QUESTION,
   CLOSING_QUESTION,
   EXCLAMATION,

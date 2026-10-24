@@ -73,6 +73,11 @@ record TurnRows(
 
   /** The decision the turn applied, or null when it never reached the model. */
   Decision decision() {
+    return decisionOf(turn);
+  }
+
+  /** The decision {@code turn} applied, or null without a turn row or a model decision. */
+  static Decision decisionOf(Turn turn) {
     if (turn == null || turn.modelCall().decisionJson() == null) {
       return null;
     }

@@ -103,12 +103,13 @@ conversation in silence; no key, a spent cap or a prompt version that does not l
 end (booked, declined, turn cap, handed off) allows one short closing reply; the turn cap sends a fixed close. The
 silence after a hard end has one exception: with moderation down and no phrase matched, the model is asked, with no
 tools and no reply of its own, whether the message is self-harm. After the model call, `guard/ReplyGuards` checks every
-reply as the phone will show it, normalised to GSM-7 (the SMS character set): at most 320 characters, exactly one
-question before the goal, no exclamation mark, markdown, leaked prompt token, link off comparato.au, lead phone or
-email, deny-listed claim, or clock time that was not offered. A failed reply gets one rewrite, then a fixed fallback;
-nothing is truncated. `conversation/StateRules` is the only code that ends a conversation or meets the goal, and only a
-booking row meets it. The prompt is a versioned row, and each conversation pins the version it started on, so activating
-a new one never changes a conversation in flight.
+reply as the phone will show it, normalised to GSM-7 (the SMS character set): at most 320 characters, 140 to a lead the
+model read as in distress, exactly one question before the goal, no exclamation mark, markdown, leaked prompt token,
+link off comparato.au, lead phone or email, deny-listed claim, or clock time that was not offered. A failed reply gets
+one rewrite, then a fixed fallback, except that a lead in distress whose reply fails twice gets no reply and is handed
+to a person; nothing is truncated. `conversation/StateRules` is the only code that ends a conversation or meets the
+goal, and only a booking row meets it. The prompt is a versioned row, and each conversation pins the version it started
+on, so activating a new one never changes a conversation in flight.
 
 ## The console
 
