@@ -459,7 +459,11 @@ class ConfigurationControllerTest extends ConsoleFixture {
     @Test
     void savedSettingsApplyAndAreReadAgainAtBoot() throws Exception {
       Settings changed =
-          SettingsFixture.with(defaults.settings(), "limits", "maxTurns", 2)
+          SettingsFixture.with(
+                  SettingsFixture.with(defaults.settings(), "limits", "maxTurns", 2),
+                  "persona",
+                  "disclosureInOpener",
+                  false)
               .withCalendarPreset(Settings.CalendarPreset.SLOT_TAKEN);
 
       MvcResult saved =
@@ -603,6 +607,7 @@ class ConfigurationControllerTest extends ConsoleFixture {
     fields.add("evalCap", form.evalCap().toPlainString());
     fields.add("persona", form.persona());
     fields.add("company", form.company());
+    fields.add("_disclosureInOpener", "on");
     if (form.disclosureInOpener()) {
       fields.add("disclosureInOpener", "true");
     }

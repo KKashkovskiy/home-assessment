@@ -64,6 +64,8 @@
         <div th:replace="~{fragments/settings :: field(name='persona', id='s-persona', label='Agent name', type='text', value=${form.persona})}"></div>
         <div th:replace="~{fragments/settings :: field(name='company', id='s-company', label='Company', type='text', value=${form.company})}"></div>
       </div>
+      <!-- An unticked box posts nothing; the marker has the binder take that as false. -->
+      <input type="hidden" name="_disclosureInOpener" value="on">
       <label class="toggle"><input id="s-disclosure" name="disclosureInOpener" type="checkbox" value="true" th:checked="${form.disclosureInOpener}"> Say "AI assistant" in the opener</label>
       <span class="hint">The active prompt version's templates must still fit their caps with these. Templates and the knowledge pack live in Prompts above.</span>
     </fieldset>
