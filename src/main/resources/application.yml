@@ -17,6 +17,10 @@ server:
       tracking-modes: cookie              # the PII mask toggle lives in the session; never a jsessionid in a URL
       cookie:
         same-site: strict                 # with CrossSiteGuard, the console's cross-site protection
+logging:
+  level:
+    # Flyway warns at every boot that H2 2.4 is newer than it has verified; nothing to act on
+    org.flywaydb.core.internal.database.base.Database: ERROR
 anna:
   app-version: "@project.version@"       # filtered in from the pom at build time; stamped on each conversation
   data-dir: data                          # settings.json and quick-replies.txt, the overrides the console saves

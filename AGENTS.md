@@ -45,7 +45,8 @@ ids, which name a launch in wall time as `run.sh`'s `date -u` does.
 call with its tool loop (`AgentTurn`, `AgentCall`, `AgentService`); the decision applied (`DecisionApplier`); the reply
 checks with one repair (`ReplyRepair`, `ReplyGuards`); and the finish writes reply, conversation, turn row and state
 diff in one transaction. Only `StateRules` writes terminal state; only `StateRules.booked` writes `goal_met`. A new rule
-goes where its kind already lives, never into the prompt alone.
+goes where its kind already lives, never into the prompt alone. A turn reads `SettingsStore.current()` once and passes
+the snapshot down (see `Settings`).
 
 ## Console pages
 
@@ -105,7 +106,9 @@ Common extensions, and the file each starts in:
 Spring tests run against a real H2 file in a temp directory, set through `@DynamicPropertySource` as in
 `AnnaApplicationTest`. No test touches `./data`, and nothing mocks H2 or a repository. Spring tests set
 `OPENAI_API_KEY=` blank, so no test calls OpenAI or costs money; a test that needs the model scripts it with
-`ScriptedModelClient`.
+`ScriptedModelClient`. A test is named for the class or the flow it proves; a flow through one class is a nested class
+of that class's test (`InboundTurnsTest.RepairCycle`), and one that needs its own Spring context or entry point gets
+its own class (`TraceStreamOffTest`, `EvalSuiteTest`).
 
 ## What not to do
 

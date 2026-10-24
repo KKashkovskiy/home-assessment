@@ -37,7 +37,7 @@ Cheapest first. Steps 1 and 2 need no key; steps 5 to 7 need `EVAL_OPENAI_API_KE
 
 | # | Run | Expect | Cost | Total |
 |---|---|---|---|---|
-| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,319 tests | $0 | $0 |
+| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,337 tests | $0 | $0 |
 | 2 | `evals/run.sh --offline` | every scenario answered by stand-ins, code that plays the model: report verdict PASS, 52 of 52 | $0 | $0 |
 | 3 | Export `OPENAI_API_KEY`, `./mvnw spring-boot:run` | log `model check ok: gpt-5.1`, no banner | one small call | $0 |
 | 4 | Start Lauren, reply "all of the above" | an `LLM` reply under 320 characters; the inspector shows the guards, the model round and the decision | about $0.01 | $0.01 |
