@@ -29,9 +29,11 @@ public class AnalyticsDataApi {
   public record DataError(String error, String message) {}
 
   private final AnalyticsService analytics;
+  private final ShellModelAdvice shells;
 
-  public AnalyticsDataApi(AnalyticsService analytics) {
+  public AnalyticsDataApi(AnalyticsService analytics, ShellModelAdvice shells) {
     this.analytics = analytics;
+    this.shells = shells;
   }
 
   @GetMapping(
@@ -39,7 +41,9 @@ public class AnalyticsDataApi {
       produces = MediaType.APPLICATION_JSON_VALUE)
   public ChartData data(@ModelAttribute AnalyticsFilter filter) {
     Map<String, List<Series.Row>> charts = new LinkedHashMap<>();
-    analytics.charts(filter).forEach(series -> charts.put(series.key(), series.rows()));
+    analytics
+        .charts(filter, shells.settings().scheduling().advisorZone())
+        .forEach(series -> charts.put(series.key(), series.rows()));
     return new ChartData(charts);
   }
 

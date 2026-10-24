@@ -2,7 +2,7 @@ package com.enrola.anna.agent;
 
 import com.enrola.anna.config.Settings;
 import com.enrola.anna.config.SettingsDefaults;
-import com.enrola.anna.config.SettingsStore;
+import com.enrola.anna.config.SettingsListener;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnExpression(OpenAiClientConfig.WHEN_KEY_SET)
-public class ModelCheck implements ApplicationRunner {
+public class ModelCheck implements ApplicationRunner, SettingsListener {
 
   private static final Logger log = LoggerFactory.getLogger(ModelCheck.class);
 
@@ -39,14 +39,15 @@ public class ModelCheck implements ApplicationRunner {
 
   private final ModelClient client;
   private final boolean strict;
+
+  /** What a turn would send; set by the boot record before {@link #run}. */
   private volatile ModelRequest asked;
+
   private volatile Result result = Result.PENDING;
 
-  public ModelCheck(ModelClient client, SettingsStore settings, SettingsDefaults defaults) {
+  public ModelCheck(ModelClient client, SettingsDefaults defaults) {
     this.client = client;
     this.strict = defaults.agent().strictModelCheck();
-    this.asked = pingFor(settings.current());
-    settings.onChange(this::recheckIfChanged);
   }
 
   @Override
@@ -68,16 +69,21 @@ public class ModelCheck implements ApplicationRunner {
   }
 
   /**
-   * A save that leaves the model, its reasoning and its output cap as they were changes nothing.
+   * The boot record only sets what {@link #run} asks. A later record that changes the model, its
+   * reasoning or its output cap is asked in the background; one that leaves them changes nothing.
    */
-  private synchronized void recheckIfChanged(Settings settings) {
-    ModelRequest ping = pingFor(settings);
-    if (ping.equals(asked)) {
+  @Override
+  public synchronized void settingsChanged(Settings current) {
+    ModelRequest ping = pingFor(current);
+    ModelRequest before = asked;
+    if (ping.equals(before)) {
       return;
     }
     asked = ping;
-    result = Result.PENDING;
-    BACKGROUND.execute(() -> check(ping));
+    if (before != null) {
+      result = Result.PENDING;
+      BACKGROUND.execute(() -> check(ping));
+    }
   }
 
   /**

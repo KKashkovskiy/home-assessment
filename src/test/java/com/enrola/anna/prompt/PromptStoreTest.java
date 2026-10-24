@@ -27,6 +27,8 @@ import org.springframework.test.context.DynamicPropertySource;
 @SpringBootTest(properties = "OPENAI_API_KEY=")
 class PromptStoreTest {
 
+  private static final Settings.Persona PERSONA = SettingsFixture.DEFAULTS.persona();
+
   @TempDir static Path tempDir;
 
   @DynamicPropertySource
@@ -48,7 +50,7 @@ class PromptStoreTest {
 
   @Test
   void saveInsertsNextIdInactive() {
-    PromptStore.SaveResult result = store.save(copyOfV1("test"));
+    PromptStore.SaveResult result = store.save(copyOfV1("test"), PERSONA);
 
     assertThat(result).isEqualTo(new PromptStore.SaveResult.Saved("v2", List.of()));
     assertThat(store.list())
@@ -71,7 +73,7 @@ class PromptStoreTest {
             v1.templatesJson(),
             "bad");
 
-    assertThat(store.save(missingKnowledge))
+    assertThat(store.save(missingKnowledge, PERSONA))
         .isEqualTo(
             new PromptStore.SaveResult.Rejected(
                 List.of("prompt is missing placeholder {{knowledge}}"), List.of()));
@@ -81,19 +83,19 @@ class PromptStoreTest {
   /** A deleted row must not hand its id out again while a higher one exists. */
   @Test
   void nextIdIsOnePastTheHighest() {
-    store.save(copyOfV1("second"));
-    store.save(copyOfV1("third"));
+    store.save(copyOfV1("second"), PERSONA);
+    store.save(copyOfV1("third"), PERSONA);
     jdbc.update("delete from prompt_version where id = 'v2'");
 
-    assertThat(store.save(copyOfV1("fourth")))
+    assertThat(store.save(copyOfV1("fourth"), PERSONA))
         .isEqualTo(new PromptStore.SaveResult.Saved("v4", List.of()));
   }
 
   @Test
   void activateFlipsExactlyOne() {
-    store.save(copyOfV1("second"));
+    store.save(copyOfV1("second"), PERSONA);
 
-    store.activate("v2");
+    store.activate("v2", PERSONA);
 
     assertThat(store.activeId()).isEqualTo("v2");
     assertThat(store.list())
@@ -103,17 +105,18 @@ class PromptStoreTest {
 
   @Test
   void activateUnknownThrowsAndKeepsActive() {
-    assertThatThrownBy(() -> store.activate("v9")).isInstanceOf(PromptVersionMissing.class);
+    assertThatThrownBy(() -> store.activate("v9", PERSONA))
+        .isInstanceOf(PromptVersionMissing.class);
     assertThat(store.activeId()).isEqualTo("v1");
   }
 
   /** Damage only direct SQL can do; the active version stays and turns on v2 cannot load it. */
   @Test
   void activateCorruptThrowsAndKeepsActive() {
-    store.save(copyOfV1("second"));
+    store.save(copyOfV1("second"), PERSONA);
     jdbc.update("update prompt_version set tools_json = '{' where id = 'v2'");
 
-    assertThatThrownBy(() -> store.activate("v2"))
+    assertThatThrownBy(() -> store.activate("v2", PERSONA))
         .isInstanceOf(PromptVersionCorrupt.class)
         .hasMessage("prompt version v2 cannot be loaded: tools are not valid JSON");
     assertThat(store.activeId()).isEqualTo("v1");
@@ -127,12 +130,13 @@ class PromptStoreTest {
 
   @Test
   void loadErrorsAreWhatActivationRefusesWith() {
-    store.save(copyOfV1("second"));
+    store.save(copyOfV1("second"), PERSONA);
     jdbc.update("update prompt_version set tools_json = '{' where id = 'v2'");
 
-    assertThat(store.loadErrors(store.get("v1"))).isEmpty();
-    assertThat(store.loadErrors(store.get("v2"))).containsExactly("tools are not valid JSON");
-    assertThatThrownBy(() -> store.activate("v2"))
+    assertThat(store.loadErrors(store.get("v1"), PERSONA)).isEmpty();
+    assertThat(store.loadErrors(store.get("v2"), PERSONA))
+        .containsExactly("tools are not valid JSON");
+    assertThatThrownBy(() -> store.activate("v2", PERSONA))
         .isInstanceOf(PromptVersionCorrupt.class)
         .hasMessageEndingWith(": tools are not valid JSON");
   }
@@ -162,7 +166,7 @@ class PromptStoreTest {
   void contentColumnsAreNeverUpdated() {
     PromptVersion before = versions.findById("v1").orElseThrow();
 
-    store.save(copyOfV1("same as v1"));
+    store.save(copyOfV1("same as v1"), PERSONA);
 
     assertThat(versions.findById("v1").orElseThrow()).isEqualTo(before);
     assertThat(

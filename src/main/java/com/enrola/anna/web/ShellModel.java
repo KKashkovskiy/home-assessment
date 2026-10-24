@@ -4,16 +4,19 @@ import com.enrola.anna.config.Settings;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * Values for the status strip and banner on every page: the clock's mode and its advisor-local time
  * to the minute with the zone's name, the calendar preset, app spend against its cap, the model,
- * effort and active prompt version, whether the agent can answer, and the PII mask.
+ * effort and active prompt version, whether the agent can answer, and the PII mask. {@code
+ * advisorZone} is also the zone every page shows its days and times in.
  */
 public record ShellModel(
     Settings.ClockMode clockMode,
     LocalDateTime clockTime,
     String clockZone,
+    ZoneId advisorZone,
     Settings.CalendarPreset calendarPreset,
     BigDecimal spend,
     BigDecimal cap,

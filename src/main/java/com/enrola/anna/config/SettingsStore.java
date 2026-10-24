@@ -7,12 +7,11 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -23,13 +22,17 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Holds the live {@link Settings}: the yml defaults, or the overrides in {@code settings.json} in
- * the data directory laid over them. {@link #save} validates a candidate whole, writes it, and
- * swaps it in with one volatile write, so a turn keeps the record it read at its start and the next
- * turn reads the new one; then the listeners run, so every save keeps the clock and the calendar in
- * step. A settings file never stops the app: one that does not read or pass is set aside.
+ * the data directory laid over them. {@link #save} validates a candidate whole, the {@link
+ * SettingsCheck} beans included, writes it, and swaps it in with one volatile write, so a turn
+ * keeps the record it read at its start and the next turn reads the new one; then the {@link
+ * SettingsListener} beans hear it, so every save keeps the clock and the calendar in step. A
+ * settings file never stops the app: one that does not read or pass is set aside. Only the pipeline
+ * entries ({@code ConversationService} for a start, {@code TurnPipeline} for a turn), the
+ * Configuration controller and the console's shell advice, which reads it once per request, hold
+ * this store; every other reader is handed the record, or the section of it it needs.
  */
 @Service
-public class SettingsStore {
+public class SettingsStore implements SmartInitializingSingleton {
 
   private static final Logger log = LoggerFactory.getLogger(SettingsStore.class);
 
@@ -41,35 +44,42 @@ public class SettingsStore {
 
   private final Path file;
   private final Settings defaults;
-  private final List<Consumer<Settings>> listeners = new CopyOnWriteArrayList<>();
-  private final List<Function<Settings, List<SettingsValidation.Problem>>> checks =
-      new CopyOnWriteArrayList<>();
+  private final List<SettingsListener> listeners;
+  private final List<SettingsCheck> checks;
   private volatile Settings current;
 
   @Autowired
-  public SettingsStore(SettingsDefaults defaults, @Value("${anna.data-dir}") Path dataDir) {
-    this(defaults.settings(), dataDir);
+  public SettingsStore(
+      SettingsDefaults defaults,
+      @Value("${anna.data-dir}") Path dataDir,
+      List<SettingsListener> listeners,
+      List<SettingsCheck> checks) {
+    this(defaults.settings(), dataDir, listeners, checks);
   }
 
-  /** Invalid {@code defaults} fail startup: the yml is under the owner's control. */
-  public SettingsStore(Settings defaults, Path dataDir) {
+  /**
+   * Invalid {@code defaults} fail startup: the yml is under the owner's control. The listeners hear
+   * the record loaded here; the checks first run on it in {@link #afterSingletonsInstantiated}.
+   */
+  public SettingsStore(
+      Settings defaults,
+      Path dataDir,
+      List<SettingsListener> listeners,
+      List<SettingsCheck> checks) {
     List<SettingsValidation.Problem> problems = SettingsValidation.validate(defaults);
     if (!problems.isEmpty()) {
       throw new IllegalStateException("application.yml settings are invalid: " + problems);
     }
     this.file = dataDir.resolve("settings.json");
     this.defaults = defaults;
-    this.current = load();
+    this.listeners = List.copyOf(listeners);
+    this.checks = List.copyOf(checks);
+    apply(load());
   }
 
   /** The record a turn reads once, at its start. */
   public Settings current() {
     return current;
-  }
-
-  /** The yml's settings, which run while there are no overrides. */
-  public Settings defaults() {
-    return defaults;
   }
 
   /** Why a save of {@code candidate} would be refused; empty when it would not. */
@@ -110,28 +120,12 @@ public class SettingsStore {
   }
 
   /**
-   * Runs {@code listener} with the current record now and with each saved one, so boot and every
-   * save agree. Synchronized with {@link #save}, so no save slips between the two.
+   * Runs the checks on the record loaded at boot once every bean is built, so after the prompt
+   * versions they read are seeded, and before the server takes a request. Overrides that fail them
+   * are set aside, logged, and the defaults run.
    */
-  public synchronized void onChange(Consumer<Settings> listener) {
-    listeners.add(listener);
-    listener.accept(current);
-  }
-
-  /**
-   * Adds a rule every save must pass, for what this package cannot see, such as whether the active
-   * prompt version still renders with a new persona.
-   */
-  public void addCheck(Function<Settings, List<SettingsValidation.Problem>> check) {
-    checks.add(check);
-  }
-
-  /**
-   * Runs the added rules on the record loaded at boot, once what they read exists: the prompt
-   * versions are seeded after this store loads. Overrides that fail them are set aside, logged, and
-   * the defaults run.
-   */
-  public synchronized void recheck() {
+  @Override
+  public synchronized void afterSingletonsInstantiated() {
     List<SettingsValidation.Problem> problems = checked(current);
     if (problems.isEmpty() || current.equals(defaults)) {
       return;
@@ -142,12 +136,12 @@ public class SettingsStore {
   }
 
   private List<SettingsValidation.Problem> checked(Settings candidate) {
-    return checks.stream().flatMap(check -> check.apply(candidate).stream()).toList();
+    return checks.stream().flatMap(check -> check.problems(candidate).stream()).toList();
   }
 
   private void apply(Settings settings) {
     current = settings;
-    listeners.forEach(listener -> listener.accept(settings));
+    listeners.forEach(listener -> listener.settingsChanged(settings));
   }
 
   /**

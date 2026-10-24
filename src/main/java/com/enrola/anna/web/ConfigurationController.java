@@ -51,7 +51,7 @@ public class ConfigurationController {
   private static final String PATH = "/configuration";
   private static final String PAGE = "configuration";
   private static final String NOTICE = "notice";
-  private static final String SETTINGS = "settings";
+  private static final String SETTINGS_SECTION = "settingsSection";
   private static final String SETTINGS_NOTICE = "settingsNotice";
 
   /**
@@ -90,11 +90,12 @@ public class ConfigurationController {
   public ModelAndView page(
       @RequestParam(required = false) String version,
       @RequestParam(defaultValue = PromptFile.DEFAULT) PromptFile file,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings current,
       Model model) {
-    ConfigurationPage page = pages.stored(version, file);
+    ConfigurationPage page = pages.stored(version, file, current.persona());
     Notice flashed = (Notice) model.getAttribute(NOTICE);
     Notice settingsFlashed = (Notice) model.getAttribute(SETTINGS_NOTICE);
-    SettingsPage settingsPage = settingsPages.stored();
+    SettingsPage settingsPage = settingsPages.stored(current);
     return view(
         flashed != null ? page.withNotice(flashed) : page,
         settingsFlashed != null ? settingsPage.withNotice(settingsFlashed) : settingsPage,
@@ -108,8 +109,11 @@ public class ConfigurationController {
    */
   @PostMapping(PATH + "/settings")
   public ModelAndView saveSettings(
-      @ModelAttribute SettingsForm form, BindingResult binding, RedirectAttributes flash) {
-    Map<String, String> problems = settingsPages.problems(form, binding);
+      @ModelAttribute SettingsForm form,
+      BindingResult binding,
+      RedirectAttributes flash,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings current) {
+    Map<String, String> problems = settingsPages.problems(form, binding, settings::problems);
     if (problems.isEmpty()) {
       try {
         settings.save(form.toSettings());
@@ -121,7 +125,7 @@ public class ConfigurationController {
       }
     }
     return view(
-        pages.stored(null, PromptFile.valueOf(PromptFile.DEFAULT)),
+        pages.stored(null, PromptFile.valueOf(PromptFile.DEFAULT), current.persona()),
         settingsPages.refused(form, binding, problems),
         HttpStatus.BAD_REQUEST);
   }
@@ -155,14 +159,17 @@ public class ConfigurationController {
    * store's errors, still in the form; another save taking the same id first is a 409 the same way.
    */
   @PostMapping(PATH + "/versions")
-  public ModelAndView save(@ModelAttribute VersionForm form, RedirectAttributes flash) {
+  public ModelAndView save(
+      @ModelAttribute VersionForm form,
+      RedirectAttributes flash,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings current) {
     PromptStore.SaveResult result;
     try {
-      result = prompts.save(form.toSaveRequest());
+      result = prompts.save(form.toSaveRequest(), current.persona());
     } catch (DuplicateKeyException e) {
       return view(
-          pages.unsaved(form, ConfigurationPages.SAVE_RACE),
-          settingsPages.stored(),
+          pages.unsaved(form, ConfigurationPages.SAVE_RACE, current.persona()),
+          settingsPages.stored(current),
           HttpStatus.CONFLICT);
     }
     return switch (result) {
@@ -172,29 +179,35 @@ public class ConfigurationController {
       }
       case PromptStore.SaveResult.Rejected rejected ->
           view(
-              pages.unsaved(form, ConfigurationPages.notSaved(rejected)),
-              settingsPages.stored(),
+              pages.unsaved(form, ConfigurationPages.notSaved(rejected), current.persona()),
+              settingsPages.stored(current),
               HttpStatus.BAD_REQUEST);
     };
   }
 
-  /** New conversations pin {@code id} from now on; a version that cannot load is refused. */
+  /**
+   * New conversations pin {@code id} from now on; a version that cannot load is refused. The check
+   * and the switch hold the settings, so no persona can be saved between them.
+   */
   @PostMapping(PATH + "/versions/{id}/activate")
   public ModelAndView activate(
       @PathVariable @Pattern(regexp = VERSION_ID) String id,
       @RequestParam(defaultValue = PromptFile.DEFAULT) PromptFile file,
-      RedirectAttributes flash) {
+      RedirectAttributes flash,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings current) {
     try {
-      prompts.activate(id);
+      settings.holding(held -> prompts.activate(id, held.persona()));
     } catch (PromptVersionMissing e) {
       return view(
-          pages.stored(null, file).withNotice(ConfigurationPages.NOT_FOUND),
-          settingsPages.stored(),
+          pages.stored(null, file, current.persona()).withNotice(ConfigurationPages.NOT_FOUND),
+          settingsPages.stored(current),
           HttpStatus.NOT_FOUND);
     } catch (PromptVersionCorrupt e) {
-      ConfigurationPage page = pages.stored(id, file);
+      ConfigurationPage page = pages.stored(id, file, current.persona());
       return view(
-          page.withNotice(pages.loadFailed(page)), settingsPages.stored(), HttpStatus.CONFLICT);
+          page.withNotice(pages.loadFailed(page)),
+          settingsPages.stored(current),
+          HttpStatus.CONFLICT);
     }
     flash.addFlashAttribute(NOTICE, ConfigurationPages.activated(id));
     return redirect(id, file);
@@ -222,17 +235,26 @@ public class ConfigurationController {
 
   /** Exception handlers skip the advice's model attributes, so the shell is added here. */
   private ModelAndView errorPage(HttpStatus status, Notice notice, HttpSession session) {
+    Settings current = settings.current();
     ConfigurationPage page =
-        pages.stored(null, PromptFile.valueOf(PromptFile.DEFAULT)).withNotice(notice);
+        pages
+            .stored(null, PromptFile.valueOf(PromptFile.DEFAULT), current.persona())
+            .withNotice(notice);
     return new ModelAndView(
         PAGE,
-        Map.of("shell", shells.shell(session), MODEL, page, SETTINGS, settingsPages.stored()),
+        Map.of(
+            "shell",
+            shells.shell(current, session),
+            MODEL,
+            page,
+            SETTINGS_SECTION,
+            settingsPages.stored(current)),
         status);
   }
 
   private static ModelAndView view(
       ConfigurationPage page, SettingsPage settingsPage, HttpStatus status) {
-    return new ModelAndView(PAGE, Map.of(MODEL, page, SETTINGS, settingsPage), status);
+    return new ModelAndView(PAGE, Map.of(MODEL, page, SETTINGS_SECTION, settingsPage), status);
   }
 
   private static ModelAndView redirect(String id, PromptFile file) {

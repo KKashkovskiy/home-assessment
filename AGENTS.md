@@ -46,7 +46,11 @@ call with its tool loop (`AgentTurn`, `AgentCall`, `AgentService`); the decision
 checks with one repair (`ReplyRepair`, `ReplyGuards`); and the finish writes reply, conversation, turn row and state
 diff in one transaction. Only `StateRules` writes terminal state; only `StateRules.booked` writes `goal_met`. A new rule
 goes where its kind already lives, never into the prompt alone. A turn reads `SettingsStore.current()` once and passes
-the snapshot down (see `Settings`).
+the snapshot down (see `Settings`). Only the pipeline entries (`ConversationService` for a start, `TurnPipeline` for a
+turn), `ConfigurationController` and `ShellModelAdvice` hold the store as a field; Javadoc may still name it. Every
+other reader takes the snapshot or the section it needs as a parameter: a console handler takes the request's one read
+as `@ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings`. What follows or vets a save implements
+`config.SettingsListener` or `config.SettingsCheck`.
 
 ## Console pages
 

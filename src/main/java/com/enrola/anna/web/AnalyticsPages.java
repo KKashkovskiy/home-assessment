@@ -1,6 +1,7 @@
 package com.enrola.anna.web;
 
 import com.enrola.anna.prompt.PromptStore;
+import java.time.ZoneId;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -26,14 +27,17 @@ public class AnalyticsPages {
     this.prompts = prompts;
   }
 
-  /** {@code a} and {@code b} pick the compared versions; one that names no version is ignored. */
-  public AnalyticsPage page(AnalyticsFilter filter, String a, String b) {
+  /**
+   * {@code a} and {@code b} pick the compared versions; one that names no version is ignored. The
+   * charts' days are in {@code advisorZone}.
+   */
+  public AnalyticsPage page(AnalyticsFilter filter, String a, String b, ZoneId advisorZone) {
     List<String> versions = prompts.list().stream().map(PromptStore.VersionSummary::id).toList();
     String active = prompts.activeId();
     String before = versions.get(Math.max(0, versions.indexOf(active) - 1));
     return new AnalyticsPage(
         filter,
-        analytics.view(filter),
+        analytics.view(filter, advisorZone),
         analytics.compare(
             versions.contains(a) ? a : before, versions.contains(b) ? b : active, filter),
         versions,

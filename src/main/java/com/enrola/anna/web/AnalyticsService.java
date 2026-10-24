@@ -3,6 +3,7 @@ package com.enrola.anna.web;
 import com.enrola.anna.AppClock;
 import com.enrola.anna.web.AnalyticsQueries.Cohort;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,22 +32,25 @@ public class AnalyticsService {
     this.clock = clock;
   }
 
-  /** Tiles, charts, guard verdicts and model operations for {@code filter}. */
-  public AnalyticsView view(AnalyticsFilter filter) {
+  /**
+   * Tiles, charts, guard verdicts and model operations for {@code filter}, the charts' days in
+   * {@code advisorZone}.
+   */
+  public AnalyticsView view(AnalyticsFilter filter, ZoneId advisorZone) {
     AnalyticsRows rows = read(filter);
     return new AnalyticsView(
         rows.since(),
         rows.started().size(),
         AnalyticsKpis.of(rows),
         AnalyticsKpis.handoffReasons(rows),
-        panels.charts(rows),
+        panels.charts(rows, advisorZone),
         AnalyticsPanels.guards(rows.guardCounts()),
         AnalyticsPanels.ops(rows.turns()));
   }
 
   /** The charts alone, for the script that draws them. */
-  public List<Series> charts(AnalyticsFilter filter) {
-    return panels.charts(read(filter));
+  public List<Series> charts(AnalyticsFilter filter, ZoneId advisorZone) {
+    return panels.charts(read(filter), advisorZone);
   }
 
   /**

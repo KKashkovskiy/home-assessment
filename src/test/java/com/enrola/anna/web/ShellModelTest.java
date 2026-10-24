@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.enrola.anna.config.Settings;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -29,6 +30,7 @@ class ShellModelTest {
             Settings.ClockMode.REAL,
             LocalDateTime.of(2026, 7, 26, 10, 0),
             "AEST",
+            ZoneId.of("Australia/Melbourne"),
             Settings.CalendarPreset.NORMAL,
             spend,
             cap,

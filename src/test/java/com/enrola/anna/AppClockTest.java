@@ -8,6 +8,7 @@ import com.enrola.anna.config.SettingsStore;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -19,8 +20,9 @@ class AppClockTest {
   /** 10:00 in Melbourne in July is midnight UTC. */
   @Test
   void followsEachSavedClock() {
-    SettingsStore settings = new SettingsStore(SettingsFixture.DEFAULTS, dataDir);
-    AppClock clock = new AppClock(settings);
+    AppClock clock = new AppClock();
+    SettingsStore settings =
+        new SettingsStore(SettingsFixture.DEFAULTS, dataDir, List.of(clock), List.of());
     assertThat(clock.fixed()).isFalse();
 
     settings.save(
@@ -38,8 +40,9 @@ class AppClockTest {
   /** A scenario that stopped the clock keeps it stopped through a save that leaves the clock. */
   @Test
   void aSaveThatLeavesTheClockLeavesItAlone() {
-    SettingsStore settings = new SettingsStore(SettingsFixture.DEFAULTS, dataDir);
-    AppClock clock = new AppClock(settings);
+    AppClock clock = new AppClock();
+    SettingsStore settings =
+        new SettingsStore(SettingsFixture.DEFAULTS, dataDir, List.of(clock), List.of());
     clock.fixAt(Instant.parse("2026-07-27T00:00:00Z"));
 
     settings.save(

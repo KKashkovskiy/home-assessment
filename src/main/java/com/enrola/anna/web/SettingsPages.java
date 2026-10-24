@@ -1,13 +1,14 @@
 package com.enrola.anna.web;
 
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.config.SettingsDefaults;
-import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.config.SettingsValidation;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.core.env.Environment;
@@ -16,9 +17,9 @@ import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 
 /**
- * Assembles the {@link SettingsPage} from {@link SettingsStore} and the quick replies, says why a
- * form cannot be saved, and words the section's notices. Keys and restart-only values are read from
- * the environment as each page renders.
+ * Assembles the {@link SettingsPage} from the settings it is handed and the quick replies, says why
+ * a form cannot be saved, and words the section's notices. Keys and restart-only values are read
+ * from the environment as each page renders.
  */
 @Component
 public class SettingsPages {
@@ -33,33 +34,31 @@ public class SettingsPages {
   private static final List<String> KEYS = List.of("OPENAI_API_KEY", "EVAL_OPENAI_API_KEY");
   private static final Pattern PRICE_CELL = Pattern.compile("(prices\\[\\d+])\\..+");
 
-  private final SettingsStore settings;
   private final QuickReplies quickReplies;
   private final SettingsDefaults defaults;
   private final Environment environment;
 
   public SettingsPages(
-      SettingsStore settings,
-      QuickReplies quickReplies,
-      SettingsDefaults defaults,
-      Environment environment) {
-    this.settings = settings;
+      QuickReplies quickReplies, SettingsDefaults defaults, Environment environment) {
     this.quickReplies = quickReplies;
     this.defaults = defaults;
     this.environment = environment;
   }
 
-  /** The section on the settings that run now. */
-  public SettingsPage stored() {
-    return page(SettingsForm.of(settings.current(), quickReplies.text()), Map.of(), Map.of(), null);
+  /** The section on {@code current}, the settings that run now. */
+  public SettingsPage stored(Settings current) {
+    return page(SettingsForm.of(current, quickReplies.text()), Map.of(), Map.of(), null);
   }
 
   /**
    * Why {@code form} cannot be saved, one message per field: the values that did not bind first,
-   * since the rules need them all; else the quick replies' and the store's problems. Empty when it
-   * can be saved.
+   * since the rules need them all; else the quick replies' problems and those of {@code rules},
+   * every rule a save must pass. Empty when it can be saved.
    */
-  Map<String, String> problems(SettingsForm form, BindingResult binding) {
+  Map<String, String> problems(
+      SettingsForm form,
+      BindingResult binding,
+      Function<Settings, List<SettingsValidation.Problem>> rules) {
     Map<String, String> problems = new LinkedHashMap<>();
     binding.getFieldErrors().forEach(error -> problems.putIfAbsent(fieldOf(error), unbound(error)));
     if (!problems.isEmpty()) {
@@ -69,7 +68,7 @@ public class SettingsPages {
     if (quickRepliesProblem != null) {
       problems.put("quickReplies", quickRepliesProblem);
     }
-    byField(form, settings.problems(form.toSettings())).forEach(problems::putIfAbsent);
+    byField(form, rules.apply(form.toSettings())).forEach(problems::putIfAbsent);
     return problems;
   }
 

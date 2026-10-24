@@ -9,6 +9,7 @@ import com.enrola.anna.agent.ModelResponse.Usage;
 import com.enrola.anna.agent.ObjectionType;
 import com.enrola.anna.agent.ScriptedModelClient;
 import com.enrola.anna.agent.Stage;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.conversation.ConversationRepository;
 import com.enrola.anna.conversation.InboundTurns;
 import com.enrola.anna.conversation.Source;
@@ -22,6 +23,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +54,9 @@ import org.springframework.context.annotation.Import;
  */
 @Import(ConsoleFixture.Scripted.class)
 abstract class AnalyticsFixture extends ConsoleFixture {
+
+  /** The zone the analytics days are counted in, as the controllers hand it over. */
+  static final ZoneId ADVISOR_ZONE = SettingsFixture.DEFAULTS.scheduling().advisorZone();
 
   static final String QUESTION = "Got it. Is that hospital, extras or both?";
   static final String CALL_ASK = "Thanks. Would a free 15-minute call with an advisor suit?";
@@ -191,11 +196,12 @@ abstract class AnalyticsFixture extends ConsoleFixture {
                         v1.schemaJson(),
                         v1.toolsJson(),
                         v1.templatesJson(),
-                        "brief")))
+                        "brief"),
+                    SettingsFixture.DEFAULTS.persona()))
             .id();
-    prompts.activate(v2);
+    prompts.activate(v2, SettingsFixture.DEFAULTS.persona());
     String id = start("jane");
-    prompts.activate("v1");
+    prompts.activate("v1", SettingsFixture.DEFAULTS.persona());
     Decisions.Builder notInterested =
         Decisions.engaged()
             .objection(ObjectionType.NOT_INTERESTED)

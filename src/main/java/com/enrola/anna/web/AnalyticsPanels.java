@@ -2,7 +2,6 @@ package com.enrola.anna.web;
 
 import com.enrola.anna.agent.ObjectionType;
 import com.enrola.anna.agent.Stage;
-import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.conversation.ConversationStatus;
 import com.enrola.anna.conversation.RoutingGuards;
 import com.enrola.anna.conversation.TraceOutcome;
@@ -42,16 +41,14 @@ class AnalyticsPanels {
   private static final String NOTHING = "–";
 
   private final ViewFormats fmt;
-  private final SettingsStore settings;
 
-  AnalyticsPanels(ViewFormats fmt, SettingsStore settings) {
+  AnalyticsPanels(ViewFormats fmt) {
     this.fmt = fmt;
-    this.settings = settings;
   }
 
-  /** The five charts; a chart with nothing in range has no rows. */
-  List<Series> charts(AnalyticsRows rows) {
-    SortedMap<LocalDate, List<TurnRow>> byDay = modelTurnsByDay(rows);
+  /** The five charts, days in {@code advisorZone}; a chart with nothing in range has no rows. */
+  List<Series> charts(AnalyticsRows rows, ZoneId advisorZone) {
+    SortedMap<LocalDate, List<TurnRow>> byDay = modelTurnsByDay(rows, advisorZone);
     return List.of(
         funnel(rows), statuses(rows), objections(rows), costByDay(byDay), latencyByDay(byDay));
   }
@@ -203,8 +200,8 @@ class AnalyticsPanels {
    * today, each with its model turns, so a quiet day is a gap rather than a skipped point. Empty
    * when no turn in range called the model.
    */
-  private SortedMap<LocalDate, List<TurnRow>> modelTurnsByDay(AnalyticsRows rows) {
-    ZoneId zone = settings.current().scheduling().advisorZone();
+  private static SortedMap<LocalDate, List<TurnRow>> modelTurnsByDay(
+      AnalyticsRows rows, ZoneId zone) {
     SortedMap<LocalDate, List<TurnRow>> byDay =
         rows.modelTurns().stream()
             .collect(

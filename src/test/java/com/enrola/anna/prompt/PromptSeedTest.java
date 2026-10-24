@@ -5,9 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.enrola.anna.AppClock;
-import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsDefaults;
 import com.enrola.anna.config.SettingsFixture;
-import com.enrola.anna.config.SettingsStore;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -45,7 +44,7 @@ class PromptSeedTest {
   @Autowired PromptVersionRepository versions;
   @Autowired PromptLoader loader;
   @Autowired AppClock clock;
-  @Autowired SettingsStore settings;
+  @Autowired SettingsDefaults yml;
   @Autowired TransactionTemplate tx;
   @Autowired JdbcTemplate jdbc;
 
@@ -108,7 +107,7 @@ class PromptSeedTest {
 
   @Test
   void seedActivatesTheNewestRepoVersionNotASaveWhenNoneIsActive() {
-    store.save(copyOfV1());
+    store.save(copyOfV1(), SettingsFixture.DEFAULTS.persona());
     jdbc.update("update prompt_version set active = false");
 
     seed.seed();
@@ -170,7 +169,7 @@ class PromptSeedTest {
         };
 
     assertThatIllegalStateException()
-        .isThrownBy(() -> seedWith(repoWithCurlyQuoteV2, store, settings).seed())
+        .isThrownBy(() -> seedWith(repoWithCurlyQuoteV2, store, yml).seed())
         .withMessage(
             "prompts/v99 is invalid: errors [], warnings [FALLBACK has characters outside GSM-7]");
     assertThat(versions.existsById("v99")).isFalse();
@@ -181,8 +180,9 @@ class PromptSeedTest {
    * yml is the owner's to fix.
    */
   @Test
-  void activeVersionTheYmlPersonaCannotLoadFailsTheSeed(@TempDir Path dataDir) {
-    SettingsStore longerCompany = new SettingsStore(withLongerCompany(), dataDir);
+  void activeVersionTheYmlPersonaCannotLoadFailsTheSeed() {
+    SettingsDefaults longerCompany =
+        SettingsFixture.yml("anna.persona.company=Comparato Health Insurance");
 
     assertThatThrownBy(() -> seedWith(longerCompany).seed())
         .isInstanceOf(PromptVersionCorrupt.class)
@@ -192,35 +192,13 @@ class PromptSeedTest {
                 + " cannot be loaded: OPENER_PROVIDER renders to 322 chars, over 320");
   }
 
-  /**
-   * A settings file whose persona the active version cannot render never stops the app: it is set
-   * aside and the yml's settings run.
-   */
-  @Test
-  void overridesTheActiveVersionCannotLoadAreSetAside(@TempDir Path dataDir) {
-    new SettingsStore(SettingsFixture.DEFAULTS, dataDir).save(withLongerCompany());
-    SettingsStore fromFile = new SettingsStore(SettingsFixture.DEFAULTS, dataDir);
-    assertThat(fromFile.current()).isEqualTo(withLongerCompany());
-
-    seedWith(fromFile).seed();
-
-    assertThat(fromFile.current()).isEqualTo(SettingsFixture.DEFAULTS);
-    assertThat(dataDir.resolve("settings.json.bad")).exists();
-    assertThat(dataDir.resolve("settings.json")).doesNotExist();
+  /** A seed over the real table and loader, with {@code yml}'s persona. */
+  private PromptSeed seedWith(SettingsDefaults yml) {
+    return seedWith(loader, new PromptStore(versions, clock), yml);
   }
 
-  private static Settings withLongerCompany() {
-    return SettingsFixture.with(
-        SettingsFixture.DEFAULTS, "persona", "company", "Comparato Health Insurance");
-  }
-
-  /** A seed over the real table and loader, with the prompt store's check on {@code settings}. */
-  private PromptSeed seedWith(SettingsStore settings) {
-    return seedWith(loader, new PromptStore(versions, settings, clock), settings);
-  }
-
-  private PromptSeed seedWith(PromptLoader repo, PromptStore table, SettingsStore settings) {
-    return new PromptSeed(versions, repo, table, settings, clock, tx);
+  private PromptSeed seedWith(PromptLoader repo, PromptStore table, SettingsDefaults yml) {
+    return new PromptSeed(versions, repo, table, yml, clock, tx);
   }
 
   private PromptStore.SaveRequest copyOfV1() {

@@ -19,14 +19,14 @@
           <h3 id="versions-title">Versions <span class="muted" th:text="${#lists.size(config.versions)}">1</span></h3>
           <ul id="version-list" class="version-list" aria-labelledby="versions-title">
             <li th:each="v : ${config.newestFirst()}" th:data-id="${v.id}" th:classappend="${config.isSelected(v)} ? 'selected'">
-              <a th:href="@{/configuration(version=${v.id}, file=${config.form.file})}" th:aria-current="${config.isSelected(v)} ? 'true'"><span class="id" th:text="${v.id}">v1</span><span class="what"><span class="note" th:if="${v.note != null}" th:title="${v.note}" th:text="${v.note}">note</span><span class="date" th:text="${@fmt.when(v.createdAt)}">26 Jul 10:00</span></span></a>
+              <a th:href="@{/configuration(version=${v.id}, file=${config.form.file})}" th:aria-current="${config.isSelected(v)} ? 'true'"><span class="id" th:text="${v.id}">v1</span><span class="what"><span class="note" th:if="${v.note != null}" th:title="${v.note}" th:text="${v.note}">note</span><span class="date" th:text="${@fmt.when(v.createdAt, shell.advisorZone)}">26 Jul 10:00</span></span></a>
               <span class="chip pass" th:if="${v.active}">✓ active</span>
               <span class="chip fail" th:unless="${v.loads()}">load failed</span>
             </li>
           </ul>
           <div id="diff-pick" class="stack" hidden th:with="left=${config.diffLeft()}">
-            <div class="field"><label for="diff-a">Compare</label><select id="diff-a"><option th:each="v : ${config.newestFirst()}" th:value="${v.id}" th:selected="${v.id == left.id}" th:text="${@fmt.versionOption(v)}">v1</option></select></div>
-            <div class="field"><label for="diff-b">with</label><select id="diff-b"><option th:each="v : ${config.newestFirst()}" th:value="${v.id}" th:selected="${config.isSelected(v)}" th:text="${@fmt.versionOption(v)}">v2</option></select></div>
+            <div class="field"><label for="diff-a">Compare</label><select id="diff-a"><option th:each="v : ${config.newestFirst()}" th:value="${v.id}" th:selected="${v.id == left.id}" th:text="${@fmt.versionOption(v, shell.advisorZone)}">v1</option></select></div>
+            <div class="field"><label for="diff-b">with</label><select id="diff-b"><option th:each="v : ${config.newestFirst()}" th:value="${v.id}" th:selected="${config.isSelected(v)}" th:text="${@fmt.versionOption(v, shell.advisorZone)}">v2</option></select></div>
             <p class="small muted">Lines only in the first version are red, lines only in the second green; the view opens on the first change and folds what did not change. The diff compares saved versions, not unsaved edits.</p>
             <p id="diff-same" class="notice info small" role="status" hidden>No changes in this file between the two versions.</p>
             <p id="diff-failed" class="notice fail small" role="alert" hidden>The diff did not load. Reload the page and try again.</p>
@@ -50,12 +50,12 @@
           <!-- The newline after each opening tag is the parser's to drop, so a text's own first newline survives. -->
           <textarea th:each="f : ${@fmt.promptFiles()}" class="editor-fallback" th:id="|text-${f}|" th:name="${f.field()}" th:hidden="${f != config.form.file}" th:aria-label="${f.label()}" rows="24" spellcheck="false">
 [[${config.form.text(f)}]]</textarea>
-          <p id="editor-meta" class="small muted"><span id="meta-file" th:text="${config.form.file.label()}">System prompt</span> <th:block th:text="${@fmt.editorSource(config)}">v1, created 26 Jul 10:00 by repo.</th:block> <span id="meta-chars" th:text="${@fmt.characters(config.form.text(config.form.file))}">0</span> characters.<span id="editor-keys" hidden> In the editor, Ctrl+M (Ctrl+Shift+M on Mac) makes Tab move focus.</span></p>
+          <p id="editor-meta" class="small muted"><span id="meta-file" th:text="${config.form.file.label()}">System prompt</span> <th:block th:text="${@fmt.editorSource(config, shell.advisorZone)}">v1, created 26 Jul 10:00 by repo.</th:block> <span id="meta-chars" th:text="${@fmt.characters(config.form.text(config.form.file))}">0</span> characters.<span id="editor-keys" hidden> In the editor, Ctrl+M (Ctrl+Shift+M on Mac) makes Tab move focus.</span></p>
         </div>
       </form>
     </section>
 
-    <form th:replace="~{fragments/settings :: form(${settings})}"></form>
+    <form th:replace="~{fragments/settings :: form(${settingsSection})}"></form>
   </main>
 </body>
 </html>

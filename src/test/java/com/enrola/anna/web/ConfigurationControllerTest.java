@@ -472,7 +472,8 @@ class ConfigurationControllerTest extends ConsoleFixture {
           .extracting(notice -> ((Notice) notice).code())
           .isEqualTo("SETTINGS_SAVED");
       assertThat(settings.current()).isEqualTo(changed);
-      assertThat(new SettingsStore(defaults, DATABASE).current()).isEqualTo(changed);
+      assertThat(new SettingsStore(defaults, DATABASE, List.of(), List.of()).current())
+          .isEqualTo(changed);
       assertThat(quickReplies.load())
           .extracting(QuickReplies.QuickReply::label)
           .containsExactly("STOP", "are you a bot?");
@@ -490,7 +491,7 @@ class ConfigurationControllerTest extends ConsoleFixture {
     }
 
     private SettingsPage settingsPage(ResultActions result) {
-      return (SettingsPage) result.andReturn().getModelAndView().getModel().get("settings");
+      return (SettingsPage) result.andReturn().getModelAndView().getModel().get("settingsSection");
     }
   }
 
@@ -515,7 +516,11 @@ class ConfigurationControllerTest extends ConsoleFixture {
       assertThat(clock.fixed()).isFalse();
       assertThat(shell(mvc.perform(get("/conversations"))).clockMode())
           .isEqualTo(Settings.ClockMode.REAL);
-      assertThat(new SettingsStore(defaults, DATABASE).current().clock().clockMode())
+      assertThat(
+              new SettingsStore(defaults, DATABASE, List.of(), List.of())
+                  .current()
+                  .clock()
+                  .clockMode())
           .isEqualTo(Settings.ClockMode.REAL);
 
       mvc.perform(
@@ -673,7 +678,8 @@ class ConfigurationControllerTest extends ConsoleFixture {
                     v1.schemaJson(),
                     v1.toolsJson(),
                     v1.templatesJson(),
-                    note)))
+                    note),
+                SettingsFixture.DEFAULTS.persona()))
         .isInstanceOf(PromptStore.SaveResult.Saved.class);
   }
 

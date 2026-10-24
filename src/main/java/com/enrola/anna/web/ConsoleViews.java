@@ -4,7 +4,6 @@ import com.enrola.anna.AppClock;
 import com.enrola.anna.agent.Stage;
 import com.enrola.anna.agent.ToolCall;
 import com.enrola.anna.config.Settings;
-import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.conversation.Conversation;
 import com.enrola.anna.conversation.ConversationRepository;
 import com.enrola.anna.conversation.Direction;
@@ -57,7 +56,6 @@ public class ConsoleViews {
   private final MessageRepository messages;
   private final TurnRepository turns;
   private final BookingRepository bookings;
-  private final SettingsStore settings;
   private final AppClock clock;
   private final JsonMapper json;
 
@@ -87,7 +85,6 @@ public class ConsoleViews {
       MessageRepository messages,
       TurnRepository turns,
       BookingRepository bookings,
-      SettingsStore settings,
       AppClock clock,
       JsonMapper json) {
     this.conversations = conversations;
@@ -95,18 +92,19 @@ public class ConsoleViews {
     this.messages = messages;
     this.turns = turns;
     this.bookings = bookings;
-    this.settings = settings;
     this.clock = clock;
     this.json = json;
   }
 
-  /** One conversation for the chat and state panes; {@code mask} hides phone, email and health. */
-  public ConsoleView build(String conversationId, boolean mask) {
+  /**
+   * One conversation for the chat and state panes under {@code settings}' limits and advisor hours;
+   * {@code mask} hides phone, email and health.
+   */
+  public ConsoleView build(String conversationId, boolean mask, Settings settings) {
     Conversation conversation = conversations.require(conversationId);
     Lead lead = leadOf(conversation);
     List<Turn> turnRows = turns.findByConversationIdOrderByTurnNoAsc(conversationId);
-    Settings current = settings.current();
-    Shown shown = new Shown(conversation, mask, current.limits());
+    Shown shown = new Shown(conversation, mask, settings.limits());
     return new ConsoleView(
         conversation,
         mask ? PiiMask.apply(lead) : lead,
@@ -118,7 +116,7 @@ public class ConsoleViews {
         facts(conversation.extracted(), shown),
         bookings
             .findByConversationId(conversationId)
-            .map(booking -> bookingCard(booking, current.scheduling()))
+            .map(booking -> bookingCard(booking, settings.scheduling()))
             .orElse(null),
         shown.limits().maxInboundChars());
   }

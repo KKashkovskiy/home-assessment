@@ -2,6 +2,7 @@ package com.enrola.anna.prompt;
 
 import com.enrola.anna.AppClock;
 import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsCheck;
 import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.config.SettingsValidation;
 import java.time.Instant;
@@ -19,16 +20,16 @@ import org.springframework.stereotype.Service;
  * is active for new conversations; each conversation pins the id it started on and every turn loads
  * that one, so activating a version never changes a conversation in flight. Saving inserts the next
  * id and never updates; {@link #activate} is the only write to an existing row. The active version
- * always loads under the settings' persona: activating checks a version against it, and a settings
- * save is checked against the active version.
+ * always loads under the settings' persona: activating checks a version against the persona it is
+ * handed, and as a {@link SettingsCheck} it refuses a settings save the active version cannot load
+ * under.
  */
 @Service
-public class PromptStore {
+public class PromptStore implements SettingsCheck {
 
   private static final Logger log = LoggerFactory.getLogger(PromptStore.class);
 
   private final PromptVersionRepository versions;
-  private final SettingsStore settings;
   private final AppClock clock;
   private final String canary = UUID.randomUUID().toString();
 
@@ -53,11 +54,9 @@ public class PromptStore {
   public record VersionSummary(
       String id, Instant createdAt, String createdBy, String note, boolean active) {}
 
-  public PromptStore(PromptVersionRepository versions, SettingsStore settings, AppClock clock) {
+  public PromptStore(PromptVersionRepository versions, AppClock clock) {
     this.versions = versions;
-    this.settings = settings;
     this.clock = clock;
-    settings.addCheck(this::activeVersionProblems);
   }
 
   /** The version new conversations pin. */
@@ -99,23 +98,18 @@ public class PromptStore {
   }
 
   /**
-   * Why a turn could not load {@code version} under the current settings, the errors {@link
+   * Why a turn could not load {@code version} speaking as {@code persona}, the errors {@link
    * #activate} refuses it with; empty when it could.
    */
-  public List<String> loadErrors(PromptVersion version) {
-    return check(version).errors();
-  }
-
-  /** {@code version} against the rules, with the current settings' persona. */
-  private PromptValidation.Result check(PromptVersion version) {
-    return PromptValidation.validate(version, settings.current().persona());
+  public List<String> loadErrors(PromptVersion version, Settings.Persona persona) {
+    return PromptValidation.validate(version, persona).errors();
   }
 
   /**
-   * Validates, then inserts the next id, inactive. Two saves racing for one id: the second fails on
-   * the primary key, and its caller asks to reload rather than retrying.
+   * Validates with {@code persona}, then inserts the next id, inactive. Two saves racing for one
+   * id: the second fails on the primary key, and its caller asks to reload rather than retrying.
    */
-  public SaveResult save(SaveRequest request) {
+  public SaveResult save(SaveRequest request, Settings.Persona persona) {
     PromptVersion version =
         new PromptVersion(
             "v" + (highestNumber() + 1),
@@ -128,7 +122,7 @@ public class PromptStore {
             request.schemaJson(),
             request.toolsJson(),
             request.templatesJson());
-    PromptValidation.Result check = check(version);
+    PromptValidation.Result check = PromptValidation.validate(version, persona);
     if (!check.ok()) {
       return new SaveResult.Rejected(check.errors(), check.warnings());
     }
@@ -138,16 +132,14 @@ public class PromptStore {
   }
 
   /**
-   * Makes {@code id} the version new conversations pin. A version that cannot load is refused
-   * before anything changes, so the active one stays. The check and the switch hold the settings,
-   * so no persona can be saved between them.
+   * Makes {@code id} the version new conversations pin. A version that cannot load speaking as
+   * {@code persona} is refused before anything changes, so the active one stays. A caller that can
+   * race a persona save calls this inside {@link SettingsStore#holding}, as the console does; the
+   * eval harness's run has its own database and no concurrent saves.
    */
-  public void activate(String id) {
-    settings.holding(
-        current -> {
-          bundle(id, current.persona());
-          versions.activate(id);
-        });
+  public void activate(String id, Settings.Persona persona) {
+    bundle(id, persona);
+    versions.activate(id);
     log.info("prompt version {} activated", id);
   }
 
@@ -177,7 +169,8 @@ public class PromptStore {
    * company name pushes an opener over its cap. Versions that running conversations pinned are not
    * checked: a turn on one that no longer loads hands off, as on any version that does not load.
    */
-  private List<SettingsValidation.Problem> activeVersionProblems(Settings candidate) {
+  @Override
+  public List<SettingsValidation.Problem> problems(Settings candidate) {
     String active = activeId();
     return PromptValidation.validate(get(active), candidate.persona()).errors().stream()
         .map(error -> "Prompt " + active + " would not load with this persona: " + error)

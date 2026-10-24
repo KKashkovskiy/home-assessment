@@ -19,10 +19,10 @@ import org.springframework.web.servlet.ModelAndView;
 @ControllerAdvice(annotations = Console.class)
 public class ConsoleErrors {
 
-  private final ShellModels shells;
+  private final ShellModelAdvice shells;
   private final ConsolePages pages;
 
-  public ConsoleErrors(ShellModels shells, ConsolePages pages) {
+  public ConsoleErrors(ShellModelAdvice shells, ConsolePages pages) {
     this.shells = shells;
     this.pages = pages;
   }
@@ -48,6 +48,8 @@ public class ConsoleErrors {
     ConsolePage page =
         pages.page(ConversationFilter.NONE, PiiMask.enabled(session)).withNotice(notice);
     return new ModelAndView(
-        ConversationsController.PAGE, Map.of("shell", shells.shell(session), "page", page), status);
+        ConversationsController.PAGE,
+        Map.of("shell", shells.shell(shells.settings(), session), "page", page),
+        status);
   }
 }

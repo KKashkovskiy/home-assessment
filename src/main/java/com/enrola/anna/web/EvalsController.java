@@ -1,5 +1,6 @@
 package com.enrola.anna.web;
 
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.web.EvalRunLauncher.Busy;
 import com.enrola.anna.web.EvalRunLauncher.Started;
 import jakarta.servlet.http.HttpSession;
@@ -63,10 +64,14 @@ public class EvalsController {
    * redirect's flash: the run form as posted, and the notices.
    */
   @GetMapping(PATH)
-  public ModelAndView page(@Valid EvalsQuery query, Model model, HttpSession session) {
-    EvalsPage page = pages.page(query, PiiMask.enabled(session));
+  public ModelAndView page(
+      @Valid EvalsQuery query,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
+      Model model,
+      HttpSession session) {
+    EvalsPage page = pages.page(query, PiiMask.enabled(session), settings);
     if (model.getAttribute(RUN_VALUES) instanceof RunRequest posted) {
-      page = page.withRunForm(pages.runForm(posted, page.runForm().tags(), null));
+      page = page.withRunForm(page.runForm().withValues(posted));
     }
     if (model.getAttribute(RUN_NOTICE) instanceof Notice notice) {
       page = page.withRunForm(page.runForm().withNotice(notice));
@@ -91,11 +96,13 @@ public class EvalsController {
       BindingResult binding,
       @RequestParam(required = false) String scenario,
       RedirectAttributes flash,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
       HttpSession session) {
     if (binding.hasErrors() || (scenario != null && !scenario.matches(ScenarioFiles.ID))) {
       List<String> problems =
           binding.hasErrors() ? problems(binding) : List.of("scenario is not a scenario id");
-      return refusedRun(form, EvalsPages.badRun(problems), HttpStatus.BAD_REQUEST, session);
+      return refusedRun(
+          form, EvalsPages.badRun(problems), HttpStatus.BAD_REQUEST, page(session, settings));
     }
     RunRequest request = scenario == null ? form : form.only(scenario);
     try {
@@ -105,14 +112,18 @@ public class EvalsController {
           yield new ModelAndView("redirect:" + PATH + "#run-panel");
         }
         case Busy busy ->
-            refusedRun(request, EvalsPages.busy(busy.runId()), HttpStatus.CONFLICT, session);
+            refusedRun(
+                request,
+                EvalsPages.busy(busy.runId()),
+                HttpStatus.CONFLICT,
+                page(session, settings));
       };
     } catch (IOException e) {
       return refusedRun(
           request,
           EvalsPages.launchFailed(e.getClass().getSimpleName()),
           HttpStatus.INTERNAL_SERVER_ERROR,
-          session);
+          page(session, settings));
     }
   }
 
@@ -157,9 +168,10 @@ public class EvalsController {
   public ModelAndView editor(
       @RequestParam MultiValueMap<String, String> posted,
       @RequestParam(defaultValue = "form") String view,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
       HttpSession session) {
     ScenarioEditor editor = pages.edited(new ScenarioForm(posted), ScenarioForm.View.of(view));
-    return view(page(session).withEditor(editor), HttpStatus.OK);
+    return view(page(session, settings).withEditor(editor), HttpStatus.OK);
   }
 
   /**
@@ -171,6 +183,7 @@ public class EvalsController {
   public ModelAndView save(
       @RequestParam MultiValueMap<String, String> posted,
       RedirectAttributes flash,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
       HttpSession session) {
     var form = new ScenarioForm(posted);
     List<String> problems =
@@ -178,7 +191,9 @@ public class EvalsController {
             .map(text -> files.save(form.id(), form.original(), text))
             .orElseGet(() -> files.problems(form.id(), form.yaml()));
     if (!problems.isEmpty()) {
-      return view(page(session).withEditor(pages.refused(form, problems)), HttpStatus.BAD_REQUEST);
+      return view(
+          page(session, settings).withEditor(pages.refused(form, problems)),
+          HttpStatus.BAD_REQUEST);
     }
     flash.addFlashAttribute(EDITOR_NOTICE, EvalsPages.saved(form.id()));
     return new ModelAndView("redirect:" + PATH + "?edit=" + form.id() + "#editor-panel");
@@ -193,25 +208,25 @@ public class EvalsController {
       @RequestParam String name,
       @RequestParam String text,
       RedirectAttributes flash,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
       HttpSession session) {
     List<String> problems = files.saveFile(name, text);
     if (!problems.isEmpty()) {
       return view(
-          page(session).withHarness(pages.harnessRefused(name, text, problems)),
+          page(session, settings).withHarness(pages.harnessRefused(name, text, problems)),
           HttpStatus.BAD_REQUEST);
     }
     flash.addFlashAttribute(HARNESS_NOTICE, EvalsPages.fileSaved(name));
     return new ModelAndView("redirect:" + PATH + "?file=" + name + "#harness-panel");
   }
 
-  private ModelAndView refusedRun(
-      RunRequest request, Notice notice, HttpStatus status, HttpSession session) {
-    EvalsPage page = page(session);
-    return view(page.withRunForm(pages.runForm(request, page.runForm().tags(), notice)), status);
+  private static ModelAndView refusedRun(
+      RunRequest request, Notice notice, HttpStatus status, EvalsPage page) {
+    return view(page.withRunForm(page.runForm().withValues(request).withNotice(notice)), status);
   }
 
-  private EvalsPage page(HttpSession session) {
-    return pages.page(EvalsQuery.NONE, PiiMask.enabled(session));
+  private EvalsPage page(HttpSession session, Settings settings) {
+    return pages.page(EvalsQuery.NONE, PiiMask.enabled(session), settings);
   }
 
   /** A field's message, never the value sent: it reaches a command line only once valid. */

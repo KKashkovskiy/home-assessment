@@ -201,7 +201,8 @@ class AnalyticsServiceTest extends AnalyticsFixture {
   @Test
   void costAndLatencyHaveEveryDayOfTheRange() {
     AnalyticsView lastWeek =
-        analytics.view(new AnalyticsFilter(AnalyticsFilter.Range.LAST_7D, null, null, null));
+        analytics.view(
+            new AnalyticsFilter(AnalyticsFilter.Range.LAST_7D, null, null, null), ADVISOR_ZONE);
 
     List<Series.Row> cost = lastWeek.series("cost").rows();
     assertThat(cost).hasSize(8);
@@ -213,7 +214,8 @@ class AnalyticsServiceTest extends AnalyticsFixture {
   @Test
   void filterByPromptVersion() {
     AnalyticsView onV2 =
-        analytics.view(new AnalyticsFilter(AnalyticsFilter.Range.ALL, null, null, "v2"));
+        analytics.view(
+            new AnalyticsFilter(AnalyticsFilter.Range.ALL, null, null, "v2"), ADVISOR_ZONE);
 
     assertFraction(onV2.kpi("reply"), 1, 1);
   }
@@ -221,7 +223,8 @@ class AnalyticsServiceTest extends AnalyticsFixture {
   @Test
   void rangeExcludesOld() {
     AnalyticsView lastMonth =
-        analytics.view(new AnalyticsFilter(AnalyticsFilter.Range.LAST_30D, null, null, null));
+        analytics.view(
+            new AnalyticsFilter(AnalyticsFilter.Range.LAST_30D, null, null, null), ADVISOR_ZONE);
 
     assertThat(lastMonth.started()).isEqualTo(5);
     assertThat(lastMonth.since()).isEqualTo(Instant.parse("2026-06-26T00:00:00Z"));
@@ -355,7 +358,7 @@ class AnalyticsServiceTest extends AnalyticsFixture {
   }
 
   private AnalyticsView view() {
-    return analytics.view(allTime());
+    return analytics.view(allTime(), ADVISOR_ZONE);
   }
 
   private static CompareView.Row row(CompareView compare, String key) {

@@ -47,6 +47,11 @@ public record EvalsPage(
       return String.join(", ", values.scenarios());
     }
 
+    /** The form holding {@code posted} as sent, under no preset. */
+    RunForm withValues(RunRequest posted) {
+      return new RunForm("", posted, tags, evalCap, model, evalKey, notice);
+    }
+
     RunForm withNotice(Notice shown) {
       return new RunForm(preset, values, tags, evalCap, model, evalKey, shown);
     }

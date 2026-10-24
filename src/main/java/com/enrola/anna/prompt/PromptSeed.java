@@ -2,20 +2,25 @@ package com.enrola.anna.prompt;
 
 import com.enrola.anna.AppClock;
 import com.enrola.anna.config.Settings;
+import com.enrola.anna.config.SettingsDefaults;
 import com.enrola.anna.config.SettingsStore;
 import jakarta.annotation.PostConstruct;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Fills the version table from the repo's {@code prompts/vN/} directories at boot. It runs as the
  * bean is built, after the migrations and before the server accepts a request, so no request finds
- * the table empty or the active version unloadable.
+ * the table empty or the active version unloadable. It runs after {@link SettingsStore} has loaded,
+ * so a fixed clock in the overrides already stamps the seeded rows; the store checks those
+ * overrides against the versions once every bean, this one included, is built.
  */
 @Component
+@DependsOn("settingsStore")
 class PromptSeed {
 
   private static final Logger log = LoggerFactory.getLogger(PromptSeed.class);
@@ -23,7 +28,7 @@ class PromptSeed {
   private final PromptVersionRepository versions;
   private final PromptLoader loader;
   private final PromptStore store;
-  private final SettingsStore settings;
+  private final SettingsDefaults defaults;
   private final AppClock clock;
   private final TransactionTemplate tx;
 
@@ -31,13 +36,13 @@ class PromptSeed {
       PromptVersionRepository versions,
       PromptLoader loader,
       PromptStore store,
-      SettingsStore settings,
+      SettingsDefaults defaults,
       AppClock clock,
       TransactionTemplate tx) {
     this.versions = versions;
     this.loader = loader;
     this.store = store;
-    this.settings = settings;
+    this.defaults = defaults;
     this.clock = clock;
     this.tx = tx;
   }
@@ -48,12 +53,10 @@ class PromptSeed {
    * version with any finding fails the boot, since the repo and the yml are under the owner's
    * control, and so does an active version the yml's persona cannot load. An id the table already
    * has is skipped, with a warning when the row was a save: the repo and the table then disagree.
-   * Then the settings file is checked against the versions, and set aside when its persona does not
-   * fit.
    */
   @PostConstruct
   void seed() {
-    Settings.Persona yml = settings.defaults().persona();
+    Settings.Persona yml = defaults.settings().persona();
     tx.executeWithoutResult(
         _ -> {
           warnIfDamaged();
@@ -62,7 +65,6 @@ class PromptSeed {
           activateNewestIfNoneActive(repoIds);
           store.bundle(store.activeId(), yml);
         });
-    settings.recheck();
   }
 
   private void seedIfAbsent(String id, Settings.Persona persona) {

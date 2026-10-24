@@ -1,7 +1,6 @@
 package com.enrola.anna.web;
 
 import com.enrola.anna.config.Settings;
-import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.conversation.NotFoundException;
 import com.enrola.anna.web.EvalReports.RunRow;
 import com.enrola.anna.web.EvalReports.TrialLine;
@@ -23,8 +22,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Assembles the {@link EvalsPage} and the eval trial and trace pages from the harness files, the
- * run reports, the launcher, the runs' own databases and the settings, and words their notices, so
- * the controller only maps outcomes to statuses.
+ * run reports, the launcher and the runs' own databases, and words their notices, so the controller
+ * only maps outcomes to statuses.
  */
 @Component
 public class EvalsPages {
@@ -65,29 +64,26 @@ public class EvalsPages {
   private final EvalReports reports;
   private final EvalRunLauncher launcher;
   private final EvalDbReadOnly runDatabases;
-  private final SettingsStore settings;
 
   public EvalsPages(
       ScenarioFiles files,
       EvalReports reports,
       EvalRunLauncher launcher,
-      EvalDbReadOnly runDatabases,
-      SettingsStore settings) {
+      EvalDbReadOnly runDatabases) {
     this.files = files;
     this.reports = reports;
     this.launcher = launcher;
     this.runDatabases = runDatabases;
-    this.settings = settings;
   }
 
-  /** The page as {@code query} asks for it. */
-  public EvalsPage page(EvalsQuery query, boolean mask) {
+  /** The page as {@code query} asks for it; the run form shows {@code settings}' cap and model. */
+  public EvalsPage page(EvalsQuery query, boolean mask, Settings settings) {
     List<ScenarioRow> rows = files.list();
     List<RunRow> runs = reports.recent(RECENT_RUNS);
     List<String> tags = tags(rows);
     String preset = query.preset() == null ? DEFAULT_PRESET : query.preset();
     return new EvalsPage(
-        runForm(preset, RunRequest.PRESETS.get(preset), tags, null),
+        runForm(preset, tags, settings),
         new ScenarioList(
             rows.stream().filter(query::keeps).toList(),
             rows.size(),
@@ -101,11 +97,6 @@ public class EvalsPages {
         editor(query),
         harness(query.file()),
         runs);
-  }
-
-  /** The run form holding {@code values} as posted, with {@code notice}. */
-  RunForm runForm(RunRequest values, List<String> tags, Notice notice) {
-    return runForm("", values, tags, notice);
   }
 
   /**
@@ -243,16 +234,15 @@ public class EvalsPages {
     return new HarnessFile(names, shown, files.read(shown), null);
   }
 
-  private RunForm runForm(String preset, RunRequest values, List<String> tags, Notice notice) {
-    Settings current = settings.current();
+  private RunForm runForm(String preset, List<String> tags, Settings settings) {
     return new RunForm(
         preset,
-        values,
+        RunRequest.PRESETS.get(preset),
         tags,
-        current.budgets().evalCap(),
-        current.agent().model(),
+        settings.budgets().evalCap(),
+        settings.agent().model(),
         evalKeySet(),
-        notice);
+        null);
   }
 
   /** The panel for {@code state}; once ended, its outcome from what the run left behind. */

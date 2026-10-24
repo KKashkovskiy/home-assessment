@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.enrola.anna.agent.Decisions;
 import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.ModelResponse;
+import com.enrola.anna.config.SettingsFixture;
 import java.net.URI;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -102,7 +103,7 @@ class AnalyticsControllerTest extends AnalyticsFixture {
 
   @Test
   void defaultPairIsTheActiveVersionAgainstTheOneBefore() throws Exception {
-    prompts.activate("v2");
+    prompts.activate("v2", SettingsFixture.DEFAULTS.persona());
 
     CompareView compare = page(mvc.perform(get("/analytics"))).compare();
 
@@ -129,7 +130,7 @@ class AnalyticsControllerTest extends AnalyticsFixture {
 
     @Test
     void figuresListWhatTheyCounted() throws Exception {
-      AnalyticsView view = analytics.view(allTime());
+      AnalyticsView view = analytics.view(allTime(), ADVISOR_ZONE);
 
       assertThat(listed(view.kpi("reply").href())).containsExactlyInAnyOrder(c1, c2, c3, c4, c5);
       assertThat(listed(view.kpi("bookedOfStarted").href())).containsExactlyInAnyOrder(c1, c2);
@@ -146,7 +147,8 @@ class AnalyticsControllerTest extends AnalyticsFixture {
     @Test
     void listHeaderCountsEveryMatchAndResetsStayOut() throws Exception {
       conversations.reset(c6);
-      String everyStarted = analytics.view(allTime()).kpi("costPerConversation").href();
+      String everyStarted =
+          analytics.view(allTime(), ADVISOR_ZONE).kpi("costPerConversation").href();
 
       ResultActions list = mvc.perform(get(URI.create(everyStarted)));
 
@@ -157,14 +159,15 @@ class AnalyticsControllerTest extends AnalyticsFixture {
 
     @Test
     void linksKeepTheFiltersCohort() throws Exception {
-      Kpi onV2 = analytics.view(filter(AnalyticsFilter.Range.ALL, null, "v2")).kpi("reply");
+      Kpi onV2 =
+          analytics.view(filter(AnalyticsFilter.Range.ALL, null, "v2"), ADVISOR_ZONE).kpi("reply");
       Kpi lastMonth =
           analytics
-              .view(filter(AnalyticsFilter.Range.LAST_30D, null, null))
+              .view(filter(AnalyticsFilter.Range.LAST_30D, null, null), ADVISOR_ZONE)
               .kpi("costPerConversation");
       Kpi otherModel =
           analytics
-              .view(filter(AnalyticsFilter.Range.ALL, "other", null))
+              .view(filter(AnalyticsFilter.Range.ALL, "other", null), ADVISOR_ZONE)
               .kpi("costPerConversation");
 
       assertThat(listed(onV2.href())).containsExactly(c3);
@@ -187,7 +190,7 @@ class AnalyticsControllerTest extends AnalyticsFixture {
               .build());
       inbound.handle(requested, "can I talk to a person", null);
 
-      AnalyticsView view = analytics.view(allTime());
+      AnalyticsView view = analytics.view(allTime(), ADVISOR_ZONE);
 
       assertThat(reason(view, "ERROR").numerator()).isEqualTo(1);
       assertThat(listed(reason(view, "ERROR").href())).containsExactly(failed);

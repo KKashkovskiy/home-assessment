@@ -61,6 +61,17 @@ class ConversationsControllerTest extends ConsoleFixture {
       assertThat(row(page, "Lauren")).contains(">VIC<", ">Engage<", "ACTIVE</span>", ">SIM<");
     }
 
+    /**
+     * Activity is shown in the advisors' zone: the fixture's midnight UTC is 10:00 in Melbourne.
+     */
+    @Test
+    void rowTimeIsInTheAdvisorsZone() throws Exception {
+      start("lauren");
+
+      assertThat(row(body(mvc.perform(get("/conversations"))), "Lauren"))
+          .contains("<span class=\"when\">26 Jul 10:00</span>");
+    }
+
     @Test
     void filterByEndReasonNarrowsList() throws Exception {
       String lauren = start("lauren");

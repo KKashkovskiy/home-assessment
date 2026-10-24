@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.enrola.anna.agent.Decisions;
 import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.ScriptedModelClient;
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.conversation.InboundTurns;
 import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.PromptVersion;
@@ -98,7 +99,7 @@ class InspectorControllerTest extends ConsoleFixture {
 
   @Test
   void promptIsWhatTheTurnSentEvenAfterANewerVersionIsActive() throws Exception {
-    prompts.activate(saveV1WithMarker());
+    prompts.activate(saveV1WithMarker(), SettingsFixture.DEFAULTS.persona());
 
     String sent =
         body(
@@ -178,7 +179,8 @@ class InspectorControllerTest extends ConsoleFixture {
                 v1.schemaJson(),
                 v1.toolsJson(),
                 v1.templatesJson(),
-                "inspector test"));
+                "inspector test"),
+            SettingsFixture.DEFAULTS.persona());
     return ((PromptStore.SaveResult.Saved) saved).id();
   }
 }

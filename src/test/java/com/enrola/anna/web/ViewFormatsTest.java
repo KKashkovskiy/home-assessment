@@ -9,7 +9,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 /** The analytics formats: a figure with no base is n/a, never NaN, and waits read in two units. */
 class ViewFormatsTest {
 
-  private final ViewFormats fmt = new ViewFormats(null);
+  private final ViewFormats fmt = new ViewFormats();
 
   @ParameterizedTest
   @EnumSource(value = Kpi.Unit.class, names = "COUNT", mode = EnumSource.Mode.EXCLUDE)

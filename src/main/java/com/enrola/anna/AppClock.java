@@ -1,12 +1,11 @@
 package com.enrola.anna;
 
 import com.enrola.anna.config.Settings;
-import com.enrola.anna.config.SettingsStore;
+import com.enrola.anna.config.SettingsListener;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,7 +16,7 @@ import org.springframework.stereotype.Component;
  * Nothing else in the app reads the time.
  */
 @Component
-public final class AppClock {
+public final class AppClock implements SettingsListener {
 
   private static final Clock SYSTEM = Clock.systemUTC();
 
@@ -25,14 +24,6 @@ public final class AppClock {
 
   /** What the settings last asked for: an instant to stand at, or the system clock. */
   private Optional<Instant> followed;
-
-  /** The system clock, following no settings, for code that moves it itself. */
-  public AppClock() {}
-
-  @Autowired
-  public AppClock(SettingsStore settings) {
-    settings.onChange(this::follow);
-  }
 
   public Instant now() {
     return clock.instant();
@@ -54,7 +45,8 @@ public final class AppClock {
   }
 
   /** A save that asks for what this clock already follows is not followed again. */
-  private void follow(Settings settings) {
+  @Override
+  public void settingsChanged(Settings settings) {
     Optional<Instant> wanted = standingInstant(settings);
     if (wanted.equals(followed)) {
       return;

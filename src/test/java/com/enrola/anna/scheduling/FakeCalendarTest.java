@@ -152,8 +152,9 @@ class FakeCalendarTest {
   /** A save that changes the preset switches it; one that leaves it keeps its state. */
   @Test
   void presetFollowsTheSavedSettings(@TempDir Path dataDir) {
-    SettingsStore settings = new SettingsStore(SettingsFixture.DEFAULTS, dataDir);
-    FakeCalendar following = new FakeCalendar(clock, settings);
+    FakeCalendar following = new FakeCalendar(clock);
+    SettingsStore settings =
+        new SettingsStore(SettingsFixture.DEFAULTS, dataDir, List.of(following), List.of());
 
     settings.save(settings.current().withCalendarPreset(CalendarPreset.SLOT_TAKEN));
     assertThat(codeOf(following.book(NOON, LAUREN, SCHEDULING))).isEqualTo("SLOT_TAKEN");

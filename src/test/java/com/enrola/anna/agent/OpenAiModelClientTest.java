@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.config.SettingsDefaults;
 import com.enrola.anna.config.SettingsFixture;
-import com.enrola.anna.config.SettingsStore;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.ObjectMappers;
@@ -21,7 +20,6 @@ import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.Tool;
 import com.openai.services.blocking.ResponseService;
 import java.lang.reflect.Proxy;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -29,7 +27,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.function.BiFunction;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -335,12 +332,10 @@ class OpenAiModelClientTest {
   }
 
   @Test
-  void clientAndCheckExistOnlyWithAKey(@TempDir Path dataDir) {
+  void clientAndCheckExistOnlyWithAKey() {
     ApplicationContextRunner runner =
         new ApplicationContextRunner()
             .withBean(SettingsDefaults.class, () -> SettingsFixture.yml())
-            .withBean(
-                SettingsStore.class, () -> new SettingsStore(SettingsFixture.DEFAULTS, dataDir))
             .withUserConfiguration(
                 OpenAiClientConfig.class, OpenAiModelClient.class, ModelCheck.class);
 

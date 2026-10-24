@@ -3,7 +3,7 @@ package com.enrola.anna.scheduling;
 import com.enrola.anna.AppClock;
 import com.enrola.anna.config.Settings;
 import com.enrola.anna.config.Settings.CalendarPreset;
-import com.enrola.anna.config.SettingsStore;
+import com.enrola.anna.config.SettingsListener;
 import com.enrola.anna.lead.Lead;
 import java.time.Duration;
 import java.time.Instant;
@@ -15,7 +15,6 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,7 +25,7 @@ import org.springframework.stereotype.Component;
  * settings from boot and after every save that changes it; a scenario can set it directly.
  */
 @Component
-public class FakeCalendar {
+public class FakeCalendar implements SettingsListener {
 
   /** Calendly's own range cap. */
   private static final Duration MAX_RANGE = Duration.ofDays(31);
@@ -46,21 +45,17 @@ public class FakeCalendar {
   /** Explicit slots for a scenario; null means generate them from the hours. */
   private volatile List<Slot> fixture;
 
-  /** A calendar on the NORMAL preset, following no settings. */
+  /** A calendar on the NORMAL preset until the settings or a scenario switch it. */
   public FakeCalendar(AppClock clock) {
     this.clock = clock;
   }
 
   /** A save that leaves the preset as it was keeps SLOT_TAKEN's one refusal spent. */
-  @Autowired
-  public FakeCalendar(AppClock clock, SettingsStore settings) {
-    this(clock);
-    settings.onChange(
-        saved -> {
-          if (saved.calendarPreset() != preset) {
-            preset(saved.calendarPreset());
-          }
-        });
+  @Override
+  public void settingsChanged(Settings current) {
+    if (current.calendarPreset() != preset) {
+      preset(current.calendarPreset());
+    }
   }
 
   /** Switches the preset; SLOT_TAKEN answers the next booking as taken. */

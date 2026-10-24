@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.PromptVersion;
 import com.enrola.anna.prompt.PromptVersionRepository;
@@ -88,7 +89,8 @@ class PromptDiffApiTest extends ConsoleFixture {
                     v1.schemaJson(),
                     v1.toolsJson(),
                     templatesJson,
-                    "diff test")))
+                    "diff test"),
+                SettingsFixture.DEFAULTS.persona()))
         .isInstanceOf(PromptStore.SaveResult.Saved.class);
   }
 }

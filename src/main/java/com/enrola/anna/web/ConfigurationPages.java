@@ -1,5 +1,6 @@
 package com.enrola.anna.web;
 
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.prompt.PromptStore;
 import com.enrola.anna.prompt.PromptVersion;
 import com.enrola.anna.web.ConfigurationPage.VersionRow;
@@ -10,8 +11,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Assembles the {@link ConfigurationPage} from {@link PromptStore}: every version with what stops
- * it loading, the one asked for or else the active one, and the form holding its texts or a refused
- * save's. It also words the page's notices, so the controller only maps outcomes to statuses.
+ * it loading under the persona it is handed, the one asked for or else the active one, and the form
+ * holding its texts or a refused save's. It also words the page's notices, so the controller only
+ * maps outcomes to statuses.
  */
 @Component
 public class ConfigurationPages {
@@ -47,19 +49,19 @@ public class ConfigurationPages {
    * The page on the stored texts of {@code requested}, or of the active version when no version has
    * that id; when the version cannot load, the notice says why.
    */
-  public ConfigurationPage stored(String requested, PromptFile file) {
+  public ConfigurationPage stored(String requested, PromptFile file, Settings.Persona persona) {
     List<PromptVersion> versions = prompts.all();
     PromptVersion shown = select(versions, requested);
-    List<VersionRow> rows = rows(versions);
+    List<VersionRow> rows = rows(versions, persona);
     VersionRow selected = rows.get(versions.indexOf(shown));
     return new ConfigurationPage(
         rows, selected, VersionForm.of(shown, file), false, unloadable(selected));
   }
 
   /** The page with a save's texts kept in the form, beside the version they started from. */
-  public ConfigurationPage unsaved(VersionForm form, Notice notice) {
+  public ConfigurationPage unsaved(VersionForm form, Notice notice, Settings.Persona persona) {
     List<PromptVersion> versions = prompts.all();
-    List<VersionRow> rows = rows(versions);
+    List<VersionRow> rows = rows(versions, persona);
     VersionRow base = rows.get(versions.indexOf(select(versions, form.base())));
     return new ConfigurationPage(rows, base, form, true, notice);
   }
@@ -124,7 +126,7 @@ public class ConfigurationPages {
             .formatted(row.id(), lines(row.loadErrors())));
   }
 
-  private List<VersionRow> rows(List<PromptVersion> versions) {
+  private List<VersionRow> rows(List<PromptVersion> versions, Settings.Persona persona) {
     // ponytail: every version is validated on each page view; there are tens, not thousands
     return versions.stream()
         .map(
@@ -135,7 +137,7 @@ public class ConfigurationPages {
                     version.createdBy(),
                     version.note(),
                     version.active(),
-                    prompts.loadErrors(version)))
+                    prompts.loadErrors(version, persona)))
         .toList();
   }
 

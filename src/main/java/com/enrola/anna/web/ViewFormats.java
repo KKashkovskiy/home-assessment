@@ -6,7 +6,6 @@ import com.enrola.anna.agent.HandoffReason;
 import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.agent.Stage;
 import com.enrola.anna.config.Settings;
-import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.config.SettingsValidation;
 import com.enrola.anna.conversation.ConversationStatus;
 import com.enrola.anna.conversation.Source;
@@ -18,6 +17,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -29,7 +29,8 @@ import org.springframework.stereotype.Component;
 /**
  * The console's words, icons, CSS classes, option lists and time formats, which the templates call
  * as {@code @fmt}, so each has one source and the templates hold no rules. A colour or icon only
- * hints; the text beside it always says the state.
+ * hints; the text beside it always says the state. It reads no settings: a time is shown in the
+ * zone the template hands it, the shell's advisor zone.
  */
 @Component("fmt")
 public class ViewFormats {
@@ -38,12 +39,6 @@ public class ViewFormats {
       DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH);
   private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
   private static final List<String> PROVIDERS = List.of("Bupa", "HBF", "Medibank", "nib", "HCF");
-
-  private final SettingsStore settings;
-
-  public ViewFormats(SettingsStore settings) {
-    this.settings = settings;
-  }
 
   public List<ConversationStatus> statuses() {
     return List.of(ConversationStatus.values());
@@ -402,33 +397,28 @@ public class ViewFormats {
     };
   }
 
-  /** "Australia/Melbourne": the zone the console's days and times are in. */
-  public String advisorZone() {
-    return settings.current().scheduling().advisorZone().getId();
-  }
-
-  /** "26 Jul 10:00" in the advisors' zone, for the list's activity column. */
-  public String when(Instant at) {
-    return WHEN.format(at.atZone(settings.current().scheduling().advisorZone()));
+  /** "26 Jul 10:00": {@code at} on the wall clock of {@code zone}. */
+  public String when(Instant at, ZoneId zone) {
+    return WHEN.format(at.atZone(zone));
   }
 
   /** "v1 (26 Jul 10:00)": a version as the diff pickers offer it. */
-  public String versionOption(ConfigurationPage.VersionRow row) {
-    return row.id() + " (" + when(row.createdAt()) + ")";
+  public String versionOption(ConfigurationPage.VersionRow row, ZoneId zone) {
+    return row.id() + " (" + when(row.createdAt(), zone) + ")";
   }
 
   /**
    * What the editor shows, after the file's name: "v1, created 26 Jul 10:00 by repo, active for new
    * conversations." or, for a refused save's texts, "edited from v1, not saved."
    */
-  public String editorSource(ConfigurationPage page) {
+  public String editorSource(ConfigurationPage page, ZoneId zone) {
     ConfigurationPage.VersionRow row = page.selected();
     if (page.unsaved()) {
       return "edited from " + row.id() + ", not saved.";
     }
     return row.id()
         + ", created "
-        + when(row.createdAt())
+        + when(row.createdAt(), zone)
         + " by "
         + row.createdBy()
         + (row.active() ? ", active for new conversations." : ".");
@@ -452,10 +442,10 @@ public class ViewFormats {
   /**
    * "stage: OFFER TIMES", "needs human: yes", "started from 17 Oct 00:14": a list filter's chip.
    */
-  public String chip(ConversationFilter.Chip chip) {
+  public String chip(ConversationFilter.Chip chip, ZoneId zone) {
     String label = chip.param().label();
     return switch (chip.value()) {
-      case Instant at -> label + " " + when(at);
+      case Instant at -> label + " " + when(at, zone);
       case Boolean yes -> label + ": " + yesNo(yes);
       case Enum<?> value -> label + ": " + words(value);
       default -> label + ": " + chip.value();
@@ -477,7 +467,7 @@ public class ViewFormats {
   }
 
   /** "n = 6 conversations, last 7 days from 19 Jul 10:00, prompt v2, SIM": what the page counts. */
-  public String nLine(AnalyticsPage page) {
+  public String nLine(AnalyticsPage page, ZoneId zone) {
     AnalyticsFilter filter = page.filter();
     StringBuilder line =
         new StringBuilder("n = ")
@@ -485,7 +475,7 @@ public class ViewFormats {
             .append(", ")
             .append(range(filter.range()));
     if (page.view().since() != null) {
-      line.append(" from ").append(when(page.view().since()));
+      line.append(" from ").append(when(page.view().since(), zone));
     }
     if (filter.promptVersion() != null) {
       line.append(", prompt ").append(filter.promptVersion());

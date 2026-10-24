@@ -1,5 +1,6 @@
 package com.enrola.anna.web;
 
+import com.enrola.anna.config.Settings;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.constraints.Pattern;
 import java.util.Map;
@@ -30,9 +31,10 @@ public class AnalyticsController {
 
   private final AnalyticsPages pages;
   private final AnalyticsService analytics;
-  private final ShellModels shells;
+  private final ShellModelAdvice shells;
 
-  public AnalyticsController(AnalyticsPages pages, AnalyticsService analytics, ShellModels shells) {
+  public AnalyticsController(
+      AnalyticsPages pages, AnalyticsService analytics, ShellModelAdvice shells) {
     this.pages = pages;
     this.analytics = analytics;
     this.shells = shells;
@@ -43,8 +45,9 @@ public class AnalyticsController {
       @ModelAttribute AnalyticsFilter filter,
       @RequestParam(required = false) String a,
       @RequestParam(required = false) String b,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
       Model model) {
-    model.addAttribute("page", pages.page(filter, a, b));
+    model.addAttribute("page", pages.page(filter, a, b, settings.scheduling().advisorZone()));
     return PAGE;
   }
 
@@ -69,11 +72,18 @@ public class AnalyticsController {
     HandlerMethodValidationException.class
   })
   ModelAndView badRequest(HttpSession session) {
+    Settings settings = shells.settings();
     AnalyticsPage page =
         pages
-            .page(new AnalyticsFilter(null, null, null, null), null, null)
+            .page(
+                new AnalyticsFilter(null, null, null, null),
+                null,
+                null,
+                settings.scheduling().advisorZone())
             .withNotice(AnalyticsPages.BAD_REQUEST);
     return new ModelAndView(
-        PAGE, Map.of("shell", shells.shell(session), "page", page), HttpStatus.BAD_REQUEST);
+        PAGE,
+        Map.of("shell", shells.shell(settings, session), "page", page),
+        HttpStatus.BAD_REQUEST);
   }
 }

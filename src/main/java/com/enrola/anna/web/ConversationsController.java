@@ -1,5 +1,6 @@
 package com.enrola.anna.web;
 
+import com.enrola.anna.config.Settings;
 import com.enrola.anna.config.UiProperties;
 import com.enrola.anna.conversation.BusyException;
 import com.enrola.anna.conversation.ConflictException;
@@ -110,12 +111,13 @@ public class ConversationsController {
       @PathVariable @Pattern(regexp = ConversationApi.ID) String id,
       @ModelAttribute("filter") ConversationFilter filter,
       @RequestParam(required = false) String error,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
       HttpSession session,
       Model model) {
     boolean mask = PiiMask.enabled(session);
     ConsolePage.Open open =
         new ConsolePage.Open(
-            views.build(id, mask),
+            views.build(id, mask, settings),
             new InspectorView(
                 traces.turns(id, mask), ShellController.rawJsonShown(session), ui.sseEnabled()));
     model.addAttribute("page", pages.page(filter, open, mask).withNotice(Notice.fromCode(error)));
@@ -175,13 +177,14 @@ public class ConversationsController {
   public ModelAndView sendFromComposer(
       @PathVariable @Pattern(regexp = ConversationApi.ID) String id,
       @ModelAttribute SendForm form,
+      @ModelAttribute(name = ShellModelAdvice.SETTINGS, binding = false) Settings settings,
       HttpSession session) {
     if (form.problem() != null) {
       return problem(HttpStatus.BAD_REQUEST, form.problem());
     }
     try {
       TurnResponse turn = inboundTurns.handle(id, form.message(), null);
-      ConsoleView view = views.build(id, PiiMask.enabled(session));
+      ConsoleView view = views.build(id, PiiMask.enabled(session), settings);
       int turnNo = lastInboundTurn(turn);
       return new ModelAndView(
           "fragments/turn :: turn",

@@ -86,7 +86,7 @@ class PinnedVersionTest {
 
   @Test
   void turnUsesPinnedNotActive() {
-    prompts.activate(saveV1WithMarker());
+    prompts.activate(saveV1WithMarker(), SettingsFixture.DEFAULTS.persona());
     model.decide(Decisions.engaged().build());
 
     turns.handle(laurenOnV1, "save money", "p1");
@@ -97,7 +97,7 @@ class PinnedVersionTest {
 
   @Test
   void newConversationUsesActive() {
-    prompts.activate(saveV1WithMarker());
+    prompts.activate(saveV1WithMarker(), SettingsFixture.DEFAULTS.persona());
 
     TurnResponse started = conversations.start("john", Source.API);
     model.decide(Decisions.engaged().build());
@@ -196,7 +196,8 @@ class PinnedVersionTest {
                 v1.schemaJson(),
                 v1.toolsJson(),
                 v1.templatesJson(),
-                "pin test"));
+                "pin test"),
+            SettingsFixture.DEFAULTS.persona());
     return ((PromptStore.SaveResult.Saved) result).id();
   }
 

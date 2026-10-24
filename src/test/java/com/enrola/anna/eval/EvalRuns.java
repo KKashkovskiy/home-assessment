@@ -99,7 +99,7 @@ final class EvalRuns {
     if (!versions.existsById(appVersion.id())) {
       versions.save(appVersion);
     }
-    prompts.activate(appVersion.id());
+    prompts.activate(appVersion.id(), settings.current().persona());
   }
 
   /**

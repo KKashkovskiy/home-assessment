@@ -10,6 +10,7 @@ import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.config.SettingsStore;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -72,8 +73,9 @@ class ModelCheckTest {
   /** A save that changes the request asks again; one that changes something else does not. */
   @Test
   void aSaveThatChangesTheRequestChecksAgain() {
-    SettingsStore settings = new SettingsStore(SettingsFixture.DEFAULTS, dataDir);
-    ModelCheck check = new ModelCheck(model, settings, SettingsFixture.yml());
+    ModelCheck check = new ModelCheck(model, SettingsFixture.yml());
+    SettingsStore settings =
+        new SettingsStore(SettingsFixture.DEFAULTS, dataDir, List.of(check), List.of());
     model.enqueue(OK).enqueue(Decisions.failed(ModelResponse.Failure.HTTP_4XX));
     check.run(null);
 
@@ -87,10 +89,11 @@ class ModelCheckTest {
     assertThat(model.calls()).last().extracting(ModelRequest::reasoningEffort).isEqualTo("medium");
   }
 
+  /** A check that heard the boot record from a store, as at boot. */
   private ModelCheck check(boolean strict) {
-    return new ModelCheck(
-        model,
-        new SettingsStore(SettingsFixture.DEFAULTS, dataDir),
-        SettingsFixture.yml("anna.agent.strict-model-check=" + strict));
+    ModelCheck check =
+        new ModelCheck(model, SettingsFixture.yml("anna.agent.strict-model-check=" + strict));
+    new SettingsStore(SettingsFixture.DEFAULTS, dataDir, List.of(check), List.of());
+    return check;
   }
 }

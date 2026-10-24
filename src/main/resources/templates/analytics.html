@@ -14,7 +14,7 @@
       <input type="hidden" name="a" th:value="${page.compare.a}"><input type="hidden" name="b" th:value="${page.compare.b}">
       <button class="btn sm" type="submit" data-autosubmit-button>Apply</button>
       <span class="spacer"></span>
-      <span id="n-line" class="small muted" th:text="${@fmt.nLine(page)}">n = 0 conversations, last 7 days</span>
+      <span id="n-line" class="small muted" th:text="${@fmt.nLine(page, shell.advisorZone)}">n = 0 conversations, last 7 days</span>
     </form>
 
     <section th:replace="~{fragments/kpis :: grid(${view})}"></section>
@@ -35,7 +35,7 @@
         </div>
         <p class="chart-note small muted">A violation is a turn on which a guard caught the model: a failed reply check or a field code overrode, counted once per turn.</p>
       </section>
-      <th:block th:with="dayNote=|Days in the advisors' zone, ${@fmt.advisorZone()}; the day's spend over the conversations it touched.|">
+      <th:block th:with="dayNote=|Days in the advisors' zone, ${shell.advisorZone.id}; the day's spend over the conversations it touched.|">
         <section th:replace="~{fragments/charts :: panel(${view.series('cost')}, 'Cost per conversation, by day', 'Day', 'Per conversation', 'Spend', ${dayNote})}"></section>
       </th:block>
       <section th:replace="~{fragments/charts :: panel(${view.series('latency')}, 'Mean turn latency, by day', 'Day', 'Mean', 'Turns', 'The mean per day; the p50 and p95 tiles are over the whole range.')}"></section>
