@@ -14,7 +14,8 @@ import org.springframework.stereotype.Component;
 /**
  * The model's part of a turn: one {@link AgentCall}, then what the decision does. On an open
  * conversation code still owns opt-out, abuse, self-harm and the closes its counters force, and the
- * reply goes out through {@link ReplyRepair}; after a soft-terminal end the model only classifies.
+ * reply goes out through {@link ReplyRepair}; after a soft-terminal end the model only classifies,
+ * and after a hard end it is asked only whether a message moderation could not screen is self-harm.
  * When the call fails after the SDK's retries, or the output is not a decision, nothing is sent and
  * a human is asked to look.
  */
@@ -73,6 +74,42 @@ class AgentTurn {
       case AgentCall.Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) ->
           failed(turn, code).addModelCall(call);
     };
+  }
+
+  /**
+   * After a hard end, moderation did not answer and no self-harm phrase matched: the model
+   * classifies, with no tools, and only its intent is read. SELF_HARM sends the safety template as
+   * the pre-guards do; any other intent, or a failed call, keeps the silence the end owes and hands
+   * nothing off, and the self-harm-check row says which.
+   */
+  TurnOutcome askAboutSelfHarm(RunningTurn turn) {
+    return switch (calls.classify(turn, questions.questionFor(turn), calls.toolRoundsFor(turn))) {
+      case AgentCall.Answer.Decided(Decision decision, Turn.ModelCall call) ->
+          safetyOrSilence(turn, decision.leadIntent()).addModelCall(call);
+      case AgentCall.Answer.Failed(ModelResponse.Failure code, Turn.ModelCall call) -> {
+        traceSelfHarmCheck(turn, TraceOutcome.INFO, SelfHarmCheckPayload.failed(code));
+        yield endedBefore(turn, "self-harm check failed: " + code).addModelCall(call);
+      }
+    };
+  }
+
+  private TurnOutcome safetyOrSilence(RunningTurn turn, LeadIntent intent) {
+    if (intent != LeadIntent.SELF_HARM) {
+      traceSelfHarmCheck(turn, TraceOutcome.PASS, SelfHarmCheckPayload.read(intent));
+      return endedBefore(turn, "model read " + intent);
+    }
+    traceSelfHarmCheck(turn, TraceOutcome.BLOCK, SelfHarmCheckPayload.read(intent));
+    return outcomes.safety(turn);
+  }
+
+  private void traceSelfHarmCheck(
+      RunningTurn turn, TraceOutcome outcome, SelfHarmCheckPayload payload) {
+    trace.record(turn, TraceLog.Entry.guard(RoutingGuards.SELF_HARM_CHECK, outcome, payload));
+  }
+
+  private static TurnOutcome endedBefore(RunningTurn turn, String why) {
+    return TurnOutcome.silent(
+        NoReply.ENDED_BEFORE, "ended " + turn.conversation().endReason + ", " + why);
   }
 
   /** A human is asked to look; nothing is sent. */

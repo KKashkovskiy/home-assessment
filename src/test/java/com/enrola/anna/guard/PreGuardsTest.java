@@ -30,13 +30,13 @@ class PreGuardsTest {
           SettingsFixture.DEFAULTS.moderation(),
           SelfHarmPhrases.bundled());
   static final Standing OPEN =
-      new Standing(EndReason.NONE, false, false, 0, false, HandoffReason.NONE);
+      new Standing(EndReason.NONE, false, false, 0, false, HandoffReason.NONE, "");
   static final Standing BOOKED =
-      new Standing(EndReason.BOOKED, false, false, 4, true, HandoffReason.NONE);
+      new Standing(EndReason.BOOKED, false, false, 4, true, HandoffReason.NONE, "");
   static final Standing RESET =
-      new Standing(EndReason.NONE, true, false, 1, false, HandoffReason.NONE);
+      new Standing(EndReason.NONE, true, false, 1, false, HandoffReason.NONE, "");
   static final Standing ABUSIVE =
-      new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE);
+      new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE, "");
   static final ModelAccess MODEL = new ModelAccess(true, true, false, false);
   static final ModerationVerdict CLEAN = ScriptedModerationClient.CLEAN;
   static final ModerationVerdict SELF_HARM = scores(0, 0, 0.9);
@@ -140,7 +140,7 @@ class PreGuardsTest {
             "the conversation cap over a soft end",
             "hi",
             CLEAN,
-            new Standing(EndReason.DECLINED, false, false, 1, false, HandoffReason.NONE),
+            new Standing(EndReason.DECLINED, false, false, 1, false, HandoffReason.NONE, ""),
             new ModelAccess(true, true, false, true),
             Step.SPEND_CAP,
             new PreGuards.HandoffNoModel(NoModelReason.SPEND_CAP_CONVERSATION)),
@@ -148,7 +148,7 @@ class PreGuardsTest {
             "a soft end over the turn cap",
             "ok thanks",
             CLEAN,
-            new Standing(EndReason.DECLINED, false, false, 15, false, HandoffReason.NONE),
+            new Standing(EndReason.DECLINED, false, false, 15, false, HandoffReason.NONE, ""),
             MODEL,
             Step.SOFT_END,
             new PreGuards.ClassifyOnly()),
@@ -156,7 +156,7 @@ class PreGuardsTest {
             "the turn cap over a model call",
             "and?",
             CLEAN,
-            new Standing(EndReason.NONE, false, false, 15, false, HandoffReason.NONE),
+            new Standing(EndReason.NONE, false, false, 15, false, HandoffReason.NONE, ""),
             MODEL,
             Step.TURN_CAP,
             new PreGuards.FixedClose(Template.MAX_TURNS_CLOSE, EndReason.MAX_TURNS)));
@@ -183,7 +183,7 @@ class PreGuardsTest {
   @Test
   void stopAfterAnOptOutIsNotANewOne() {
     Standing unsubscribed =
-        new Standing(EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE);
+        new Standing(EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE, "");
 
     assertThat(GUARDS.decide("STOP", CLEAN, unsubscribed, MODEL).outcome())
         .isEqualTo(new PreGuards.Silence(EndReason.UNSUBSCRIBED));
@@ -203,11 +203,11 @@ class PreGuardsTest {
         Arguments.of("no booking", OPEN, new PreGuards.Unsubscribe(Suppression.Reason.KEYWORD)),
         Arguments.of(
             "booked, then abusive",
-            new Standing(EndReason.ABUSIVE, false, false, 4, true, HandoffReason.NONE),
+            new Standing(EndReason.ABUSIVE, false, false, 4, true, HandoffReason.NONE, ""),
             new PreGuards.Unsubscribe(Suppression.Reason.KEYWORD)),
         Arguments.of(
             "booked, then opted out",
-            new Standing(EndReason.UNSUBSCRIBED, false, false, 4, true, HandoffReason.NONE),
+            new Standing(EndReason.UNSUBSCRIBED, false, false, 4, true, HandoffReason.NONE, ""),
             new PreGuards.Silence(EndReason.UNSUBSCRIBED)));
   }
 
@@ -215,7 +215,7 @@ class PreGuardsTest {
   @Test
   void repeatedLoneCancelAfterTheChangeIsSuppressed() {
     Standing changing =
-        new Standing(EndReason.BOOKED, false, false, 5, true, HandoffReason.RESCHEDULE);
+        new Standing(EndReason.BOOKED, false, false, 5, true, HandoffReason.RESCHEDULE, "");
 
     assertThat(GUARDS.decide("CANCEL", CLEAN, changing, MODEL).outcome())
         .isEqualTo(new PreGuards.SuppressRepeat());
@@ -235,7 +235,7 @@ class PreGuardsTest {
                     "...",
                     SELF_HARM,
                     new Standing(
-                        EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE),
+                        EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE, ""),
                     MODEL)
                 .outcome())
         .isEqualTo(new PreGuards.SafetyReply(Detector.MODERATION));
@@ -244,7 +244,8 @@ class PreGuardsTest {
                 .decide(
                     "...",
                     SELF_HARM,
-                    new Standing(EndReason.UNSUBSCRIBED, false, true, 2, false, HandoffReason.NONE),
+                    new Standing(
+                        EndReason.UNSUBSCRIBED, false, true, 2, false, HandoffReason.NONE, ""),
                     MODEL)
                 .outcome())
         .isEqualTo(new PreGuards.Silence(EndReason.UNSUBSCRIBED));
@@ -275,7 +276,7 @@ class PreGuardsTest {
             "this premium is killing me",
             ModerationVerdict.UNAVAILABLE,
             ABUSIVE,
-            new PreGuards.Silence(EndReason.ABUSIVE)),
+            new PreGuards.AskModelAboutSelfHarm()),
         Arguments.of(
             "moderation down, figurative speech on an open conversation",
             "I'd die for cheaper cover",
@@ -298,8 +299,110 @@ class PreGuardsTest {
             "moderation down, a phrase after the safety template went out",
             phrase,
             ModerationVerdict.UNAVAILABLE,
-            new Standing(EndReason.ABUSIVE, false, true, 2, false, HandoffReason.NONE),
+            new Standing(EndReason.ABUSIVE, false, true, 2, false, HandoffReason.NONE, ""),
             new PreGuards.Silence(EndReason.ABUSIVE)));
+  }
+
+  /**
+   * After a hard end with moderation down and no phrase, the model is asked when it can be called
+   * and the turn says why when it cannot; never when moderation answered, before a hard end, for a
+   * repeat of the previous message or a STOP, or once the template went out.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("modelAskedAboutSelfHarm")
+  void modelAskedOnlyAfterAHardEndWithModerationDown(
+      String rule,
+      String text,
+      ModerationVerdict verdict,
+      Standing standing,
+      ModelAccess model,
+      Outcome expected) {
+    assertThat(GUARDS.decide(text, verdict, standing, model).outcome()).isEqualTo(expected);
+  }
+
+  static Stream<Arguments> modelAskedAboutSelfHarm() {
+    String unlisted = "everyone would be better if I just disappeared for good";
+    ModerationVerdict down = ModerationVerdict.UNAVAILABLE;
+    return Stream.of(
+        Arguments.of(
+            "moderation down after a hard end",
+            unlisted,
+            down,
+            ABUSIVE,
+            MODEL,
+            new PreGuards.AskModelAboutSelfHarm()),
+        Arguments.of(
+            "moderation clean after a hard end",
+            unlisted,
+            CLEAN,
+            ABUSIVE,
+            MODEL,
+            new PreGuards.Silence(EndReason.ABUSIVE)),
+        Arguments.of(
+            "moderation down on an open conversation",
+            unlisted,
+            down,
+            OPEN,
+            MODEL,
+            new PreGuards.Proceed()),
+        Arguments.of(
+            "moderation down after a soft end",
+            unlisted,
+            down,
+            BOOKED,
+            MODEL,
+            new PreGuards.ClassifyOnly()),
+        Arguments.of(
+            "moderation down after the template went out",
+            unlisted,
+            down,
+            new Standing(EndReason.ABUSIVE, false, true, 2, false, HandoffReason.NONE, ""),
+            MODEL,
+            new PreGuards.Silence(EndReason.ABUSIVE)),
+        Arguments.of(
+            "moderation down after a hard end, a repeat of the previous message",
+            unlisted,
+            down,
+            new Standing(
+                EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE, unlisted + "!"),
+            MODEL,
+            new PreGuards.Silence(EndReason.ABUSIVE)),
+        Arguments.of(
+            "a STOP after an opt-out, never screened",
+            "STOP",
+            down,
+            new Standing(EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE, ""),
+            MODEL,
+            new PreGuards.Silence(EndReason.UNSUBSCRIBED)),
+        Arguments.of(
+            "moderation down after a hard end, a prompt that does not load",
+            unlisted,
+            down,
+            ABUSIVE,
+            new ModelAccess(false, false, true, true),
+            new PreGuards.SelfHarmUnscreened(EndReason.ABUSIVE, NoModelReason.PROMPT)),
+        Arguments.of(
+            "moderation down after a hard end, no key",
+            unlisted,
+            down,
+            ABUSIVE,
+            new ModelAccess(true, false, true, true),
+            new PreGuards.SelfHarmUnscreened(EndReason.ABUSIVE, NoModelReason.NO_MODEL)),
+        Arguments.of(
+            "moderation down after a hard end, the app cap",
+            unlisted,
+            down,
+            ABUSIVE,
+            new ModelAccess(true, true, true, true),
+            new PreGuards.SelfHarmUnscreened(EndReason.ABUSIVE, NoModelReason.SPEND_CAP_APP)),
+        Arguments.of(
+            "moderation down after a hard end, the conversation cap",
+            unlisted,
+            down,
+            ABUSIVE,
+            new ModelAccess(true, true, false, true),
+            new PreGuards.SelfHarmUnscreened(
+                EndReason.ABUSIVE, NoModelReason.SPEND_CAP_CONVERSATION)));
   }
 
   /** Each threshold is reached at its value; only an answering endpoint's scores count. */
@@ -326,7 +429,7 @@ class PreGuardsTest {
         GUARDS.decide(
             "and?",
             CLEAN,
-            new Standing(EndReason.NONE, false, false, 14, false, HandoffReason.NONE),
+            new Standing(EndReason.NONE, false, false, 14, false, HandoffReason.NONE, ""),
             MODEL);
 
     assertThat(ruling.outcome()).isEqualTo(new PreGuards.Proceed());

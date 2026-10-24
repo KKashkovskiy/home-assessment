@@ -39,7 +39,7 @@ Cheapest first. Steps 1 and 2 need no key; steps 5 to 7 need `EVAL_OPENAI_API_KE
 
 | # | Run | Expect | Cost | Total |
 |---|---|---|---|---|
-| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,338 tests | $0 | $0 |
+| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,408 tests | $0 | $0 |
 | 2 | `evals/run.sh --offline` | every scenario answered by stand-ins, code that plays the model: report verdict PASS, 52 of 52 | $0 | $0 |
 | 3 | Export `OPENAI_API_KEY`, `./mvnw spring-boot:run` | log `model check ok: gpt-5.1`, no banner | one small call | $0 |
 | 4 | Start Lauren, reply "all of the above" | an `LLM` reply under 320 characters; the inspector shows the guards, the model round and the decision | about $0.01 | $0.01 |
@@ -100,13 +100,15 @@ with no model call; a self-harm signal from OpenAI's moderation, or from a short
 (`guards/self-harm-phrases.yaml`) when moderation does not answer, sends the Lifeline (Australian crisis line) message
 once; a hard end (opted out, abusive, safety, off-topic limit) or a console reset stays silent; abuse ends the
 conversation in silence; no key, a spent cap or a prompt version that does not load hands the turn to a person; a soft
-end (booked, declined, turn cap, handed off) allows one short closing reply; the turn cap sends a fixed close. After it,
-`guard/ReplyGuards` checks every reply as the phone will show it, normalised to GSM-7 (the SMS character set): at most
-320 characters, exactly one question before the goal, no exclamation mark, markdown, leaked prompt token, link off
-comparato.au, lead phone or email, deny-listed claim, or clock time that was not offered. A failed reply gets one
-rewrite, then a fixed fallback; nothing is truncated. `conversation/StateRules` is the only code that ends a
-conversation or meets the goal, and only a booking row meets it. The prompt is a versioned row, and each conversation
-pins the version it started on, so activating a new one never changes a conversation in flight.
+end (booked, declined, turn cap, handed off) allows one short closing reply; the turn cap sends a fixed close. The
+silence after a hard end has one exception: with moderation down and no phrase matched, the model is asked, with no
+tools and no reply of its own, whether the message is self-harm. After the model call, `guard/ReplyGuards` checks every
+reply as the phone will show it, normalised to GSM-7 (the SMS character set): at most 320 characters, exactly one
+question before the goal, no exclamation mark, markdown, leaked prompt token, link off comparato.au, lead phone or
+email, deny-listed claim, or clock time that was not offered. A failed reply gets one rewrite, then a fixed fallback;
+nothing is truncated. `conversation/StateRules` is the only code that ends a conversation or meets the goal, and only a
+booking row meets it. The prompt is a versioned row, and each conversation pins the version it started on, so activating
+a new one never changes a conversation in flight.
 
 ## The console
 
@@ -237,8 +239,10 @@ request and response stay in `data/` until a retention period is set.
 
 ## Known issues
 
-- **After a hard end with moderation down, only the phrase list is checked**; other wording gets silence, because the
-  model is not asked there.
+- **If moderation and the model are both unavailable after a hard end, only the phrase list is checked**; other
+  wording gets silence. The same holds when a spend cap, a missing key or a pinned prompt that does not load keeps the
+  model out, and the trace says which. While moderation is down, each new message after a hard end that does not
+  repeat the one before costs one classify call, bounded by the conversation and app spend caps.
 
 ## Where AI was used
 

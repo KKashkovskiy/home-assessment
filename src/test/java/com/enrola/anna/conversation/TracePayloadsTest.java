@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
+import com.enrola.anna.agent.LeadIntent;
 import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.Stage;
 import com.enrola.anna.guard.PreGuards;
@@ -92,6 +93,22 @@ class TracePayloadsTest {
     assertThat(JSON.readValue(written, PreGuardPayload.class)).isEqualTo(decided);
     assertThat(JSON.writeValueAsString(passed)).isEqualTo("{}");
     assertThat(JSON.readValue("{}", PreGuardPayload.class)).isEqualTo(passed);
+  }
+
+  /** The model's self-harm check reads back with the intent it read, or the failure instead. */
+  @Test
+  void selfHarmCheckReadsBackWithoutTheFieldItLacks() {
+    SelfHarmCheckPayload read = SelfHarmCheckPayload.read(LeadIntent.SELF_HARM);
+    SelfHarmCheckPayload failed = SelfHarmCheckPayload.failed(ModelResponse.Failure.TIMEOUT);
+
+    assertThat(JSON.writeValueAsString(read))
+        .isEqualTo("{\"detector\":\"MODEL_CLASSIFY\",\"lead_intent\":\"SELF_HARM\"}");
+    assertThat(JSON.writeValueAsString(failed))
+        .isEqualTo("{\"detector\":\"MODEL_CLASSIFY\",\"failure\":\"TIMEOUT\"}");
+    assertThat(JSON.readValue(JSON.writeValueAsString(read), SelfHarmCheckPayload.class))
+        .isEqualTo(read);
+    assertThat(JSON.readValue(JSON.writeValueAsString(failed), SelfHarmCheckPayload.class))
+        .isEqualTo(failed);
   }
 
   /** The writer's values are enums, sets and counts; they read back as their wire values. */

@@ -6,6 +6,7 @@ import com.enrola.anna.config.Settings;
 import com.enrola.anna.lead.Suppression;
 import com.enrola.anna.prompt.Template;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -15,9 +16,10 @@ import java.util.Optional;
  * order of {@link Step}: a lone CANCEL after a booking first, because it asks to change the call,
  * not to stop the messages; a STOP keyword second, because it works with no model and overrides
  * everything; self-harm third, because the safety template goes out once whatever the state, read
- * from the {@link SelfHarmPhrases} when moderation did not answer and from its score otherwise;
- * silence after a hard end or a console reset fourth, so nothing more is spent on that
- * conversation; abuse fifth, so a distressed lead who swears gets Lifeline, not a cut-off; then
+ * from moderation's score, from the {@link SelfHarmPhrases} when moderation did not answer, and
+ * after a hard end, where no model turn follows to classify the message, from the model when
+ * neither found it; silence after a hard end or a console reset fourth, so that conversation gets
+ * no model turn; abuse fifth, so a distressed lead who swears gets Lifeline, not a cut-off; then
  * whether the model can be called at all; then the soft-terminal classify-only path; then the turn
  * cap. Pure: built for one turn from the limits and thresholds that turn read, it reads plain
  * values and returns a {@link Ruling}, and the caller acts on it.
@@ -33,6 +35,8 @@ public class PreGuards {
           Unsubscribe,
           EndAbusive,
           SafetyReply,
+          AskModelAboutSelfHarm,
+          SelfHarmUnscreened,
           FixedClose,
           HandoffNoModel,
           Silence,
@@ -58,6 +62,19 @@ public class PreGuards {
 
   /** Send the fixed safety template, once per conversation. */
   public record SafetyReply(Detector detector) implements Outcome {}
+
+  /**
+   * After a hard end, moderation did not answer and no self-harm phrase matched: the model
+   * classifies the message, with no tools and no reply of its own. SELF_HARM sends the safety
+   * template; anything else, or a failed call, keeps the silence.
+   */
+  public record AskModelAboutSelfHarm() implements Outcome {}
+
+  /**
+   * As {@link AskModelAboutSelfHarm}, but the model cannot be called either, for {@code reason}:
+   * silence, as for {@link Silence}, with the message unscreened.
+   */
+  public record SelfHarmUnscreened(EndReason endReason, NoModelReason reason) implements Outcome {}
 
   /** End with {@code reason} and send {@code template} as the one closing reply. */
   public record FixedClose(Template template, EndReason reason) implements Outcome {}
@@ -85,7 +102,7 @@ public class PreGuards {
     STOP_KEYWORD,
     /**
      * Before the safety template has gone out, a self-harm score at its threshold or, when
-     * moderation did not answer, a self-harm phrase.
+     * moderation did not answer, a self-harm phrase, or after a hard end the model to ask.
      */
     SELF_HARM,
     /** A hard end, answered with silence. */
@@ -125,17 +142,19 @@ public class PreGuards {
 
   /**
    * What recognised abuse or self-harm: the moderation endpoint, the model's own intent, or, for
-   * self-harm when moderation did not answer, the {@link SelfHarmPhrases}.
+   * self-harm when moderation did not answer, the {@link SelfHarmPhrases} or the model asked after
+   * a hard end.
    */
   public enum Detector {
     MODERATION,
     MODEL,
-    SELF_HARM_PHRASES
+    SELF_HARM_PHRASES,
+    MODEL_CLASSIFY
   }
 
   /**
    * Why the model cannot be called: the conversation's prompt version does not load, no key, or a
-   * spend cap reached.
+   * spend cap reached; in the order the steps check them.
    */
   public enum NoModelReason {
     PROMPT,
@@ -147,7 +166,7 @@ public class PreGuards {
   /**
    * The conversation before this turn: its end reason, NONE while open; whether the console reset
    * it; whether the safety template already went out; the agent turns used; whether a call is
-   * booked; and the latest handoff reason.
+   * booked; the latest handoff reason; and the lead's previous message, empty before the first.
    */
   public record Standing(
       EndReason endReason,
@@ -155,7 +174,8 @@ public class PreGuards {
       boolean safetySent,
       int agentTurns,
       boolean booked,
-      HandoffReason handoffReason) {}
+      HandoffReason handoffReason,
+      String previousInbound) {}
 
   /**
    * Whether the main model can be called: the conversation's pinned prompt loaded, a key is
@@ -165,7 +185,23 @@ public class PreGuards {
       boolean promptLoaded,
       boolean configured,
       boolean appCapReached,
-      boolean conversationCapReached) {}
+      boolean conversationCapReached) {
+
+    /** Whether {@code reason} keeps the model out. */
+    boolean blocks(NoModelReason reason) {
+      return switch (reason) {
+        case PROMPT -> !promptLoaded;
+        case NO_MODEL -> !configured;
+        case SPEND_CAP_APP -> appCapReached;
+        case SPEND_CAP_CONVERSATION -> conversationCapReached;
+      };
+    }
+
+    /** The first reason that keeps the model out, in the steps' order; empty when none does. */
+    Optional<NoModelReason> blocked() {
+      return Arrays.stream(NoModelReason.values()).filter(this::blocks).findFirst();
+    }
+  }
 
   private final Settings.Limits limits;
   private final Settings.Moderation thresholds;
@@ -216,8 +252,8 @@ public class PreGuards {
           when(standing.endReason().isHardTerminal(), new Silence(standing.endReason()));
       case RESET -> when(standing.reset(), new Reset());
       case ABUSE_SCORE -> when(abusive(inbound.verdict()), new EndAbusive(Detector.MODERATION));
-      case PINNED_PROMPT -> when(!model.promptLoaded(), new HandoffNoModel(NoModelReason.PROMPT));
-      case MODEL_KEY -> when(!model.configured(), new HandoffNoModel(NoModelReason.NO_MODEL));
+      case PINNED_PROMPT -> noModel(model, NoModelReason.PROMPT);
+      case MODEL_KEY -> noModel(model, NoModelReason.NO_MODEL);
       case SPEND_CAP -> spendCap(model);
       case SOFT_END -> when(standing.endReason() != EndReason.NONE, new ClassifyOnly());
       case TURN_CAP ->
@@ -240,26 +276,53 @@ public class PreGuards {
   }
 
   private static Optional<Outcome> spendCap(ModelAccess model) {
-    if (model.appCapReached()) {
-      return Optional.of(new HandoffNoModel(NoModelReason.SPEND_CAP_APP));
-    }
-    return when(
-        model.conversationCapReached(), new HandoffNoModel(NoModelReason.SPEND_CAP_CONVERSATION));
+    return noModel(model, NoModelReason.SPEND_CAP_APP)
+        .or(() -> noModel(model, NoModelReason.SPEND_CAP_CONVERSATION));
+  }
+
+  private static Optional<Outcome> noModel(ModelAccess model, NoModelReason reason) {
+    return when(model.blocks(reason), new HandoffNoModel(reason));
   }
 
   private static Optional<Outcome> when(boolean applies, Outcome outcome) {
     return applies ? Optional.of(outcome) : Optional.empty();
   }
 
-  /** An answering endpoint's verdict stands; only when it did not answer do the phrases decide. */
+  /**
+   * An answering endpoint's verdict stands; only when it did not answer do the phrases decide, and
+   * after them, on a hard end, the model.
+   */
   private Optional<Outcome> selfHarm(Inbound inbound) {
     ModerationVerdict verdict = inbound.verdict();
     if (verdict.available()) {
       return when(
           verdict.selfHarm() >= thresholds.modSelfHarm(), new SafetyReply(Detector.MODERATION));
     }
-    return when(
-        selfHarmPhrases.matches(inbound.text()), new SafetyReply(Detector.SELF_HARM_PHRASES));
+    if (selfHarmPhrases.matches(inbound.text())) {
+      return Optional.of(new SafetyReply(Detector.SELF_HARM_PHRASES));
+    }
+    return unscreenedAfterHardEnd(inbound);
+  }
+
+  /**
+   * On an open or soft-ended conversation the model's turn classifies the message anyway. A STOP is
+   * never screened, so its unavailable verdict is no reason to ask; nor is a repeat of the previous
+   * message, so a lead who sends the same text again and again during an outage costs one call.
+   */
+  private static Optional<Outcome> unscreenedAfterHardEnd(Inbound inbound) {
+    Standing standing = inbound.standing();
+    EndReason endReason = standing.endReason();
+    if (!endReason.isHardTerminal()
+        || StopKeywords.isStop(inbound.text())
+        || StopKeywords.repeats(inbound.text(), standing.previousInbound())) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        inbound
+            .model()
+            .blocked()
+            .<Outcome>map(reason -> new SelfHarmUnscreened(endReason, reason))
+            .orElseGet(AskModelAboutSelfHarm::new));
   }
 
   private boolean abusive(ModerationVerdict verdict) {

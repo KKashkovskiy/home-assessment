@@ -39,6 +39,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -83,6 +84,10 @@ class InboundTurnsTest {
 
   /** Sunday 26 July 2026, 10:00 in Melbourne. */
   static final String NOW = "2026-07-26T00:00:00Z";
+
+  /** Self-harm in words the phrase list does not carry. */
+  static final String UNLISTED_SELF_HARM =
+      "everyone would be better if I just disappeared for good";
 
   @TempDir static Path tempDir;
 
@@ -502,7 +507,7 @@ class InboundTurnsTest {
       assertThat(model.calls()).isEmpty();
     }
 
-    /** After a hard end the model is not asked, so with moderation down the phrases decide. */
+    /** With moderation down after a hard end, a phrase decides before the model is asked. */
     @Test
     void selfHarmPhraseAfterStopWhileModerationIsDown() throws Exception {
       turns.handle(id, "STOP", "p1");
@@ -517,6 +522,136 @@ class InboundTurnsTest {
           guardPayload("self-harm"),
           JSONCompareMode.STRICT);
       assertThat(model.calls()).isEmpty();
+    }
+
+    /**
+     * With moderation down and no phrase, the model is asked after a hard end, with no tools, at
+     * the turn's cost; its SELF_HARM sends the template once, and nothing asks it again.
+     */
+    @Test
+    void modelAskedAboutSelfHarmAfterStopWhileModerationIsDown() throws Exception {
+      turns.handle(id, "STOP", "p1");
+      moderation.enqueue(ModerationVerdict.UNAVAILABLE).enqueue(ModerationVerdict.UNAVAILABLE);
+      model.decide(Decisions.engaged().intent(LeadIntent.SELF_HARM).reply("not sent").build());
+
+      TurnResponse response = turns.handle(id, UNLISTED_SELF_HARM, "p2");
+      TurnResponse again = turns.handle(id, UNLISTED_SELF_HARM, "p3");
+
+      assertThat(response.reply()).isEqualTo(rendered(Template.SELF_HARM_SAFETY));
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.SELF_HARM);
+      assertThat(response.endReasonHistory())
+          .extracting(EndReasonEntry::reason)
+          .containsExactly(EndReason.UNSUBSCRIBED, EndReason.SAFETY);
+      JSONAssert.assertEquals(
+          "{\"detector\":\"MODEL_CLASSIFY\",\"lead_intent\":\"SELF_HARM\"}",
+          guardPayload(RoutingGuards.SELF_HARM_CHECK),
+          JSONCompareMode.STRICT);
+      assertThat(model.calls())
+          .singleElement()
+          .satisfies(call -> assertThat(call.tools()).isEmpty());
+      assertThat(turnCost(2)).isEqualByComparingTo("0.00225");
+      assertThat(again.reply()).isNull();
+      assertThat(again.noReply()).isEqualTo(NoReply.ENDED_BEFORE);
+    }
+
+    /** Only SELF_HARM counts: the decision is not applied and the end's silence stands. */
+    @Test
+    void modelReadingAnotherIntentKeepsTheSilence() throws Exception {
+      turns.handle(id, "STOP", "p1");
+      moderation.enqueue(ModerationVerdict.UNAVAILABLE);
+      model.decide(Decisions.engaged().intent(LeadIntent.DISTRESS).flags(Flag.VULNERABLE).build());
+
+      TurnResponse response = turns.handle(id, UNLISTED_SELF_HARM, "p2");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.noReply()).isEqualTo(NoReply.ENDED_BEFORE);
+      assertThat(response.flags()).doesNotContain(Flag.VULNERABLE);
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.NONE);
+      JSONAssert.assertEquals(
+          "{\"detector\":\"MODEL_CLASSIFY\",\"lead_intent\":\"DISTRESS\"}",
+          guardPayload(RoutingGuards.SELF_HARM_CHECK),
+          JSONCompareMode.STRICT);
+      assertThat(model.calls()).hasSize(1);
+      assertThat(turnCost(2)).isEqualByComparingTo("0.00225");
+    }
+
+    /** The same words again, punctuation aside, are not asked about twice. */
+    @Test
+    void repeatedMessageIsNotAskedAboutAgain() {
+      turns.handle(id, "STOP", "p1");
+      moderation.enqueue(ModerationVerdict.UNAVAILABLE).enqueue(ModerationVerdict.UNAVAILABLE);
+      model.decide(Decisions.engaged().intent(LeadIntent.DISTRESS).build());
+      turns.handle(id, UNLISTED_SELF_HARM, "p2");
+
+      TurnResponse again =
+          turns.handle(id, UNLISTED_SELF_HARM.toUpperCase(Locale.ROOT) + "!", "p3");
+
+      assertThat(again.reply()).isNull();
+      assertThat(again.noReply()).isEqualTo(NoReply.ENDED_BEFORE);
+      assertThat(model.calls()).hasSize(1);
+      assertThat(guardPayload("terminal-check")).contains("Silence");
+    }
+
+    /**
+     * A cap that keeps the model out leaves the message unscreened: the end's silence, no handoff,
+     * and the self-harm row notes why.
+     */
+    @Test
+    void capLeavesTheMessageUnscreenedAfterAHardEnd() throws Exception {
+      moderation.enqueue(verdict(0.9, 0, 0)).enqueue(ModerationVerdict.UNAVAILABLE);
+      turns.handle(id, "you useless pile of junk", "p1");
+      jdbc.update("update turn set cost_usd = 0.50 where conversation_id = ?", id);
+
+      TurnResponse response = turns.handle(id, UNLISTED_SELF_HARM, "p2");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.noReply()).isEqualTo(NoReply.ENDED_BEFORE);
+      assertThat(response.needsHuman()).isFalse();
+      assertThat(model.calls()).isEmpty();
+      assertThat(trace()).contains("GUARD self-harm INFO");
+      JSONAssert.assertEquals(
+          "{\"outcome\":\"SelfHarmUnscreened\","
+              + "\"detail\":{\"end_reason\":\"ABUSIVE\",\"reason\":\"SPEND_CAP_CONVERSATION\"}}",
+          guardPayload("self-harm"),
+          JSONCompareMode.STRICT);
+    }
+
+    /**
+     * A failed check hands nothing off on an abusive end, still costs what it billed, and the trace
+     * says why it found nothing.
+     */
+    @Test
+    void failedSelfHarmCheckKeepsTheSilence() throws Exception {
+      moderation.enqueue(verdict(0.9, 0, 0)).enqueue(ModerationVerdict.UNAVAILABLE);
+      turns.handle(id, "you useless pile of junk", "p1");
+      model.enqueue(
+          new ModelResponse.Failed(
+              ModelResponse.Failure.INCOMPLETE,
+              "max_output_tokens",
+              Decisions.USAGE,
+              5,
+              "{}",
+              "{}"));
+
+      TurnResponse response = turns.handle(id, UNLISTED_SELF_HARM, "p2");
+
+      assertThat(response.reply()).isNull();
+      assertThat(response.noReply()).isEqualTo(NoReply.ENDED_BEFORE);
+      assertThat(response.needsHuman()).isFalse();
+      assertThat(
+              jdbc.queryForObject(
+                  "select status from turn where conversation_id = ? and turn_no = 2",
+                  String.class,
+                  id))
+          .isEqualTo("NO_REPLY");
+      JSONAssert.assertEquals(
+          "{\"detector\":\"MODEL_CLASSIFY\",\"failure\":\"INCOMPLETE\"}",
+          guardPayload(RoutingGuards.SELF_HARM_CHECK),
+          JSONCompareMode.STRICT);
+      assertThat(turnCost(2)).isEqualByComparingTo("0.00225");
+      assertThat(trace())
+          .containsSubsequence(
+              "GUARD self-harm PASS", "ERROR model_call INFO", "GUARD self-harm-check INFO");
     }
 
     @Test
@@ -1754,6 +1889,14 @@ class InboundTurnsTest {
         .bundle("v1", SettingsFixture.DEFAULTS.persona())
         .templates()
         .render(template, leads.findById("lauren").orElseThrow());
+  }
+
+  private BigDecimal turnCost(int turnNo) {
+    return jdbc.queryForObject(
+        "select cost_usd from turn where conversation_id = ? and turn_no = ?",
+        BigDecimal.class,
+        id,
+        turnNo);
   }
 
   private static ModerationVerdict verdict(double harassment, double threat, double selfHarm) {

@@ -36,6 +36,15 @@ public final class StopKeywords {
   }
 
   /**
+   * True when {@code text} repeats {@code previous} as {@link #normalise} reads both; a message of
+   * only punctuation and spaces repeats nothing.
+   */
+  public static boolean repeats(String text, String previous) {
+    String normalised = normalise(text);
+    return !normalised.isEmpty() && normalised.equals(normalise(previous));
+  }
+
+  /**
    * The text upper-cased with punctuation and spaces removed: what a keyword is matched on, and
    * what two messages are compared on when one may repeat the other.
    */

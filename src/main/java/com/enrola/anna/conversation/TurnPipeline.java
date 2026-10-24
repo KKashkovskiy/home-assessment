@@ -29,12 +29,14 @@ import org.springframework.stereotype.Component;
  * Moderation and each pre-guard step that ran write a GUARD event, pass or not. A STOP is never
  * screened, so it cannot wait on moderation. Without a key there is no moderation endpoint, so
  * every verdict is unavailable and the trace shows the gap; an unavailable verdict leaves self-harm
- * to the {@link SelfHarmPhrases}, loaded when this bean is built so a broken file fails boot.
+ * to the {@link SelfHarmPhrases}, loaded when this bean is built so a broken file fails boot, and
+ * after a hard end to the model when it can be called.
  */
 @Component
 class TurnPipeline {
 
   private final LeadRepository leads;
+  private final MessageRepository messages;
   private final BookingRepository bookings;
   private final PromptStore prompts;
   private final Suppressions suppressions;
@@ -49,6 +51,7 @@ class TurnPipeline {
 
   TurnPipeline(
       LeadRepository leads,
+      MessageRepository messages,
       BookingRepository bookings,
       PromptStore prompts,
       Suppressions suppressions,
@@ -60,6 +63,7 @@ class TurnPipeline {
       TraceLog trace,
       SettingsStore settings) {
     this.leads = leads;
+    this.messages = messages;
     this.bookings = bookings;
     this.prompts = prompts;
     this.suppressions = suppressions;
@@ -180,7 +184,7 @@ class TurnPipeline {
         new PreGuardPayload(decided ? ruling.outcome() : null));
   }
 
-  private static PreGuards.Standing standing(RunningTurn turn) {
+  private PreGuards.Standing standing(RunningTurn turn) {
     Conversation conversation = turn.conversation();
     return new PreGuards.Standing(
         conversation.endReason,
@@ -188,7 +192,8 @@ class TurnPipeline {
         safetySent(conversation),
         conversation.agentTurns,
         turn.bookedAtStart(),
-        conversation.handoffReason);
+        conversation.handoffReason,
+        messages.previousInbound(conversation.id, turn.turnNo()).orElse(""));
   }
 
   /** The caps are the turn's settings', measured against the spend so far. */
@@ -203,12 +208,15 @@ class TurnPipeline {
 
   /**
    * A model call goes ahead on PASS; an opt-out or a booking change is honoured, not a check that
-   * failed; every other outcome stops the model.
+   * failed, and a message left unscreened for self-harm is noted, not a detection; every other
+   * outcome stops the model.
    */
   private static TraceOutcome verdictOf(PreGuards.Outcome outcome) {
     return switch (outcome) {
-      case PreGuards.Proceed _, PreGuards.ClassifyOnly _ -> TraceOutcome.PASS;
-      case PreGuards.BookingChange _, PreGuards.Unsubscribe _ -> TraceOutcome.INFO;
+      case PreGuards.Proceed _, PreGuards.ClassifyOnly _, PreGuards.AskModelAboutSelfHarm _ ->
+          TraceOutcome.PASS;
+      case PreGuards.BookingChange _, PreGuards.Unsubscribe _, PreGuards.SelfHarmUnscreened _ ->
+          TraceOutcome.INFO;
       case PreGuards.SuppressRepeat _,
           PreGuards.EndAbusive _,
           PreGuards.SafetyReply _,
@@ -229,6 +237,11 @@ class TurnPipeline {
       case PreGuards.Unsubscribe unsubscribe -> outcomes.unsubscribe(turn, unsubscribe.reason());
       case PreGuards.EndAbusive abusive -> outcomes.endAbusive(turn, abusive.detector());
       case PreGuards.SafetyReply _ -> outcomes.safety(turn);
+      case PreGuards.AskModelAboutSelfHarm _ -> agentTurn.askAboutSelfHarm(turn);
+      case PreGuards.SelfHarmUnscreened unscreened ->
+          TurnOutcome.silent(
+              NoReply.ENDED_BEFORE,
+              "ended " + unscreened.endReason() + ", self-harm unscreened: " + unscreened.reason());
       case PreGuards.FixedClose close ->
           outcomes.fixedClose(turn, close.template(), close.reason());
       case PreGuards.HandoffNoModel handoff -> outcomes.handoffWithoutModel(turn, handoff.reason());

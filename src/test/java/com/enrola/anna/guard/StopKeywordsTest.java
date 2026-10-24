@@ -64,4 +64,17 @@ class StopKeywordsTest {
   void loneCancelIsTheKeywordAlone(String text, boolean lone) {
     assertThat(StopKeywords.isLoneCancel(text)).isEqualTo(lone);
   }
+
+  /** A repeat ignores case, punctuation and spaces; nothing repeats an empty message. */
+  @ParameterizedTest(name = "\"{0}\" after \"{1}\" -> {2}")
+  @CsvSource({
+    "'Hello?', 'hello', true",
+    "'are you there', 'Are you there?!', true",
+    "'are you there', 'are you here', false",
+    "'hi', '', false",
+    "'...', '?', false"
+  })
+  void repeatIgnoresCasePunctuationAndSpaces(String text, String previous, boolean repeats) {
+    assertThat(StopKeywords.repeats(text, previous)).isEqualTo(repeats);
+  }
 }

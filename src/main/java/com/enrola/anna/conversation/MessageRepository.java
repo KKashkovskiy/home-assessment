@@ -24,4 +24,10 @@ public interface MessageRepository extends CrudRepository<Message, String> {
       "select coalesce(max(turn_no), 0) from message"
           + " where conversation_id = :conversationId and direction = 'IN'")
   int lastClaimedTurn(String conversationId);
+
+  /** The text of the latest inbound row before turn {@code turnNo}; empty before the first. */
+  @Query(
+      "select text from message where conversation_id = :conversationId and direction = 'IN'"
+          + " and turn_no < :turnNo order by turn_no desc limit 1")
+  Optional<String> previousInbound(String conversationId, int turnNo);
 }

@@ -69,12 +69,9 @@ class TurnCounters {
     List<String> inbound =
         transcript.stream()
             .filter(message -> message.direction() == Direction.IN)
-            .map(message -> StopKeywords.normalise(message.text()))
+            .map(Message::text)
             .toList();
-    if (inbound.size() < 2) {
-      return false;
-    }
-    String latest = inbound.getLast();
-    return !latest.isEmpty() && latest.equals(inbound.get(inbound.size() - 2));
+    return inbound.size() >= 2
+        && StopKeywords.repeats(inbound.getLast(), inbound.get(inbound.size() - 2));
   }
 }
