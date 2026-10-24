@@ -39,7 +39,7 @@ Cheapest first. Steps 1 and 2 need no key; steps 5 to 7 need `EVAL_OPENAI_API_KE
 
 | # | Run | Expect | Cost | Total |
 |---|---|---|---|---|
-| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,408 tests | $0 | $0 |
+| 1 | `./mvnw verify` | `BUILD SUCCESS`, 1,426 tests | $0 | $0 |
 | 2 | `evals/run.sh --offline` | every scenario answered by stand-ins, code that plays the model: report verdict PASS, 52 of 52 | $0 | $0 |
 | 3 | Export `OPENAI_API_KEY`, `./mvnw spring-boot:run` | log `model check ok: gpt-5.1`, no banner | one small call | $0 |
 | 4 | Start Lauren, reply "all of the above" | an `LLM` reply under 320 characters; the inspector shows the guards, the model round and the decision | about $0.01 | $0.01 |
@@ -51,11 +51,11 @@ Cheapest first. Steps 1 and 2 need no key; steps 5 to 7 need `EVAL_OPENAI_API_KE
 Costs are gpt-5.1 at low effort, measured on keyed runs during the build (23 and 24 October 2026): 18 turn rows cost
 $0.0029 to $0.0135, median $0.0085, and took 2.3 to 24.1 seconds, median 5.3; a judge question costs about $0.002. Step
 6 is measured: the keyed core run on prompt v2 on 24 October 2026 exited 0 with verdict PASS, pass^k 100% (26 of 26) and
-every gate passing, for $0.27 plus $0.64 of judges, one trial each. The booking failures passed on v2 the same day: a
-slot taken between offer and booking in every core run, and a booking the calendar refuses (`turn-booking-fails`,
-outside the core set) in one keyed trial. Steps 7 and 8 multiply the turn figures out, because no full keyed story run
-was made. `evals/run.sh --dry-run --tag core` prints the harness's ceiling ($1.43, judges at most $0.99), above which a
-run is refused; each report header has the exact cost.
+every gate passing, for $0.27 plus $0.64 of judges, one trial each; a rerun on the final code matched it for $0.24 plus
+$0.57. The booking failures passed on v2 the same day: a slot taken between offer and booking in every core run, and a
+booking the calendar refuses (`turn-booking-fails`, outside the core set) in one keyed trial. Steps 7 and 8 multiply the
+turn figures out, because no full keyed story run was made. `evals/run.sh --dry-run --tag core` prints the harness's
+ceiling ($1.43, judges at most $0.99), above which a run is refused; each report header has the exact cost.
 
 ## Assumptions and defaults
 
