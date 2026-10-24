@@ -180,14 +180,15 @@ public final class OpenAiModelClient implements ModelClient {
   }
 
   /**
-   * What the next round must see again of a round that called tools: its reasoning, unchanged, and
-   * its function calls, each without the item id, which names nothing when nothing is stored.
+   * What the next round must see again of a round that called tools: its reasoning, unchanged as
+   * the API's own JSON, and its function calls, each without the item id, which names nothing when
+   * nothing is stored.
    */
   private static List<InputItem> replay(Response response) {
     List<InputItem> items = new ArrayList<>();
     for (ResponseOutputItem item : response.output()) {
       if (item.isReasoning()) {
-        items.add(new InputItem.Opaque(ResponseInputItem.ofReasoning(item.asReasoning())));
+        items.add(new InputItem.Opaque(sdkJson(ResponseInputItem.ofReasoning(item.asReasoning()))));
       } else if (item.isFunctionCall()) {
         ResponseFunctionToolCall call = item.asFunctionCall();
         items.add(new InputItem.FunctionCall(call.callId(), call.name(), call.arguments()));
@@ -213,8 +214,17 @@ public final class OpenAiModelClient implements ModelClient {
                   .callId(output.callId())
                   .output(output.outputJson())
                   .build());
-      case InputItem.Opaque opaque -> opaque.raw();
+      case InputItem.Opaque opaque -> fromSdkJson(opaque.json());
     };
+  }
+
+  /** Reads back an item {@link #replay} wrote; JSON the SDK cannot read is a bug, not a failure. */
+  private static ResponseInputItem fromSdkJson(String json) {
+    try {
+      return ObjectMappers.jsonMapper().readValue(json, ResponseInputItem.class);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("replayed item not readable", e);
+    }
   }
 
   private static ResponseInputItem message(EasyInputMessage.Role role, String text) {

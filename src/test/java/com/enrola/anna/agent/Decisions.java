@@ -1,8 +1,6 @@
 package com.enrola.anna.agent;
 
 import com.enrola.anna.agent.ModelResponse.Usage;
-import com.openai.models.responses.ResponseInputItem;
-import com.openai.models.responses.ResponseReasoningItem;
 import java.util.List;
 
 /** Decisions and responses for tests: an engaged, open decision unless a test says otherwise. */
@@ -39,9 +37,7 @@ public final class Decisions {
 
   /** The reasoning the scripted model replays before each of its function calls. */
   public static final InputItem.Opaque REASONING =
-      new InputItem.Opaque(
-          ResponseInputItem.ofReasoning(
-              ResponseReasoningItem.builder().id("rs-scripted").summary(List.of()).build()));
+      new InputItem.Opaque("{\"type\":\"reasoning\",\"id\":\"rs-scripted\",\"summary\":[]}");
 
   /** A round in which the model reasons, then calls the tool {@code name}. */
   public static ModelResponse.ToolCalls toolCall(String name, String argumentsJson) {

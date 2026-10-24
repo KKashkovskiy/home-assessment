@@ -76,15 +76,24 @@ class OpenAiModelClientTest {
       ]
       """;
 
+  /** A reasoning item as OpenAI sends it with tools offered: summarised, its content encrypted. */
+  static final String REASONING_ITEM =
+      """
+      {"type": "reasoning", "id": "rs1",
+       "summary": [{"type": "summary_text", "text": "Check Monday first."}],
+       "encrypted_content": "gAAAAABo+3kQ/x9zT1c2YW5uYQ=="}
+      """;
+
   static final String CALLS_AVAILABILITY =
       """
       "status": "completed",
       "output": [
-        {"type": "reasoning", "id": "rs1", "summary": [], "encrypted_content": "opaque"},
+        %s,
         {"type": "function_call", "id": "fc1", "call_id": "c1", "name": "get_availability",
          "arguments": "{\\"date_from\\":\\"2026-07-27\\"}", "status": "completed"}
       ]
-      """;
+      """
+          .formatted(REASONING_ITEM);
 
   final FakeOpenAi openAi = new FakeOpenAi();
 
@@ -225,13 +234,16 @@ class OpenAiModelClientTest {
                   .isInstanceOfSatisfying(
                       InputItem.Opaque.class,
                       reasoning ->
-                          assertThat(reasoning.raw().asReasoning().encryptedContent())
-                              .contains("opaque"));
+                          assertThat(JSON.readTree(reasoning.json()))
+                              .isEqualTo(JSON.readTree(REASONING_ITEM)));
               assertThat(asked.usage()).isEqualTo(new ModelResponse.Usage(100, 40, 20, 5));
             });
   }
 
-  /** The replayed items and the answer go out as the SDK's items, in order, with no item id. */
+  /**
+   * The replayed items and the answer go out as the SDK's items, in order: the reasoning exactly as
+   * OpenAI sent it, encrypted content included, and the call with no item id.
+   */
   @Test
   void answeredRoundIsSentBackInOrder() {
     openAi.answer(response(CALLS_AVAILABILITY)).answer(response(DECIDED));
@@ -245,8 +257,7 @@ class OpenAiModelClientTest {
     List<JsonNode> input =
         List.copyOf(JSON.readTree(response.rawRequestJson()).get("input").values());
     assertThat(input).hasSize(6);
-    assertThat(input.get(3).get("type").stringValue()).isEqualTo("reasoning");
-    assertThat(input.get(3).get("encrypted_content").stringValue()).isEqualTo("opaque");
+    assertThat(input.get(3)).isEqualTo(JSON.readTree(REASONING_ITEM));
     assertThat(input.get(4).get("type").stringValue()).isEqualTo("function_call");
     assertThat(input.get(4).get("call_id").stringValue()).isEqualTo("c1");
     assertThat(input.get(4).has("id")).isFalse();

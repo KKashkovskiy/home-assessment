@@ -1,11 +1,9 @@
 package com.enrola.anna.agent;
 
-import com.openai.models.responses.ResponseInputItem;
-
 /**
  * One item of a call's input, in order: the transcript as user and assistant text and, after a
  * round that called tools, that round's items replayed and each call's output. The client maps each
- * to the SDK's type.
+ * to the SDK's type; no SDK type crosses this boundary.
  */
 public sealed interface InputItem {
 
@@ -22,7 +20,8 @@ public sealed interface InputItem {
   record FunctionOutput(String callId, String outputJson) implements InputItem {}
 
   /**
-   * A reasoning item replayed unchanged, encrypted content included, so the next round keeps it.
+   * An item only the client reads: a reasoning item as the API's own JSON, encrypted content
+   * included, replayed unchanged so the next round keeps it.
    */
-  record Opaque(ResponseInputItem raw) implements InputItem {}
+  record Opaque(String json) implements InputItem {}
 }
