@@ -96,6 +96,10 @@ unpriced one means no judge, and the header says so. It answers PASS, FAIL, NOT_
 about does not happen there) or UNKNOWN. A PASS or FAIL needs a quote of at least eight characters found whole in
 the text of one SMS, with no label or marker; otherwise, and on a failed call, malformed output or a judge that
 throws, the answer is UNKNOWN with a note. UNKNOWN and NOT_APPLICABLE are fair answers, counted on their own.
+No prompt change can fix what the code wrote, so the transcript labels the opener, fixed replies, fixed closings
+and the fallback `Anna (fixed text):`, and a turn scenario's seeded history `Anna (scenario history):`. The judge
+never grades them and a quote from one is UNKNOWN; a turn rubric about a turn whose replies the code wrote is
+NOT_APPLICABLE without a call or budget, noted `code-written reply`.
 
 The answers never reach the gates or the exit code. The run prints `[judge] i/m <trial> <rubric> <verdict>` per
 question. The report gets a Judges line in its header (model, questions asked, their cost), a Judges column in the

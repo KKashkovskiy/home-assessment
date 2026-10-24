@@ -16,21 +16,27 @@ final class JudgeSection {
 
   private JudgeSection() {}
 
-  /** {@code advisory, model gpt-5.1 (effort low): 4 asked, $0.0077}, or why there is no judge. */
+  /**
+   * {@code advisory, model gpt-5.1 (effort low): 4 asked, 2 code-written, 1 skipped at the cap,
+   * $0.0077}, a count left out when zero, or why there is no judge.
+   */
   static String line(JudgeMode judges, RunSummary summary) {
     return switch (judges) {
-      case JudgeMode.Asked asked -> {
-        long skipped = summary.judgeResults().size() - summary.judgesAsked();
-        yield "%s: %d asked, $%s%s"
-            .formatted(
-                advisory(asked.model()),
-                summary.judgesAsked(),
-                ReportWriter.usd(summary.judgeCost()),
-                skipped > 0 ? ", " + skipped + " skipped at the cap" : "");
-      }
+      case JudgeMode.Asked asked ->
+          "%s: %d asked%s%s, $%s"
+              .formatted(
+                  advisory(asked.model()),
+                  summary.judgesAsked(),
+                  unlessZero(summary.judgesCodeWritten(), "code-written"),
+                  unlessZero(summary.judgesSkippedAtCap(), "skipped at the cap"),
+                  ReportWriter.usd(summary.judgeCost()));
       case JudgeMode.Estimated estimated -> advisory(estimated.model());
       case JudgeMode.None none -> "none (" + none.why() + ")";
     };
+  }
+
+  private static String unlessZero(long count, String what) {
+    return count > 0 ? ", " + count + " " + what : "";
   }
 
   /** The dry run's line: at most {@code questions}, costing {@code estimate}, or why none. */

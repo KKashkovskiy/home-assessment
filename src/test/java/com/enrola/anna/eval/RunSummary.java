@@ -66,10 +66,23 @@ record RunSummary(List<Trial> trials, int expected, GateResult gates) {
     return trials.stream().flatMap(trial -> trial.judges().stream()).toList();
   }
 
-  /** The judge questions really asked: every answer but those the cap skipped. */
+  /** The judge questions really asked: every answer but the code-written and the skipped. */
   long judgesAsked() {
     return judgeResults().stream()
         .filter(answer -> answer.verdict() != JudgeResult.Verdict.SKIPPED_BUDGET)
+        .filter(answer -> !answer.isCodeWritten())
+        .count();
+  }
+
+  /** The turn questions settled without a call because the code wrote the turn's replies. */
+  long judgesCodeWritten() {
+    return judgeResults().stream().filter(JudgeResult::isCodeWritten).count();
+  }
+
+  /** The judge questions the cap left no room to ask. */
+  long judgesSkippedAtCap() {
+    return judgeResults().stream()
+        .filter(answer -> answer.verdict() == JudgeResult.Verdict.SKIPPED_BUDGET)
         .count();
   }
 

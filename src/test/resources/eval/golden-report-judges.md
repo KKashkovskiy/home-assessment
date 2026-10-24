@@ -9,7 +9,7 @@
 | Clock | per scenario |
 | Scenarios | 3 selected (tag core) |
 | Trials per scenario | 2 |
-| Judges | advisory, model gpt-5.1 (effort low): 5 asked, $0.0150, 1 skipped at the cap |
+| Judges | advisory, model gpt-5.1 (effort low): 5 asked, 1 skipped at the cap, $0.0150 |
 | Trials | 6 run, 0 skipped, 0 crashed |
 | Pass^k | 67% (2 of 3 scenarios clean) |
 | Per-trial pass rate | 80% (38% to 96%, n=5) |

@@ -72,7 +72,8 @@ final class EvalRuns {
             (scenario, trial, question) ->
                 judge
                     .getObject()
-                    .ask(question.rubric(), reader.transcript(scenario, trial), question.turnNo())),
+                    .ask(question.rubric(), reader.transcript(scenario, trial), question.turnNo()),
+            (scenario, trial, turnNo) -> !reader.transcript(scenario, trial).modelReplied(turnNo)),
         budget,
         plan);
   }

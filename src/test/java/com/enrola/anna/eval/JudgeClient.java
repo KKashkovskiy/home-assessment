@@ -20,8 +20,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Anna's model bean: strict {@code judge_result} output at low reasoning effort, with the scenario
  * line and the transcript between markers as data. The answer is PASS, FAIL, NOT_APPLICABLE or
  * UNKNOWN. A PASS or FAIL needs a quote of at least {@value #MIN_QUOTE_CHARS} characters found
- * whole in one SMS of the transcript, or it becomes UNKNOWN with a note; so does malformed output
- * or a failed call, never PASS.
+ * whole in one SMS the lead or Anna's model wrote, or it becomes UNKNOWN with a note; so does
+ * malformed output or a failed call, never PASS.
  */
 final class JudgeClient {
 
@@ -152,8 +152,9 @@ final class JudgeClient {
 
   /**
    * Exact and case-sensitive within one SMS: a paraphrase, a retyped curly quote, a role label or
-   * marker, a span over two messages or a quote too short to prove anything makes the verdict
-   * UNKNOWN, with the claimed quote in the note for a human to decide.
+   * marker, a span over two messages, a quote from fixed text or scenario history, or one too short
+   * to prove anything makes the verdict UNKNOWN, with the claimed quote in the note for a human to
+   * decide.
    */
   private static Answer verified(
       Verdict verdict, String evidence, String reason, TrialTranscript transcript) {
@@ -161,7 +162,7 @@ final class JudgeClient {
       return new Answer(
           Verdict.UNKNOWN,
           null,
-          "evidence not found verbatim in one message; judge said %s with %s"
+          "evidence not found verbatim in one model or lead message; judge said %s with %s"
               .formatted(verdict, Checks.quote(evidence)));
     }
     return new Answer(verdict, evidence, reason);

@@ -2,6 +2,7 @@ package com.enrola.anna.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -43,6 +44,9 @@ class EvalRunTest {
       (scenario, trial, question) -> {
         throw new AssertionError("no judge in this run");
       };
+
+  /** The model wrote every reply unless a test says the code did. */
+  EvalRun.CodeWritten codeWritten = (scenario, trial, turnNo) -> false;
 
   /** Two turns at two calls and a story at fourteen: eighteen calls at $0.05. */
   @Test
@@ -248,6 +252,38 @@ class EvalRunTest {
         .containsExactly(JudgeResult.Verdict.PASS, JudgeResult.Verdict.SKIPPED_BUDGET);
   }
 
+  /**
+   * At $0.04 for the trial and $0.11 for the transcript answer of a $0.15 cap, the turn the code
+   * answered is still NOT_APPLICABLE, at no call and no cost, and the header counts it apart from
+   * the one question asked.
+   */
+  @Test
+  void aTurnTheCodeAnsweredIsNotApplicableWithoutACallEvenAtTheCap() throws IOException {
+    rubrics =
+        List.of(
+            ScenarioFixtures.rubric("J-ALL", Rubric.Scope.TRANSCRIPT, "core"),
+            ScenarioFixtures.rubric("J-TURN", Rubric.Scope.TURN, "core"));
+    codeWritten = (scenario, trial, turnNo) -> true;
+    judgedBy(
+        (scenario, trial, question) -> {
+          ran.add("judge " + question.rubric().id());
+          return ScenarioFixtures.answer(question, trial, JudgeResult.Verdict.PASS, "0.11");
+        });
+    EvalRun run = run(new RunMode.Keyed("eval"), "0.15", 1, this::replied, FIRST);
+
+    run.trial(run.begin().getFirst(), 1);
+    run.finish();
+
+    assertThat(ran).containsExactly("turn-first#1", "judge J-ALL");
+    assertThat(run.trials().getFirst().judges())
+        .extracting(JudgeResult::rubricId, JudgeResult::verdict, JudgeResult::note)
+        .containsExactly(
+            tuple("J-ALL", JudgeResult.Verdict.PASS, "scripted"),
+            tuple("J-TURN", JudgeResult.Verdict.NOT_APPLICABLE, "code-written reply"));
+    assertThat(Files.readString(dir.resolve("report.md")))
+        .contains("| Judges | advisory, model m (effort low): 1 asked, 1 code-written, $0.1100 |");
+  }
+
   /** The plan prices two turns at $0.20 against the cap, and their two judge questions apart. */
   @Test
   void dryRunEstimatesTheJudgesApart() throws IOException {
@@ -289,7 +325,7 @@ class EvalRunTest {
     String missing = "jdbc:h2:file:" + dir.resolve("no-app/anna");
     budget = new EvalBudget(new BigDecimal(cap), EvalBudgetTest.FIVE_CENTS, "m");
     return new EvalRun(
-        new EvalRun.Steps(turns, this::pass, judge),
+        new EvalRun.Steps(turns, this::pass, judge, codeWritten),
         budget,
         new RunPlan(header, List.of(selected), rubrics, dir, missing));
   }
@@ -304,6 +340,24 @@ class EvalRunTest {
 
   private Trial pass(Scenario scenario, int trialNo) {
     return ran(scenario, trialNo, TrialStatus.PASS);
+  }
+
+  /**
+   * A passed trial at $0.04 whose turn 1 sent a reply, so a turn rubric has a turn to ask about.
+   */
+  private Trial replied(Scenario scenario, int trialNo) {
+    ran.add(scenario.id() + "#" + trialNo);
+    return new Trial(
+        scenario.id(),
+        trialNo,
+        TrialStatus.PASS,
+        List.of(),
+        List.of(),
+        new BigDecimal("0.04"),
+        1,
+        "c-" + scenario.id(),
+        new Trial.TurnDetail(1, "Sorry, something went wrong on our side.", List.of()),
+        10);
   }
 
   private Trial failFirstTrial(Scenario scenario, int trialNo) {

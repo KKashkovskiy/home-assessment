@@ -14,4 +14,7 @@ Rules
 - evidence must be copied character for character from the text of one message: no "[turn n]", no "Anna:" or
   "Lead:", no marker, one sentence or less. For NOT_APPLICABLE and UNKNOWN, leave evidence empty.
 - Judge only the turn marked [UNDER JUDGEMENT] when one is marked; otherwise judge the whole transcript.
+- Messages labelled "Anna (fixed text):" were written by code and those labelled "Anna (scenario history):" by the
+  test scenario, not by Anna: never grade them and never quote them as evidence. If the question can only be
+  answered from them, answer NOT_APPLICABLE.
 - Do not grade tone, length or grammar unless the question asks about them.

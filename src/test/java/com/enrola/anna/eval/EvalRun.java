@@ -29,8 +29,23 @@ final class EvalRun {
     JudgeResult ask(Scenario scenario, Trial trial, Judging.Question question);
   }
 
-  /** What a run calls: a runner per kind for the trials, and the judge for their questions. */
-  record Steps(Runner<Scenario.Turn> turns, Runner<Scenario.Story> stories, Judge judge) {}
+  /**
+   * Whether the code wrote every reply of one turn of a finished trial: its transcript, or a fake.
+   */
+  @FunctionalInterface
+  interface CodeWritten {
+    boolean turn(Scenario scenario, Trial trial, int turnNo);
+  }
+
+  /**
+   * What a run calls: a runner per kind for the trials, the judge for their questions, and what
+   * tells it which turns the code answered, which no judge is asked about.
+   */
+  record Steps(
+      Runner<Scenario.Turn> turns,
+      Runner<Scenario.Story> stories,
+      Judge judge,
+      CodeWritten codeWritten) {}
 
   private final Steps steps;
   private final EvalBudget budget;
@@ -191,21 +206,25 @@ final class EvalRun {
   }
 
   /**
-   * The judge's answer while one more call fits the cap. A judge that throws is UNKNOWN: an
+   * The judge's answer while one more call fits the cap; a turn the code answered is settled first,
+   * at no cost, so the cap never skips it. A judge or transcript that throws is UNKNOWN: an
    * advisory question must never cost the run its report, row or exit code.
    */
   private JudgeResult answer(Scenario scenario, Trial trial, Judging.Question question) {
-    if (!budget.allowsAnotherJudgeCall(plan.header().judges().judgeModel())) {
-      return JudgeResult.skipped(question, trial);
-    }
-    JudgeResult answer;
     try {
-      answer = steps.judge().ask(scenario, trial, question);
+      if (question.turnNo() != null
+          && steps.codeWritten().turn(scenario, trial, question.turnNo())) {
+        return JudgeResult.codeWritten(question, trial);
+      }
+      if (!budget.allowsAnotherJudgeCall(plan.header().judges().judgeModel())) {
+        return JudgeResult.skipped(question, trial);
+      }
+      JudgeResult answer = steps.judge().ask(scenario, trial, question);
+      budget.spend(answer.costUsd());
+      return answer;
     } catch (RuntimeException e) {
-      answer = JudgeResult.crashed(question, trial, e);
+      return JudgeResult.crashed(question, trial, e);
     }
-    budget.spend(answer.costUsd());
-    return answer;
   }
 
   private void skipAll(TrialStatus reason) {

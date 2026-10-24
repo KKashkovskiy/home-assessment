@@ -3,10 +3,14 @@ package com.enrola.anna.eval;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-/** A run's verdict and exit code: the gates' bits, and 8 when no trial was judged. */
+/**
+ * A run's verdict and exit code: the gates' bits, and 8 when no trial was judged; and its judge
+ * answers counted apart: asked, code-written, skipped at the cap.
+ */
 class RunSummaryTest {
 
   static final Scenario.Turn CORE =
@@ -35,5 +39,25 @@ class RunSummaryTest {
 
     assertThat(summary.verdict()).isEqualTo(verdict);
     assertThat(summary.exitCode()).isEqualTo(exitCode);
+  }
+
+  /** Only a question a judge really answered counts as asked. */
+  @Test
+  void judgeAnswersCountApart() {
+    Trial trial = ScenarioFixtures.trial(CORE, 1, TrialStatus.PASS);
+    Rubric rubric = ScenarioFixtures.rubric("J-TURN", Rubric.Scope.TURN, "core");
+    Trial judged =
+        trial.withJudges(
+            List.of(
+                ScenarioFixtures.answer(
+                    new Judging.Question(rubric, 1), trial, JudgeResult.Verdict.PASS, "0.01"),
+                JudgeResult.codeWritten(new Judging.Question(rubric, 2), trial),
+                JudgeResult.skipped(new Judging.Question(rubric, 3), trial)));
+    var summary =
+        new RunSummary(List.of(judged), 1, Gates.evaluate(List.of(judged), List.of(CORE), 0.2));
+
+    assertThat(summary.judgesAsked()).isEqualTo(1);
+    assertThat(summary.judgesCodeWritten()).isEqualTo(1);
+    assertThat(summary.judgesSkippedAtCap()).isEqualTo(1);
   }
 }

@@ -2,6 +2,7 @@ package com.enrola.anna.eval;
 
 import static com.enrola.anna.eval.TrialTranscriptTest.LAUREN;
 import static com.enrola.anna.eval.TrialTranscriptTest.OFFER;
+import static com.enrola.anna.eval.TrialTranscriptTest.STORY;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.enrola.anna.agent.Decisions;
@@ -18,9 +19,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The judge over a scripted model: a quote found whole in one SMS keeps its verdict, anything else
- * is UNKNOWN with a note, NOT_APPLICABLE needs no quote, and the request carries the rubric, the
- * marked transcript as data and no phone or email.
+ * The judge over a scripted model: a quote found whole in one SMS the lead or the model wrote keeps
+ * its verdict, anything else is UNKNOWN with a note, NOT_APPLICABLE needs no quote, and the request
+ * carries the rubric, the marked transcript as data and no phone or email.
  */
 class JudgeClientTest {
 
@@ -71,8 +72,9 @@ class JudgeClientTest {
 
   /**
    * A paraphrase, another case, a retyped curly apostrophe, the question's text, a role label, a
-   * marker, a span over two messages, a quote under eight characters and no quote at all are not
-   * the words of one SMS, so the verdict cannot stand.
+   * marker, a span over two messages, the scenario's history, a quote under eight characters and no
+   * quote at all are not the words of one SMS Anna's model or the lead wrote, so the verdict cannot
+   * stand.
    */
   @ParameterizedTest
   @ValueSource(
@@ -85,6 +87,8 @@ class JudgeClientTest {
         "Anna: Makes sense.",
         "[turn 2] Lead: hospital mainly",
         "covered for?\n[turn 2] Lead: hospital mainly",
+        "Hi Lauren, it's Anna from Comparato.",
+        "Do you know what you're covered for?",
         "a",
         "Monday",
         ""
@@ -97,7 +101,8 @@ class JudgeClientTest {
     assertThat(result.verdict()).isEqualTo(Verdict.UNKNOWN);
     assertThat(result.evidence()).isNull();
     assertThat(result.note())
-        .startsWith("evidence not found verbatim in one message; judge said FAIL with");
+        .startsWith(
+            "evidence not found verbatim in one model or lead message; judge said FAIL with");
     assertThat(result.costUsd()).isPositive();
   }
 
@@ -112,6 +117,17 @@ class JudgeClientTest {
     assertThat(result.verdict()).isEqualTo(Verdict.valueOf(verdict));
     assertThat(result.evidence()).isNull();
     assertThat(result.note()).isEqualTo("the lead asked nothing");
+  }
+
+  /** A closing the code wrote is no evidence about Anna's model, however exact the quote. */
+  @Test
+  void aQuoteFromFixedTextIsUnknown() {
+    answers("PASS", "I'll leave it there for now.", "closes politely");
+
+    JudgeResult result = judge.ask(RETURN, STORY, null);
+
+    assertThat(result.verdict()).isEqualTo(Verdict.UNKNOWN);
+    assertThat(result.evidence()).isNull();
   }
 
   /** Output the schema should have prevented is read as no answer, never as a PASS. */
