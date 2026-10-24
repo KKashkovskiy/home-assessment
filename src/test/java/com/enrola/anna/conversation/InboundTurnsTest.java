@@ -502,6 +502,23 @@ class InboundTurnsTest {
       assertThat(model.calls()).isEmpty();
     }
 
+    /** After a hard end the model is not asked, so with moderation down the phrases decide. */
+    @Test
+    void selfHarmPhraseAfterStopWhileModerationIsDown() throws Exception {
+      turns.handle(id, "STOP", "p1");
+      moderation.enqueue(ModerationVerdict.UNAVAILABLE);
+
+      TurnResponse response = turns.handle(id, "honestly I just want to end my life", "p2");
+
+      assertThat(response.reply()).isEqualTo(rendered(Template.SELF_HARM_SAFETY));
+      assertThat(response.handoffReason()).isEqualTo(HandoffReason.SELF_HARM);
+      JSONAssert.assertEquals(
+          "{\"outcome\":\"SafetyReply\",\"detail\":{\"detector\":\"SELF_HARM_PHRASES\"}}",
+          guardPayload("self-harm"),
+          JSONCompareMode.STRICT);
+      assertThat(model.calls()).isEmpty();
+    }
+
     @Test
     void unavailableModerationLetsTheModelAnswer() {
       moderation.enqueue(ModerationVerdict.UNAVAILABLE);

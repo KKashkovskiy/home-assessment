@@ -96,7 +96,8 @@ meant, the script stage, facts for the advisor, and the reply.
 
 Everything that must hold is code around that call. Before it, `guard/PreGuards` picks at most one outcome, in the order
 its Javadoc gives: a lone CANCEL after a booking hands the call to a person; a whole-message STOP opts the phone out
-with no model call; a self-harm signal from OpenAI's moderation sends the Lifeline (Australian crisis line) message
+with no model call; a self-harm signal from OpenAI's moderation, or from a short list of clear self-harm phrases
+(`guards/self-harm-phrases.yaml`) when moderation does not answer, sends the Lifeline (Australian crisis line) message
 once; a hard end (opted out, abusive, safety, off-topic limit) or a console reset stays silent; abuse ends the
 conversation in silence; no key, a spent cap or a prompt version that does not load hands the turn to a person; a soft
 end (booked, declined, turn cap, handed off) allows one short closing reply; the turn cap sends a fixed close. After it,
@@ -236,7 +237,8 @@ request and response stay in `data/` until a retention period is set.
 
 ## Known issues
 
-- **Self-harm after a hard end while moderation is down gets silence**, because the model is not asked there.
+- **After a hard end with moderation down, only the phrase list is checked**; other wording gets silence, because the
+  model is not asked there.
 
 ## Where AI was used
 
@@ -258,7 +260,7 @@ src/main/java/com/enrola/anna/
   lead/           leads, phones, opt-out suppressions, the seeded three
   conversation/   the turn: InboundTurns, TurnPipeline, StateRules, the rows and trace events
   agent/          the model: decision vocabulary, the tool loop, the OpenAI client, prices
-  guard/          pre-guards, moderation, reply checks, the deny-list, STOP keywords
+  guard/          pre-guards, moderation, self-harm phrases, reply checks, the deny-list, STOP keywords
   scheduling/     lead zones, the fake calendar, the two tools, bookings
   prompt/         prompt versions, templates, GSM-7
   config/         the runtime settings record and its store

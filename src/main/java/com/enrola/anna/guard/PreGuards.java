@@ -14,7 +14,8 @@ import java.util.Optional;
  * Everything decided before the main model call, in an order that is the specification and the
  * order of {@link Step}: a lone CANCEL after a booking first, because it asks to change the call,
  * not to stop the messages; a STOP keyword second, because it works with no model and overrides
- * everything; self-harm third, because the safety template goes out once whatever the state;
+ * everything; self-harm third, because the safety template goes out once whatever the state, read
+ * from the {@link SelfHarmPhrases} when moderation did not answer and from its score otherwise;
  * silence after a hard end or a console reset fourth, so nothing more is spent on that
  * conversation; abuse fifth, so a distressed lead who swears gets Lifeline, not a cut-off; then
  * whether the model can be called at all; then the soft-terminal classify-only path; then the turn
@@ -56,7 +57,7 @@ public class PreGuards {
   public record EndAbusive(Detector detector) implements Outcome {}
 
   /** Send the fixed safety template, once per conversation. */
-  public record SafetyReply() implements Outcome {}
+  public record SafetyReply(Detector detector) implements Outcome {}
 
   /** End with {@code reason} and send {@code template} as the one closing reply. */
   public record FixedClose(Template template, EndReason reason) implements Outcome {}
@@ -82,7 +83,10 @@ public class PreGuards {
     BOOKING_CHANGE,
     /** A STOP keyword from a conversation not already unsubscribed. */
     STOP_KEYWORD,
-    /** A self-harm score at its threshold, before the safety template has gone out. */
+    /**
+     * Before the safety template has gone out, a self-harm score at its threshold or, when
+     * moderation did not answer, a self-harm phrase.
+     */
     SELF_HARM,
     /** A hard end, answered with silence. */
     TERMINAL_CHECK,
@@ -119,10 +123,14 @@ public class PreGuards {
     }
   }
 
-  /** What recognised abuse: the moderation endpoint, or the model's own ABUSIVE intent. */
+  /**
+   * What recognised abuse or self-harm: the moderation endpoint, the model's own intent, or, for
+   * self-harm when moderation did not answer, the {@link SelfHarmPhrases}.
+   */
   public enum Detector {
     MODERATION,
-    MODEL
+    MODEL,
+    SELF_HARM_PHRASES
   }
 
   /**
@@ -161,10 +169,13 @@ public class PreGuards {
 
   private final Settings.Limits limits;
   private final Settings.Moderation thresholds;
+  private final SelfHarmPhrases selfHarmPhrases;
 
-  public PreGuards(Settings.Limits limits, Settings.Moderation thresholds) {
+  public PreGuards(
+      Settings.Limits limits, Settings.Moderation thresholds, SelfHarmPhrases selfHarmPhrases) {
     this.limits = limits;
     this.thresholds = thresholds;
+    this.selfHarmPhrases = selfHarmPhrases;
   }
 
   /** One turn's inputs, as {@link #decide} took them. */
@@ -200,8 +211,7 @@ public class PreGuards {
           when(
               StopKeywords.isStop(inbound.text()) && standing.endReason() != EndReason.UNSUBSCRIBED,
               new Unsubscribe(Suppression.Reason.KEYWORD));
-      case SELF_HARM ->
-          when(selfHarm(inbound.verdict()) && !standing.safetySent(), new SafetyReply());
+      case SELF_HARM -> standing.safetySent() ? Optional.empty() : selfHarm(inbound);
       case TERMINAL_CHECK ->
           when(standing.endReason().isHardTerminal(), new Silence(standing.endReason()));
       case RESET -> when(standing.reset(), new Reset());
@@ -241,8 +251,15 @@ public class PreGuards {
     return applies ? Optional.of(outcome) : Optional.empty();
   }
 
-  private boolean selfHarm(ModerationVerdict verdict) {
-    return verdict.available() && verdict.selfHarm() >= thresholds.modSelfHarm();
+  /** An answering endpoint's verdict stands; only when it did not answer do the phrases decide. */
+  private Optional<Outcome> selfHarm(Inbound inbound) {
+    ModerationVerdict verdict = inbound.verdict();
+    if (verdict.available()) {
+      return when(
+          verdict.selfHarm() >= thresholds.modSelfHarm(), new SafetyReply(Detector.MODERATION));
+    }
+    return when(
+        selfHarmPhrases.matches(inbound.text()), new SafetyReply(Detector.SELF_HARM_PHRASES));
   }
 
   private boolean abusive(ModerationVerdict verdict) {

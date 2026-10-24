@@ -8,6 +8,7 @@ import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.guard.ModerationClient;
 import com.enrola.anna.guard.ModerationVerdict;
 import com.enrola.anna.guard.PreGuards;
+import com.enrola.anna.guard.SelfHarmPhrases;
 import com.enrola.anna.guard.StopKeywords;
 import com.enrola.anna.guard.Suppressions;
 import com.enrola.anna.lead.Lead;
@@ -27,7 +28,8 @@ import org.springframework.stereotype.Component;
  * moderation screens the inbound, the {@link PreGuards} pick one outcome, and the outcome runs.
  * Moderation and each pre-guard step that ran write a GUARD event, pass or not. A STOP is never
  * screened, so it cannot wait on moderation. Without a key there is no moderation endpoint, so
- * every verdict is unavailable and the trace shows the gap.
+ * every verdict is unavailable and the trace shows the gap; an unavailable verdict leaves self-harm
+ * to the {@link SelfHarmPhrases}, loaded when this bean is built so a broken file fails boot.
  */
 @Component
 class TurnPipeline {
@@ -43,6 +45,7 @@ class TurnPipeline {
   private final GuardOutcomes outcomes;
   private final TraceLog trace;
   private final SettingsStore settings;
+  private final SelfHarmPhrases selfHarmPhrases = SelfHarmPhrases.bundled();
 
   TurnPipeline(
       LeadRepository leads,
@@ -161,7 +164,7 @@ class TurnPipeline {
   private PreGuards.Outcome decide(RunningTurn turn, ModerationVerdict verdict) {
     Settings current = turn.settings();
     PreGuards.Ruling ruling =
-        new PreGuards(current.limits(), current.moderation())
+        new PreGuards(current.limits(), current.moderation(), selfHarmPhrases)
             .decide(turn.inbound().text(), verdict, standing(turn), modelAccess(turn));
     ruling.evaluated().forEach(step -> traceStep(turn, ruling, step));
     return ruling.outcome();

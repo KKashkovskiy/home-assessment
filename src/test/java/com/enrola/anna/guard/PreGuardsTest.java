@@ -25,13 +25,18 @@ import org.junit.jupiter.params.provider.MethodSource;
 class PreGuardsTest {
 
   static final PreGuards GUARDS =
-      new PreGuards(SettingsFixture.DEFAULTS.limits(), SettingsFixture.DEFAULTS.moderation());
+      new PreGuards(
+          SettingsFixture.DEFAULTS.limits(),
+          SettingsFixture.DEFAULTS.moderation(),
+          SelfHarmPhrases.bundled());
   static final Standing OPEN =
       new Standing(EndReason.NONE, false, false, 0, false, HandoffReason.NONE);
   static final Standing BOOKED =
       new Standing(EndReason.BOOKED, false, false, 4, true, HandoffReason.NONE);
   static final Standing RESET =
       new Standing(EndReason.NONE, true, false, 1, false, HandoffReason.NONE);
+  static final Standing ABUSIVE =
+      new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE);
   static final ModelAccess MODEL = new ModelAccess(true, true, false, false);
   static final ModerationVerdict CLEAN = ScriptedModerationClient.CLEAN;
   static final ModerationVerdict SELF_HARM = scores(0, 0, 0.9);
@@ -63,10 +68,10 @@ class PreGuardsTest {
             "self-harm over a hard end",
             "...",
             SELF_HARM,
-            new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE),
+            ABUSIVE,
             MODEL,
             Step.SELF_HARM,
-            new PreGuards.SafetyReply()),
+            new PreGuards.SafetyReply(Detector.MODERATION)),
         Arguments.of(
             "STOP over a reset",
             "STOP",
@@ -82,7 +87,7 @@ class PreGuardsTest {
             RESET,
             MODEL,
             Step.SELF_HARM,
-            new PreGuards.SafetyReply()),
+            new PreGuards.SafetyReply(Detector.MODERATION)),
         Arguments.of(
             "a reset over abuse",
             "...",
@@ -95,7 +100,7 @@ class PreGuardsTest {
             "a hard end over abuse",
             "...",
             HARASSMENT,
-            new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE),
+            ABUSIVE,
             MODEL,
             Step.TERMINAL_CHECK,
             new PreGuards.Silence(EndReason.ABUSIVE)),
@@ -233,7 +238,7 @@ class PreGuardsTest {
                         EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE),
                     MODEL)
                 .outcome())
-        .isEqualTo(new PreGuards.SafetyReply());
+        .isEqualTo(new PreGuards.SafetyReply(Detector.MODERATION));
     assertThat(
             GUARDS
                 .decide(
@@ -243,6 +248,58 @@ class PreGuardsTest {
                     MODEL)
                 .outcome())
         .isEqualTo(new PreGuards.Silence(EndReason.UNSUBSCRIBED));
+  }
+
+  /**
+   * The phrases decide self-harm only when moderation did not answer, in the step's place and once;
+   * an answering endpoint's verdict stands.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("selfHarmWithoutModeration")
+  void selfHarmPhrasesStandInForModeration(
+      String rule, String text, ModerationVerdict verdict, Standing standing, Outcome expected) {
+    assertThat(GUARDS.decide(text, verdict, standing, MODEL).outcome()).isEqualTo(expected);
+  }
+
+  static Stream<Arguments> selfHarmWithoutModeration() {
+    String phrase = "honestly I just want to end my life";
+    return Stream.of(
+        Arguments.of(
+            "moderation down, a phrase after a hard end",
+            phrase,
+            ModerationVerdict.UNAVAILABLE,
+            ABUSIVE,
+            new PreGuards.SafetyReply(Detector.SELF_HARM_PHRASES)),
+        Arguments.of(
+            "moderation down, figurative speech after a hard end",
+            "this premium is killing me",
+            ModerationVerdict.UNAVAILABLE,
+            ABUSIVE,
+            new PreGuards.Silence(EndReason.ABUSIVE)),
+        Arguments.of(
+            "moderation down, figurative speech on an open conversation",
+            "I'd die for cheaper cover",
+            ModerationVerdict.UNAVAILABLE,
+            OPEN,
+            new PreGuards.Proceed()),
+        Arguments.of(
+            "moderation clean, a phrase on an open conversation",
+            phrase,
+            CLEAN,
+            OPEN,
+            new PreGuards.Proceed()),
+        Arguments.of(
+            "moderation clean, a phrase after a hard end",
+            phrase,
+            CLEAN,
+            ABUSIVE,
+            new PreGuards.Silence(EndReason.ABUSIVE)),
+        Arguments.of(
+            "moderation down, a phrase after the safety template went out",
+            phrase,
+            ModerationVerdict.UNAVAILABLE,
+            new Standing(EndReason.ABUSIVE, false, true, 2, false, HandoffReason.NONE),
+            new PreGuards.Silence(EndReason.ABUSIVE)));
   }
 
   /** Each threshold is reached at its value; only an answering endpoint's scores count. */

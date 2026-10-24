@@ -1,0 +1,78 @@
+# Clear self-harm phrases, read by SelfHarmPhrases. The self-harm pre-guard uses them only when the moderation
+# endpoint did not answer; an answering endpoint's verdict always stands.
+# Each rule: Java regexes (case-insensitive, found anywhere in the message; any one matches) and examples. Loading
+# fails, and the app does not boot, when a pattern does not compile, a rule has fewer than two examples of a kind, a
+# match example is not matched by its rule, a no_match example is matched by any rule, or a pattern none of its match
+# examples exercises. Apostrophes are written ['’] so a phone's curly one matches too.
+# Narrow on purpose, so figurative speech common in insurance chats does not match, but with no negation handling:
+# "I don't want to kill myself" matches. A match sends the safety template, and on an open conversation also ends it
+# SAFETY and hands it to a person; that is the price of a needless match, and a missed one leaves a lead in crisis
+# with silence.
+rules:
+  - id: suicide
+    patterns:
+      - "\\bsuicid(?:e|al)\\b(?!\\s+(?:clause|exclusion))"
+      - "\\bkil+\\s+my\\s*self\\b"
+      - "\\b(?:end|ending|take|taking)\\s+my\\s+(?:own\\s+)?life\\b(?!\\s+(?:insurance|cover|policy|savings))"
+      - "\\bend(?:ing)?\\s+it\\s+all\\b"
+      - "\\bunalive\\b"
+      - "\\bhang\\s+myself\\b"
+      - "\\b(?:gonna|going\\s+to|might|wanna|want\\s+to)\\s+kms\\b"
+    match:
+      - "I've been thinking about suicide"
+      - "is suicide covered?"
+      - "I'm going to kill myself"
+      - "gonna kil my self tonight"
+      - "I want to end my life"
+      - "might just take my own life"
+      - "I've been thinking about ending it all"
+      - "I want to unalive myself"
+      - "I'm going to hang myself"
+      - "honestly I might kms"
+    no_match:
+      - "this premium is killing me"
+      - "I'm killing myself at work to pay this"
+      - "kill the policy, I'm done with Bupa"
+      - "I want to end my life insurance policy"
+      - "can I take my life cover with me when I switch?"
+      - "does the policy have a suicide clause?"
+      - "whats the suicide exclusion period"
+      - "I drive 20 kms to the hospital"
+  - id: want-to-die
+    patterns:
+      - "\\b(?:want(?:ed)?\\s+to|wanna)\\s+(?:die|be\\s+dead)\\b"
+      - "\\b(?:don['’]?t|do\\s+not)\\s+want\\s+to\\s+be\\s+alive\\b"
+      - "\\bdon['’]?t\\s+(?:want\\s+to|wanna)\\s+live\\s+any\\s*more\\b"
+      - "\\bwish\\s+I\\s+(?:was|were)\\s+dead\\b"
+      - "\\bbetter\\s+off\\s+(?:dead|without\\s+me)\\b"
+      - "\\b(?:not|isn['’]?t)\\s+worth\\s+living\\b"
+    match:
+      - "I just want to die"
+      - "honestly i wanna be dead"
+      - "i dont want to be alive anymore"
+      - "i don’t want to be alive anymore"
+      - "I don't wanna live any more"
+      - "I wish I was dead"
+      - "everyone would be better off without me"
+      - "life isn't worth living"
+    no_match:
+      - "I'd die for cheaper cover"
+      - "dying to know what the excess is"
+      - "my phone's about to die, text me later"
+      - "I'd be better off without this policy"
+      - "that plan is not worth the money"
+  - id: self-harm
+    patterns:
+      - "\\bself[-\\s]?harm"
+      - "\\b(?:want(?:ing)?\\s+to|wanna|going\\s+to|gonna|urge\\s+to|thoughts?\\s+of)\\s+(?:hurt(?:ing)?|harm(?:ing)?|cut(?:ting)?)\\s+myself\\b"
+    match:
+      - "I've been self harming again"
+      - "self-harm is the only thing that helps"
+      - "I keep wanting to hurt myself"
+      - "having thoughts of harming myself"
+    no_match:
+      - "I hurt myself playing footy, does extras cover physio?"
+      - "I'm cutting myself a break this month"
+      - "I cut my hours so I need cheaper cover"
+      - "the excess is hurting my budget"
+      - "is overdose cover included in the hospital policy?"
