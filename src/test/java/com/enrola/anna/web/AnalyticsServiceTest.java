@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.within;
 
+import com.enrola.anna.guard.PreGuards;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
@@ -60,6 +62,41 @@ class AnalyticsServiceTest extends AnalyticsFixture {
         .filteredOn(guard -> guard.block() + guard.override() > 0)
         .isNotEmpty()
         .allMatch(AnalyticsView.GuardRow::routing);
+  }
+
+  /**
+   * Every pre-guard step is its own routing row: thirteen model turns pass them all, Kim's STOP
+   * passes the booking change before the keyword decides, and a message after it is silenced by the
+   * terminal check without counting as a violation.
+   */
+  @Test
+  void preGuardStepsAreRoutingRowsByName() {
+    inbound.handle(c4, "hello?", null);
+
+    AnalyticsView view = view();
+
+    assertFraction(view.kpi("violations"), 1, 6);
+    List<String> steps =
+        Arrays.stream(PreGuards.Step.values()).map(PreGuards.Step::traceName).toList();
+    assertThat(view.guards())
+        .filteredOn(guard -> steps.contains(guard.name()))
+        .extracting(
+            AnalyticsView.GuardRow::name,
+            AnalyticsView.GuardRow::pass,
+            AnalyticsView.GuardRow::block,
+            AnalyticsView.GuardRow::routing)
+        .containsExactlyInAnyOrder(
+            tuple("booking-change", 15L, 0L, true),
+            tuple("stop-keyword", 14L, 0L, true),
+            tuple("self-harm", 14L, 0L, true),
+            tuple("terminal-check", 13L, 1L, true),
+            tuple("reset", 13L, 0L, true),
+            tuple("abuse-score", 13L, 0L, true),
+            tuple("pinned-prompt", 13L, 0L, true),
+            tuple("model-key", 13L, 0L, true),
+            tuple("spend-cap", 13L, 0L, true),
+            tuple("soft-end", 13L, 0L, true),
+            tuple("turn-cap", 13L, 0L, true));
   }
 
   @Test

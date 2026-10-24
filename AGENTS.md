@@ -88,7 +88,8 @@ compile and every warning fails the build, so a suppression needs a reason. It r
 
 Common extensions, and the file each starts in:
 
-- A pre-guard: a case in `guard/PreGuards.Outcome` and a branch in its order; a row in `PreGuardsTest`.
+- A pre-guard: a `guard/PreGuards.Step` in its place in the order, its case in `check`, and an `Outcome` if
+  none fits; a row in `PreGuardsTest`.
 - A reply check: `guard/ReplyGuards.validate` and a `guard/ReplyCheck` constant; a row in `ReplyGuardsTest`.
 - An Analytics figure: one more `Kpi` in `web/AnalyticsKpis` and its tile in `templates/fragments/kpis.html`.
 - A scenario: the Evals page, or `evals/scenarios/<id>.yaml` by hand; `ScenarioLoaderTest` loads every file.

@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
  * The steps of one claimed turn, in order: the settings are read, once, and the prompt version the
  * conversation pinned is loaded; a phone that opted out leaves the conversation unsubscribed,
  * moderation screens the inbound, the {@link PreGuards} pick one outcome, and the outcome runs.
- * Moderation and the pre-guards write a GUARD event every turn, pass or not. A STOP is never
+ * Moderation and each pre-guard step that ran write a GUARD event, pass or not. A STOP is never
  * screened, so it cannot wait on moderation. Without a key there is no moderation endpoint, so
  * every verdict is unavailable and the trace shows the gap.
  */
@@ -160,15 +160,21 @@ class TurnPipeline {
 
   private PreGuards.Outcome decide(RunningTurn turn, ModerationVerdict verdict) {
     Settings current = turn.settings();
-    PreGuards.Outcome outcome =
+    PreGuards.Ruling ruling =
         new PreGuards(current.limits(), current.moderation())
             .decide(turn.inbound().text(), verdict, standing(turn), modelAccess(turn));
+    ruling.evaluated().forEach(step -> traceStep(turn, ruling, step));
+    return ruling.outcome();
+  }
+
+  /** A step that passed the turn on is a PASS with no outcome; the deciding one carries it. */
+  private void traceStep(RunningTurn turn, PreGuards.Ruling ruling, PreGuards.Step step) {
+    boolean decided = ruling.decidedBy(step);
     guard(
         turn,
-        RoutingGuards.PRE_GUARDS,
-        verdictOf(outcome),
-        Map.of("outcome", outcome.getClass().getSimpleName(), "detail", outcome));
-    return outcome;
+        step.traceName(),
+        decided ? verdictOf(ruling.outcome()) : TraceOutcome.PASS,
+        new PreGuardPayload(decided ? ruling.outcome() : null));
   }
 
   private static PreGuards.Standing standing(RunningTurn turn) {

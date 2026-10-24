@@ -158,7 +158,7 @@ class PinnedVersionTest {
 
   /**
    * Nothing sent, no model call, a human asked to look, the conversation open, and the trace says
-   * which version failed and that the pre-guards kept the model out.
+   * which version failed and that the pinned-prompt step kept the model out.
    */
   private void assertHandedOffWithoutPrompt(TurnResponse response, String detail) {
     assertThat(response.reply()).isNull();
@@ -169,7 +169,7 @@ class PinnedVersionTest {
     assertThat(
             jdbc.queryForObject(
                 "select payload_json from trace_event"
-                    + " where conversation_id = ? and name = 'pre-guards'",
+                    + " where conversation_id = ? and name = 'pinned-prompt'",
                 String.class,
                 laurenOnV1))
         .contains("\"reason\":\"PROMPT\"");

@@ -10,8 +10,10 @@ import com.enrola.anna.guard.PreGuards.ModelAccess;
 import com.enrola.anna.guard.PreGuards.NoModelReason;
 import com.enrola.anna.guard.PreGuards.Outcome;
 import com.enrola.anna.guard.PreGuards.Standing;
+import com.enrola.anna.guard.PreGuards.Step;
 import com.enrola.anna.lead.Suppression;
 import com.enrola.anna.prompt.Template;
+import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -35,7 +37,10 @@ class PreGuardsTest {
   static final ModerationVerdict SELF_HARM = scores(0, 0, 0.9);
   static final ModerationVerdict HARASSMENT = scores(0.9, 0, 0);
 
-  /** Each row matches two adjacent checks; the earlier one decides. */
+  /**
+   * Each row matches two adjacent checks; the earlier one decides, last of the steps that ran, and
+   * none after it runs.
+   */
   static Stream<Arguments> precedence() {
     return Stream.of(
         Arguments.of(
@@ -44,6 +49,7 @@ class PreGuardsTest {
             CLEAN,
             BOOKED,
             MODEL,
+            Step.BOOKING_CHANGE,
             new PreGuards.BookingChange()),
         Arguments.of(
             "STOP over self-harm",
@@ -51,6 +57,7 @@ class PreGuardsTest {
             SELF_HARM,
             OPEN,
             MODEL,
+            Step.STOP_KEYWORD,
             new PreGuards.Unsubscribe(Suppression.Reason.KEYWORD)),
         Arguments.of(
             "self-harm over a hard end",
@@ -58,6 +65,7 @@ class PreGuardsTest {
             SELF_HARM,
             new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE),
             MODEL,
+            Step.SELF_HARM,
             new PreGuards.SafetyReply()),
         Arguments.of(
             "STOP over a reset",
@@ -65,16 +73,31 @@ class PreGuardsTest {
             CLEAN,
             RESET,
             MODEL,
+            Step.STOP_KEYWORD,
             new PreGuards.Unsubscribe(Suppression.Reason.KEYWORD)),
         Arguments.of(
-            "self-harm over a reset", "...", SELF_HARM, RESET, MODEL, new PreGuards.SafetyReply()),
-        Arguments.of("a reset over abuse", "...", HARASSMENT, RESET, MODEL, new PreGuards.Reset()),
+            "self-harm over a reset",
+            "...",
+            SELF_HARM,
+            RESET,
+            MODEL,
+            Step.SELF_HARM,
+            new PreGuards.SafetyReply()),
+        Arguments.of(
+            "a reset over abuse",
+            "...",
+            HARASSMENT,
+            RESET,
+            MODEL,
+            Step.RESET,
+            new PreGuards.Reset()),
         Arguments.of(
             "a hard end over abuse",
             "...",
             HARASSMENT,
             new Standing(EndReason.ABUSIVE, false, false, 1, false, HandoffReason.NONE),
             MODEL,
+            Step.TERMINAL_CHECK,
             new PreGuards.Silence(EndReason.ABUSIVE)),
         Arguments.of(
             "abuse over a prompt that does not load",
@@ -82,6 +105,7 @@ class PreGuardsTest {
             HARASSMENT,
             OPEN,
             new ModelAccess(false, false, true, true),
+            Step.ABUSE_SCORE,
             new PreGuards.EndAbusive(Detector.MODERATION)),
         Arguments.of(
             "a prompt that does not load over no model",
@@ -89,6 +113,7 @@ class PreGuardsTest {
             CLEAN,
             OPEN,
             new ModelAccess(false, false, true, true),
+            Step.PINNED_PROMPT,
             new PreGuards.HandoffNoModel(NoModelReason.PROMPT)),
         Arguments.of(
             "no model over the app cap",
@@ -96,6 +121,7 @@ class PreGuardsTest {
             CLEAN,
             OPEN,
             new ModelAccess(true, false, true, true),
+            Step.MODEL_KEY,
             new PreGuards.HandoffNoModel(NoModelReason.NO_MODEL)),
         Arguments.of(
             "the app cap over the conversation cap",
@@ -103,6 +129,7 @@ class PreGuardsTest {
             CLEAN,
             OPEN,
             new ModelAccess(true, true, true, true),
+            Step.SPEND_CAP,
             new PreGuards.HandoffNoModel(NoModelReason.SPEND_CAP_APP)),
         Arguments.of(
             "the conversation cap over a soft end",
@@ -110,6 +137,7 @@ class PreGuardsTest {
             CLEAN,
             new Standing(EndReason.DECLINED, false, false, 1, false, HandoffReason.NONE),
             new ModelAccess(true, true, false, true),
+            Step.SPEND_CAP,
             new PreGuards.HandoffNoModel(NoModelReason.SPEND_CAP_CONVERSATION)),
         Arguments.of(
             "a soft end over the turn cap",
@@ -117,6 +145,7 @@ class PreGuardsTest {
             CLEAN,
             new Standing(EndReason.DECLINED, false, false, 15, false, HandoffReason.NONE),
             MODEL,
+            Step.SOFT_END,
             new PreGuards.ClassifyOnly()),
         Arguments.of(
             "the turn cap over a model call",
@@ -124,6 +153,7 @@ class PreGuardsTest {
             CLEAN,
             new Standing(EndReason.NONE, false, false, 15, false, HandoffReason.NONE),
             MODEL,
+            Step.TURN_CAP,
             new PreGuards.FixedClose(Template.MAX_TURNS_CLOSE, EndReason.MAX_TURNS)));
   }
 
@@ -135,8 +165,14 @@ class PreGuardsTest {
       ModerationVerdict verdict,
       Standing standing,
       ModelAccess model,
+      Step decider,
       Outcome expected) {
-    assertThat(GUARDS.decide(text, verdict, standing, model)).isEqualTo(expected);
+    PreGuards.Ruling ruling = GUARDS.decide(text, verdict, standing, model);
+    List<Step> order = List.of(Step.values());
+
+    assertThat(ruling.outcome()).isEqualTo(expected);
+    assertThat(ruling.evaluated()).isEqualTo(order.subList(0, order.indexOf(decider) + 1));
+    assertThat(ruling.decidedBy(decider)).isTrue();
   }
 
   @Test
@@ -144,7 +180,7 @@ class PreGuardsTest {
     Standing unsubscribed =
         new Standing(EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE);
 
-    assertThat(GUARDS.decide("STOP", CLEAN, unsubscribed, MODEL))
+    assertThat(GUARDS.decide("STOP", CLEAN, unsubscribed, MODEL).outcome())
         .isEqualTo(new PreGuards.Silence(EndReason.UNSUBSCRIBED));
   }
 
@@ -154,7 +190,7 @@ class PreGuardsTest {
   @ParameterizedTest(name = "{0}")
   @MethodSource("cancelWithoutAChangeableBooking")
   void cancelOtherwiseIsAStop(String state, Standing standing, Outcome expected) {
-    assertThat(GUARDS.decide("CANCEL", CLEAN, standing, MODEL)).isEqualTo(expected);
+    assertThat(GUARDS.decide("CANCEL", CLEAN, standing, MODEL).outcome()).isEqualTo(expected);
   }
 
   static Stream<Arguments> cancelWithoutAChangeableBooking() {
@@ -176,31 +212,36 @@ class PreGuardsTest {
     Standing changing =
         new Standing(EndReason.BOOKED, false, false, 5, true, HandoffReason.RESCHEDULE);
 
-    assertThat(GUARDS.decide("CANCEL", CLEAN, changing, MODEL))
+    assertThat(GUARDS.decide("CANCEL", CLEAN, changing, MODEL).outcome())
         .isEqualTo(new PreGuards.SuppressRepeat());
   }
 
   @Test
   void bookingWithProseGoesToTheModel() {
-    assertThat(GUARDS.decide("Cancel that, Thursday's better", CLEAN, BOOKED, MODEL))
+    assertThat(GUARDS.decide("Cancel that, Thursday's better", CLEAN, BOOKED, MODEL).outcome())
         .isEqualTo(new PreGuards.ClassifyOnly());
   }
 
   @Test
   void selfHarmAfterAHardEndOnlyOnce() {
     assertThat(
-            GUARDS.decide(
-                "...",
-                SELF_HARM,
-                new Standing(EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE),
-                MODEL))
+            GUARDS
+                .decide(
+                    "...",
+                    SELF_HARM,
+                    new Standing(
+                        EndReason.UNSUBSCRIBED, false, false, 1, false, HandoffReason.NONE),
+                    MODEL)
+                .outcome())
         .isEqualTo(new PreGuards.SafetyReply());
     assertThat(
-            GUARDS.decide(
-                "...",
-                SELF_HARM,
-                new Standing(EndReason.UNSUBSCRIBED, false, true, 2, false, HandoffReason.NONE),
-                MODEL))
+            GUARDS
+                .decide(
+                    "...",
+                    SELF_HARM,
+                    new Standing(EndReason.UNSUBSCRIBED, false, true, 2, false, HandoffReason.NONE),
+                    MODEL)
+                .outcome())
         .isEqualTo(new PreGuards.Silence(EndReason.UNSUBSCRIBED));
   }
 
@@ -217,19 +258,37 @@ class PreGuardsTest {
       double harassment, double threat, double selfHarm, boolean available, String expected) {
     ModerationVerdict verdict = new ModerationVerdict(harassment, threat, selfHarm, available);
 
-    assertThat(GUARDS.decide("...", verdict, OPEN, MODEL).getClass().getSimpleName())
+    assertThat(GUARDS.decide("...", verdict, OPEN, MODEL).outcome().getClass().getSimpleName())
         .isEqualTo(expected);
   }
 
+  /** A turn that reaches the model ran every step, each a pass, in this order. */
   @Test
-  void turnBelowTheCapProceeds() {
-    assertThat(
-            GUARDS.decide(
-                "and?",
-                CLEAN,
-                new Standing(EndReason.NONE, false, false, 14, false, HandoffReason.NONE),
-                MODEL))
-        .isEqualTo(new PreGuards.Proceed());
+  void turnBelowTheCapProceedsPastEveryStep() {
+    PreGuards.Ruling ruling =
+        GUARDS.decide(
+            "and?",
+            CLEAN,
+            new Standing(EndReason.NONE, false, false, 14, false, HandoffReason.NONE),
+            MODEL);
+
+    assertThat(ruling.outcome()).isEqualTo(new PreGuards.Proceed());
+    assertThat(ruling.evaluated())
+        .extracting(Step::traceName)
+        .isEqualTo(
+            List.of(
+                "booking-change",
+                "stop-keyword",
+                "self-harm",
+                "terminal-check",
+                "reset",
+                "abuse-score",
+                "pinned-prompt",
+                "model-key",
+                "spend-cap",
+                "soft-end",
+                "turn-cap"));
+    assertThat(ruling.evaluated()).noneMatch(ruling::decidedBy);
   }
 
   private static ModerationVerdict scores(double harassment, double threat, double selfHarm) {

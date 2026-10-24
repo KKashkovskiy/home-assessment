@@ -2,9 +2,11 @@ package com.enrola.anna.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.enrola.anna.agent.EndReason;
 import com.enrola.anna.agent.Flag;
 import com.enrola.anna.agent.ModelResponse;
 import com.enrola.anna.agent.Stage;
+import com.enrola.anna.guard.PreGuards;
 import com.enrola.anna.scheduling.ToolResult;
 import java.math.BigDecimal;
 import java.util.EnumSet;
@@ -71,6 +73,25 @@ class TracePayloadsTest {
     assertThat(JSON.readValue(JSON.writeValueAsString(error), ErrorPayload.class)).isEqualTo(error);
     assertThat(JSON.readValue(JSON.writeValueAsString(override), OverridePayload.class))
         .isEqualTo(override);
+  }
+
+  /**
+   * A deciding step's outcome reads back as the record it was, under the shape the combined row of
+   * older turns had too; a passing step's payload is empty.
+   */
+  @Test
+  void preGuardStepReadsBackAsItsOutcome() {
+    PreGuardPayload decided = new PreGuardPayload(new PreGuards.Silence(EndReason.ABUSIVE));
+    PreGuardPayload passed = new PreGuardPayload(null);
+
+    String written = JSON.writeValueAsString(decided);
+
+    assertThat(JSON.readTree(written))
+        .isEqualTo(
+            JSON.readTree("{\"outcome\":\"Silence\",\"detail\":{\"end_reason\":\"ABUSIVE\"}}"));
+    assertThat(JSON.readValue(written, PreGuardPayload.class)).isEqualTo(decided);
+    assertThat(JSON.writeValueAsString(passed)).isEqualTo("{}");
+    assertThat(JSON.readValue("{}", PreGuardPayload.class)).isEqualTo(passed);
   }
 
   /** The writer's values are enums, sets and counts; they read back as their wire values. */

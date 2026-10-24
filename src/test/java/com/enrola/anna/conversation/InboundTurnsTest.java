@@ -24,6 +24,7 @@ import com.enrola.anna.config.SettingsDefaults;
 import com.enrola.anna.config.SettingsFixture;
 import com.enrola.anna.config.SettingsStore;
 import com.enrola.anna.guard.ModerationVerdict;
+import com.enrola.anna.guard.PreGuards;
 import com.enrola.anna.guard.ReplyCheck;
 import com.enrola.anna.guard.ScriptedModerationClient;
 import com.enrola.anna.lead.LeadRepository;
@@ -168,9 +169,9 @@ class InboundTurnsTest {
         .containsEntry("COST_USD", new BigDecimal("0.002250"))
         .containsEntry("LATENCY_MS", 5);
     assertThat(turn.get("DECISION_JSON").toString()).contains("\"stage\":\"PREFERENCE\"");
-    List<String> expected =
-        new ArrayList<>(
-            List.of("GUARD moderation PASS", "GUARD pre-guards PASS", "MODEL_CALL decide INFO"));
+    List<String> expected = new ArrayList<>(List.of("GUARD moderation PASS"));
+    expected.addAll(preGuardSteps("PASS"));
+    expected.add("MODEL_CALL decide INFO");
     expected.addAll(replyChecks("PASS"));
     expected.add("STATE_DIFF state INFO");
     assertThat(trace()).containsExactlyElementsOf(expected);
@@ -454,11 +455,12 @@ class InboundTurnsTest {
       assertThat(guardPayload("abuse")).isEqualTo("{\"detector\":\"MODERATION\"}");
       assertThat(turns.handle(id, "hello?", "p2").reply()).isNull();
       assertThat(trace())
-          .filteredOn(event -> event.startsWith("GUARD pre-guards"))
-          .containsExactly("GUARD pre-guards BLOCK", "GUARD pre-guards BLOCK");
+          .filteredOn(event -> event.endsWith(" BLOCK"))
+          .containsExactly(
+              "GUARD abuse-score BLOCK", "GUARD abuse BLOCK", "GUARD terminal-check BLOCK");
       JSONAssert.assertEquals(
           "{\"outcome\":\"Silence\",\"detail\":{\"end_reason\":\"ABUSIVE\"}}",
-          guardPayload("pre-guards"),
+          guardPayload("terminal-check"),
           JSONCompareMode.STRICT);
       assertThat(model.calls()).isEmpty();
     }
@@ -496,7 +498,7 @@ class InboundTurnsTest {
       assertThat(response.handoffReason()).isEqualTo(HandoffReason.SELF_HARM);
       assertThat(again.reply()).isNull();
       assertThat(again.flags()).doesNotContain(Flag.LOOP_SUPPRESSED);
-      assertThat(guardPayload("pre-guards")).contains("Silence");
+      assertThat(guardPayload("terminal-check")).contains("Silence");
       assertThat(model.calls()).isEmpty();
     }
 
@@ -1566,7 +1568,7 @@ class InboundTurnsTest {
       assertThat(response.handoffReason()).isEqualTo(HandoffReason.ERROR);
       assertThat(response.conversationEnded()).isFalse();
       assertThat(model.calls()).hasSize(1);
-      assertThat(guardPayload("pre-guards")).contains("SPEND_CAP_CONVERSATION");
+      assertThat(guardPayload("spend-cap")).contains("SPEND_CAP_CONVERSATION");
     }
 
     @Test
@@ -1580,7 +1582,7 @@ class InboundTurnsTest {
 
       assertThat(response.handoffReason()).isEqualTo(HandoffReason.ERROR);
       assertThat(model.calls()).hasSize(1);
-      assertThat(guardPayload("pre-guards")).contains("SPEND_CAP_APP");
+      assertThat(guardPayload("spend-cap")).contains("SPEND_CAP_APP");
     }
   }
 
@@ -1691,7 +1693,7 @@ class InboundTurnsTest {
 
       assertThat(second.handoffReason()).isEqualTo(HandoffReason.ERROR);
       assertThat(model.calls()).hasSize(1);
-      assertThat(guardPayload("pre-guards")).contains("SPEND_CAP_CONVERSATION");
+      assertThat(guardPayload("spend-cap")).contains("SPEND_CAP_CONVERSATION");
     }
 
     @Test
@@ -1744,6 +1746,13 @@ class InboundTurnsTest {
   private String turnStatus() {
     return jdbc.queryForObject(
         "select status from turn where conversation_id = ? and turn_no = 1", String.class, id);
+  }
+
+  /** One trace line per pre-guard step, in order, each with {@code outcome}. */
+  private static List<String> preGuardSteps(String outcome) {
+    return Arrays.stream(PreGuards.Step.values())
+        .map(step -> "GUARD " + step.traceName() + " " + outcome)
+        .toList();
   }
 
   /** One trace line per reply check, in order, each with {@code outcome}. */

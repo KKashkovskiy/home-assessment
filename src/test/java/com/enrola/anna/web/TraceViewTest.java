@@ -17,9 +17,12 @@ import com.enrola.anna.conversation.ModelRoundPayload.Call;
 import com.enrola.anna.conversation.ModelRoundPayload.Status;
 import com.enrola.anna.conversation.TraceOutcome;
 import com.enrola.anna.conversation.TurnStatus;
+import com.enrola.anna.guard.PreGuards;
 import com.enrola.anna.scheduling.SchedulingTools;
 import com.enrola.anna.scheduling.ToolResult;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,9 +98,15 @@ class TraceViewTest extends ConsoleFixture {
         .extracting(SchedulingTools.OfferedSlot::localLabel)
         .contains("Mon 27 Jul 12:00 PM AEST");
     assertThat(offer.preGuards())
-        .extracting(TurnView.GuardRow::name, TurnView.GuardRow::outcome)
-        .containsExactly(
-            tuple("moderation", TraceOutcome.PASS), tuple("pre-guards", TraceOutcome.PASS));
+        .extracting(TurnView.GuardRow::name)
+        .containsExactlyElementsOf(
+            Stream.concat(
+                    Stream.of("moderation"),
+                    Arrays.stream(PreGuards.Step.values()).map(PreGuards.Step::traceName))
+                .toList());
+    assertThat(offer.preGuards()).allMatch(guard -> guard.outcome() == TraceOutcome.PASS);
+    assertThat(offer.preGuards().subList(1, offer.preGuards().size()))
+        .allMatch(step -> step.detail().isEmpty());
     assertThat(offer.postGuards())
         .filteredOn(guard -> guard.name().equals("length"))
         .extracting(TurnView.GuardRow::outcome, TurnView.GuardRow::detail)
@@ -167,11 +176,33 @@ class TraceViewTest extends ConsoleFixture {
     assertThat(turn.postGuards()).isEmpty();
     assertThat(turn.providerMessageId()).isNull();
     assertThat(turn.preGuards())
-        .extracting(TurnView.GuardRow::outcome, TurnView.GuardRow::detail)
+        .extracting(TurnView.GuardRow::name, TurnView.GuardRow::outcome, TurnView.GuardRow::detail)
         .containsExactly(
-            tuple(TraceOutcome.INFO, "skipped: STOP"),
-            tuple(TraceOutcome.INFO, "outcome: Unsubscribe, reason: KEYWORD"));
+            tuple("moderation", TraceOutcome.INFO, "skipped: STOP"),
+            tuple("booking-change", TraceOutcome.PASS, ""),
+            tuple("stop-keyword", TraceOutcome.INFO, "outcome: Unsubscribe, reason: KEYWORD"));
     assertThat(turn.diff()).contains(new TurnView.DiffRow("ended", "false", "true", null));
+  }
+
+  /** A turn traced before each pre-guard step had its own row shows its one combined row. */
+  @Test
+  void combinedPreGuardsRowOfAnOlderTurnStillShows() {
+    send("STOP");
+    jdbc.update(
+        "delete from trace_event where conversation_id = ? and name = 'booking-change'", id);
+    jdbc.update(
+        "update trace_event set name = 'pre-guards',"
+            + " payload_json = '{\"outcome\":\"Unsubscribe\",\"detail\":{\"reason\":\"KEYWORD\"}}'"
+            + " where conversation_id = ? and name = 'stop-keyword'",
+        id);
+
+    TurnView turn = traces.turns(id, true).getFirst();
+
+    assertThat(turn.preGuards())
+        .extracting(TurnView.GuardRow::name, TurnView.GuardRow::outcome, TurnView.GuardRow::detail)
+        .containsExactly(
+            tuple("moderation", TraceOutcome.INFO, "skipped: STOP"),
+            tuple("pre-guards", TraceOutcome.INFO, "outcome: Unsubscribe, reason: KEYWORD"));
   }
 
   @Test
