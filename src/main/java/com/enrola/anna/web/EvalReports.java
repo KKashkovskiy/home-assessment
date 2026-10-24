@@ -110,6 +110,14 @@ public class EvalReports {
     public Duration duration() {
       return finishedAt == null ? null : Duration.between(startedAt, finishedAt);
     }
+
+    /**
+     * Whether the page reads and links this run: not one started straight from Maven under an id of
+     * its own, which {@link #RUN_ID} does not take.
+     */
+    public boolean opens() {
+      return id.matches(RUN_ID);
+    }
   }
 
   /**
@@ -247,11 +255,12 @@ public class EvalReports {
   /**
    * Each scenario's result in the newest of {@code rows} that ran it: FAIL when a trial failed,
    * else PASS when one passed, else the first trial's status. A trial that never ran says nothing
-   * of the scenario, so a run that skipped it leaves its older result.
+   * of the scenario, so a run that skipped it leaves its older result; nor does a run the page does
+   * not {@linkplain RunRow#opens open}.
    */
   public Map<String, String> lastResults(List<RunRow> rows) {
     Map<String, String> results = new HashMap<>();
-    for (RunRow row : rows) {
+    for (RunRow row : rows.stream().filter(RunRow::opens).toList()) {
       trials(row.id()).orElse(List.of()).stream()
           .filter(trial -> !trial.skipped())
           .collect(

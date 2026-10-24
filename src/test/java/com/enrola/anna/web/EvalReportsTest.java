@@ -184,6 +184,18 @@ class EvalReportsTest extends ConsoleFixture {
     assertThat(reports.lastResults(reports.recent(10))).containsExactly(entry("turn-a", "PASS"));
   }
 
+  /** A run started straight from Maven names itself; the page neither reads nor links it. */
+  @Test
+  void aRunUnderAnIdOfItsOwnIsPassedOver() throws IOException {
+    String own = RUN + "-story-troll";
+    insertRow(own, "2026-10-22T11:00:00Z", "FAIL", false);
+    insertRow(OLD, "2026-10-22T09:00:00Z", "PASS", true);
+    write(OLD, "trials.jsonl", OLD_LINE.replace("SKIPPED_KIND", "PASS"));
+
+    assertThat(reports.recent(10)).extracting(RunRow::opens).containsExactly(false, true);
+    assertThat(reports.lastResults(reports.recent(10))).containsExactly(entry("turn-a", "PASS"));
+  }
+
   private void insertRow(String id, String started, String verdict, boolean green) {
     jdbc.update(
         "INSERT INTO eval_run (id, started_at, finished_at, prompt_version, model, offline,"
