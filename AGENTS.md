@@ -81,6 +81,8 @@ compile and every warning fails the build, so a suppression needs a reason. It r
 
 ## Where things go
 
+- `README.md` covers setup and launch only. Design notes, assumptions, trade-offs and business context go in
+  `docs/design.md`.
 - Prompt bundles (prompt, knowledge pack, templates, schema, tools) go in `src/main/resources/prompts/vN/`, seeded
   into the `prompt_version` table at boot; `prompts/CHANGELOG.md` says what changed in each and how a saved version
   gets back into the repo.
