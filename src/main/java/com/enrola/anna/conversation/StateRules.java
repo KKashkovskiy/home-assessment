@@ -60,7 +60,7 @@ final class StateRules {
   /**
    * Hands off SELF_HARM and ends SAFETY. After a hard-terminal end the end reason stays and SAFETY
    * is only added to the history, but the handoff happens even on an unsubscribed conversation, the
-   * one place that ignores the opt-out: safety beats silence.
+   * one place that ignores the opt-out, because safety outranks the opt-out's silence.
    */
   static void safety(Conversation conversation, Instant at) {
     if (conversation.endReason.isHardTerminal()) {

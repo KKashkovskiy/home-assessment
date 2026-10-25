@@ -9,11 +9,11 @@ import java.util.stream.Collectors;
 
 /**
  * One run of the suite. {@link #begin} decides by the run's mode what runs: nothing for a dry run
- * or without a key, everything offline, and with a key only an estimate within the cap. Each {@link
- * #trial} runs one trial of one scenario under the budget and prints the progress line the Evals
- * page parses; {@link #finish} writes the plan, or the gates, then asks the judges while the cap
- * has room, then writes the report files and the {@code eval_run} row. The CLI entry point and the
- * offline test both run through it.
+ * or without a key, everything offline, and with a key everything only if the estimate is within
+ * the cap. Each {@link #trial} runs one trial of one scenario under the budget and prints the
+ * progress line the Evals page parses; {@link #finish} writes the plan, or the gates, then asks the
+ * judges while the cap has room, then writes the report files and the {@code eval_run} row. The CLI
+ * entry point and the offline test both run through it.
  */
 final class EvalRun {
 
@@ -105,9 +105,9 @@ final class EvalRun {
   }
 
   /**
-   * A dry run's plan, exit code 0; otherwise the gates, from the checks alone, then the judges,
-   * then the row and the report, which says when the row failed, and the run's exit code for the
-   * build to fail on.
+   * Writes a dry run's plan and returns 0. Otherwise settles the gates from the checks alone, asks
+   * the judges, writes the row and the report, which says when the row failed, and returns the
+   * run's exit code for the build to fail on.
    */
   int finish() {
     GateResult gates = Gates.evaluate(trials, plan.selected(), plan.header().validityThreshold());

@@ -10,9 +10,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 /**
- * The YAML is the test data: the shipped file passes the self-test the Evals page runs before it
- * saves one, which decides every example of every rule and fails a rule with fewer than two
- * examples of each kind or a pattern no match example exercises.
+ * The YAML is the test data. The shipped file passes the self-test the Evals page runs before it
+ * saves one: the self-test decides every example of every rule, and fails a rule with fewer than
+ * two examples of each kind or a pattern no match example exercises.
  */
 class DenyListTest {
 

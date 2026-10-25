@@ -8,8 +8,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 /**
- * A run's verdict and exit code: the gates' bits, and 8 when no trial was judged; and its judge
- * answers counted apart: asked, code-written, skipped at the cap.
+ * A run's verdict and exit code, which is the gates' bits plus 8 when no trial was judged, and its
+ * judge answers counted apart: asked, code-written, skipped at the cap.
  */
 class RunSummaryTest {
 

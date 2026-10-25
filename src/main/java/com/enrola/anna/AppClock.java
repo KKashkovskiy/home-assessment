@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 /**
  * The one source of "now": the system clock, or an instant it stands still at. It follows the
  * settings' clock from boot and after each save that changes it, and a scenario can stop or release
- * it directly, so a conversation replays on a known day; a save that leaves the settings' clock as
+ * it directly, so a conversation replays on a known day. A save that leaves the settings' clock as
  * it was leaves this one alone. Unlike a {@link Clock} bean it can change while the app runs.
  * Nothing else in the app reads the time.
  */

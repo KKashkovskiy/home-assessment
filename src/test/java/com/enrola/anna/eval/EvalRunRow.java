@@ -14,11 +14,11 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 /**
  * Records a finished run as one {@code eval_run} row in the app database, not the run's own, since
- * the Analytics compare pane reads it there: trial and scenario counts, the statistics, the gates
- * and the report path, never transcripts, and the judges' model and cost apart from the run's. A
- * statistic with nothing judged is null. It connects as the app does, with no user and, through
- * H2's auto-server, while the app runs; it never creates or migrates that database, so one the app
- * has not opened since {@code V6} gets no row, and the report says why.
+ * the Analytics compare pane reads it there. The row holds trial and scenario counts, the
+ * statistics, the gates and the report path, never transcripts, and the judges' model and cost
+ * apart from the run's. A statistic with nothing judged is null. It connects as the app does, with
+ * no user and, through H2's auto-server, while the app runs. It never creates or migrates that
+ * database, so one the app has not opened since {@code V6} gets no row, and the report says why.
  */
 final class EvalRunRow {
 

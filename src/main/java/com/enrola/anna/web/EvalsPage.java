@@ -101,7 +101,7 @@ public record EvalsPage(
       return running() && (state.progress() == null || state.progress().done() == 0);
     }
 
-    /** The full output as one text, a line a line. */
+    /** The full output as one text, its lines joined by newlines. */
     public String log() {
       return String.join("\n", state.lines());
     }

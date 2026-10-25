@@ -60,8 +60,8 @@ public class TraceLog {
   }
 
   /**
-   * At once outside a transaction; inside one, once it commits, so a listener never hears of a row
-   * that is not there yet, nor of one rolled back.
+   * Publishes at once outside a transaction, and inside one once it commits, so a listener never
+   * hears of a row that is not there yet, nor of one rolled back.
    */
   private void publishOnceStored(TraceEvent event) {
     if (!TransactionSynchronizationManager.isSynchronizationActive()) {

@@ -137,8 +137,8 @@ class PromptSeedTest {
   }
 
   /**
-   * The repo is the owner's: a directory with any finding, a warning a save would let through
-   * included, stops the boot instead of seeding.
+   * The repo is the owner's to fix: a directory with any finding, a warning a save would let
+   * through included, stops the boot instead of seeding.
    */
   @Test
   void repoVersionWithAWarningFailsTheSeed() {

@@ -789,8 +789,8 @@
     monacoLoading.then(onReady).catch(() => { /* the textareas stay, and still save */ });
   }
 
-  /* The server replays the run's kept lines when the stream opens, so the log starts over then; a 204, once the run
-     ended or with the live log off, closes the stream, and the page's parts are fetched as when it finishes. */
+  /* The server replays the run's kept lines when the stream opens, so the log starts over then. A 204, sent once the
+     run has ended or when the live log is off, closes the stream, and the page's parts are fetched as when it finishes. */
   let liveRun = null;
 
   function followRun() {

@@ -20,9 +20,9 @@ import org.springframework.validation.annotation.Validated;
 /**
  * The {@code anna.*} groups of {@code application.yml} as written there, bound once at boot. {@link
  * #settings()} is the first {@link Settings}, which {@code data/settings.json} may override and
- * {@link SettingsValidation} checks. The rest is client wiring a save cannot change, the timeouts,
- * retries and strict model check, read once when the clients are built; a missing one fails startup
- * here.
+ * {@link SettingsValidation} checks. The rest is client wiring a save cannot change (the timeouts,
+ * retries and strict model check), read once when the clients are built; a missing one fails
+ * startup here.
  */
 @Validated
 @ConfigurationProperties(prefix = "anna")

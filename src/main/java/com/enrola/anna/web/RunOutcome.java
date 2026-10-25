@@ -2,11 +2,11 @@ package com.enrola.anna.web;
 
 /**
  * How an eval run ended, read from what it left behind, never from Maven's exit, which is only 0 or
- * 1: a failed gate's bit in its {@code exit-code} file makes it red, else its nothing-judged bit
- * skipped, whatever else is there; otherwise its verdict decides, from its {@code eval_run} row or,
- * without one, its report's header; a report with neither a verdict nor an exit code is a dry run's
- * plan; anything else, exit code 0 alone included, is an error the log explains. A cancelled run is
- * cancelled whatever it wrote.
+ * 1. A failed gate's bit in its {@code exit-code} file makes it red, else its nothing-judged bit
+ * makes it skipped, whatever else is there. Otherwise its verdict decides, from its {@code
+ * eval_run} row or, without one, its report's header. A report with neither a verdict nor an exit
+ * code is a dry run's plan. Anything else, exit code 0 alone included, is an error the log
+ * explains. A cancelled run is cancelled whatever it wrote.
  */
 public enum RunOutcome {
   GREEN,

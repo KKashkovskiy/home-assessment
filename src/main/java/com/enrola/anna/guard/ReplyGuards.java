@@ -43,7 +43,9 @@ public final class ReplyGuards {
 
   private final DenyList denyList = DenyList.bundled();
 
-  /** A reply as it would be sent, normalised, and what it broke; it may be sent when nothing. */
+  /**
+   * A reply as it would be sent, normalised, and what it broke; it may be sent if it broke nothing.
+   */
   public record Checked(String text, List<Violation> violations) {
 
     public boolean passed() {

@@ -12,17 +12,26 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Everything decided before the main model call, in an order that is the specification and the
- * order of {@link Step}: a lone CANCEL after a booking first, because it asks to change the call,
- * not to stop the messages; a STOP keyword second, because it works with no model and overrides
- * everything; self-harm third, because the safety template goes out once whatever the state, read
- * from moderation's score, from the {@link SelfHarmPhrases} when moderation did not answer, and
- * after a hard end, where no model turn follows to classify the message, from the model when
- * neither found it; silence after a hard end or a console reset fourth, so that conversation gets
- * no model turn; abuse fifth, so a distressed lead who swears gets Lifeline, not a cut-off; then
- * whether the model can be called at all; then the soft-terminal classify-only path; then the turn
- * cap. Pure: built for one turn from the limits and thresholds that turn read, it reads plain
- * values and returns a {@link Ruling}, and the caller acts on it.
+ * Everything decided before the main model call. The order below is the specification, and it is
+ * the order of {@link Step}:
+ *
+ * <ol>
+ *   <li>A lone CANCEL after a booking, because it asks to change the call, not to stop the
+ *       messages.
+ *   <li>A STOP keyword, because it works with no model and overrides everything.
+ *   <li>Self-harm, because the safety template goes out once whatever the state. It is read from
+ *       moderation's score, or from the {@link SelfHarmPhrases} when moderation did not answer.
+ *       After a hard end, where no model turn follows to classify the message, it is read from the
+ *       model when neither found it.
+ *   <li>Silence after a hard end or a console reset, so that conversation gets no model turn.
+ *   <li>Abuse, so a distressed lead who swears gets Lifeline, not a cut-off.
+ *   <li>Whether the model can be called at all.
+ *   <li>The soft-terminal classify-only path.
+ *   <li>The turn cap.
+ * </ol>
+ *
+ * <p>The class is pure. It is built for one turn from the limits and thresholds that turn read,
+ * reads plain values and returns a {@link Ruling}; the caller acts on it.
  */
 public class PreGuards {
 
@@ -101,8 +110,9 @@ public class PreGuards {
     /** A STOP keyword from a conversation not already unsubscribed. */
     STOP_KEYWORD,
     /**
-     * Before the safety template has gone out, a self-harm score at its threshold or, when
-     * moderation did not answer, a self-harm phrase, or after a hard end the model to ask.
+     * Before the safety template has gone out: a self-harm score at its threshold, a self-harm
+     * phrase when moderation did not answer, or, after a hard end, a message to ask the model
+     * about.
      */
     SELF_HARM,
     /** A hard end, answered with silence. */

@@ -58,7 +58,10 @@ class MigrationTest {
     }
   }
 
-  /** The case that used to need data/ deleted: the turn reads the booking table V1 adds. */
+  /**
+   * A data/ from before bookings boots without being deleted: the turn reads the booking table V1
+   * adds.
+   */
   @Test
   void dataFromBeforeBookingsGetsWhatItLacks() throws SQLException {
     oldDatabase(
@@ -80,8 +83,8 @@ class MigrationTest {
   }
 
   /**
-   * The last schema.sql, which V1 is, taken back by {@code olderSchema}, then one lead and one open
-   * conversation.
+   * V1, which is the last schema.sql, taken back to an older schema by {@code olderSchema}, then
+   * one lead and one open conversation.
    */
   private void oldDatabase(String... olderSchema) throws SQLException {
     try (Connection connection = DriverManager.getConnection(url());

@@ -28,9 +28,9 @@ import org.springframework.stereotype.Component;
  * moderation screens the inbound, the {@link PreGuards} pick one outcome, and the outcome runs.
  * Moderation and each pre-guard step that ran write a GUARD event, pass or not. A STOP is never
  * screened, so it cannot wait on moderation. Without a key there is no moderation endpoint, so
- * every verdict is unavailable and the trace shows the gap; an unavailable verdict leaves self-harm
- * to the {@link SelfHarmPhrases}, loaded when this bean is built so a broken file fails boot, and
- * after a hard end to the model when it can be called.
+ * every verdict is unavailable and the trace shows the gap. An unavailable verdict leaves self-harm
+ * to the {@link SelfHarmPhrases}, loaded when this bean is built so a broken file fails boot, and,
+ * after a hard end, to the model when it can be called.
  */
 @Component
 class TurnPipeline {
@@ -128,7 +128,8 @@ class TurnPipeline {
 
   /**
    * The booking row commits before its turn does, so a turn that died in between leaves a booking
-   * the conversation does not show; it is the truth, and the goal is met before anything else runs.
+   * the conversation does not show. The booking row is the truth, and the goal is met before
+   * anything else runs.
    */
   private static void meetGoalOfSavedBooking(RunningTurn turn) {
     if (turn.bookedAtStart() && !turn.conversation().goalMet) {
@@ -207,8 +208,8 @@ class TurnPipeline {
   }
 
   /**
-   * A model call goes ahead on PASS; an opt-out or a booking change is honoured, not a check that
-   * failed, and a message left unscreened for self-harm is noted, not a detection; every other
+   * A model call goes ahead on PASS. An opt-out or a booking change is honoured, not a check that
+   * failed, and a message left unscreened for self-harm is noted, not a detection. Every other
    * outcome stops the model.
    */
   private static TraceOutcome verdictOf(PreGuards.Outcome outcome) {

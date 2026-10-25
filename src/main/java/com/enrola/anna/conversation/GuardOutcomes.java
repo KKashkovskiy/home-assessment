@@ -15,8 +15,7 @@ import org.springframework.stereotype.Component;
 /**
  * What code does when it, not the model, decides a turn: what the conversation becomes and what is
  * sent. One method per outcome, shared by the pre-guards and by the model's own OPT_OUT, ABUSIVE
- * and SELF_HARM intents: two detectors, one outcome. Replies here are fixed templates, never the
- * model's words.
+ * and SELF_HARM intents. Replies here are fixed templates, never the model's words.
  */
 @Component
 class GuardOutcomes {
@@ -66,10 +65,10 @@ class GuardOutcomes {
   }
 
   /**
-   * Suppresses the phone, ends UNSUBSCRIBED and confirms, even after another end: compliance beats
-   * silence. The suppression is written under the lead's lock, so a start for the same lead cannot
-   * pass its check in between; a busy lead is reported as this conversation being busy, since the
-   * platform retries the message.
+   * Suppresses the phone, ends UNSUBSCRIBED and confirms, even after another end, because
+   * compliance outranks the end's silence. The suppression is written under the lead's lock, so a
+   * start for the same lead cannot pass its check in between; a busy lead is reported as this
+   * conversation being busy, since the platform retries the message.
    */
   TurnOutcome unsubscribe(RunningTurn turn, Suppression.Reason reason) {
     Conversation conversation = turn.conversation();
@@ -145,10 +144,10 @@ class GuardOutcomes {
   }
 
   /**
-   * After the goal nothing, and a person follows up. On the turn the model ended, the fixed close
-   * for that end. While a person is asked to take over, nothing: a scripted sales line is wrong
-   * there, so a lead in distress is handed over even when the decision did not ask. Otherwise the
-   * FALLBACK template.
+   * After the goal, nothing is sent and a person follows up. On the turn the model ended, the fixed
+   * close for that end goes out. While a person is asked to take over, nothing is sent: a scripted
+   * sales line is wrong there, so a lead in distress is handed over even when the decision did not
+   * ask. Otherwise the FALLBACK template goes out.
    */
   private TurnOutcome replacement(RunningTurn turn, LeadIntent intent) {
     Conversation conversation = turn.conversation();

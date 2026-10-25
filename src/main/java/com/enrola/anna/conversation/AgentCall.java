@@ -108,8 +108,8 @@ class AgentCall {
   }
 
   /**
-   * A turn's side of its calls' tool loops: each round is traced as it ends, numbered across the
-   * turn so a repair's rounds follow the decision's and marked with the call it belongs to, rounds
+   * A turn's side of its calls' tool loops. Each round is traced as it ends, numbered across the
+   * turn so a repair's rounds follow the decision's, and marked with the call it belongs to. Rounds
    * are granted while any are left, and {@link TurnToolCalls} answers the calls. The decision call
    * and its repair share one.
    */

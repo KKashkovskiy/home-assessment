@@ -99,7 +99,7 @@ class PromptSeed {
     }
   }
 
-  /** Rows with none active is damage done by hand: an empty table is the only normal way. */
+  /** Rows with none active is damage done by hand: normally only an empty table has none. */
   private void warnIfDamaged() {
     if (versions.count() > 0 && versions.findByActiveTrue().isEmpty()) {
       log.warn(
@@ -108,8 +108,8 @@ class PromptSeed {
   }
 
   /**
-   * A fresh database runs the newest version the repo ships. A save is never activated by the seed,
-   * since only a person decides a save is ready, not even one that holds a repo directory's id.
+   * A fresh database runs the newest version the repo ships. The seed never activates a save, not
+   * even one that holds a repo directory's id, since only a person decides a save is ready.
    */
   private void activateNewestIfNoneActive(List<String> repoIds) {
     if (versions.findByActiveTrue().isPresent()) {

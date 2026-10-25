@@ -189,7 +189,7 @@ class ChecksTest {
         .containsOnly("turn_status", "one_question_max");
   }
 
-  /** The production caps the model's reply to a lead in distress; a fixed template is not held. */
+  /** The production caps the model's reply to a lead in distress; a fixed template is exempt. */
   @Test
   void distressCapHoldsModelRepliesOnly() {
     String overCap = "x".repeat(140) + ".";

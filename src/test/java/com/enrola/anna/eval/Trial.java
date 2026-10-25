@@ -92,7 +92,7 @@ record Trial(
     return judges.stream().map(JudgeResult::costUsd).reduce(BigDecimal.ZERO, BigDecimal::add);
   }
 
-  /** This trial with {@code answers} as its judges; nothing else changes, its status least. */
+  /** This trial with {@code answers} as its judges; nothing else changes, its status included. */
   Trial withJudges(List<JudgeResult> answers) {
     return new Trial(
         scenarioId,

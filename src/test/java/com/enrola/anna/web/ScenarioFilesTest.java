@@ -132,7 +132,7 @@ class ScenarioFilesTest {
     assertThat(files.save(id, "", skeleton)).singleElement().asString().startsWith(field);
   }
 
-  /** Opened as itself a scenario saves over its own file; a new one never over another's. */
+  /** A scenario opened as itself saves over its own file; a new one never saves over another's. */
   @Test
   void aSaveUnderAnIdAnotherScenarioHasIsRefused() throws IOException {
     String yaml = TURN.formatted("turn-a", "core").replace("A turn", "Edited");

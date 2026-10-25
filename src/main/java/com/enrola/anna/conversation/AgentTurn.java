@@ -13,11 +13,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * The model's part of a turn: one {@link AgentCall}, then what the decision does. On an open
- * conversation code still owns opt-out, abuse, self-harm and the closes its counters force, and the
- * reply goes out through {@link ReplyRepair}; after a soft-terminal end the model only classifies,
- * and after a hard end it is asked only whether a message moderation could not screen is self-harm.
- * When the call fails after the SDK's retries, or the output is not a decision, nothing is sent and
- * a human is asked to look.
+ * conversation, code still owns opt-out, abuse, self-harm and the closes its counters force, and
+ * the reply goes out through {@link ReplyRepair}. After a soft-terminal end the model only
+ * classifies, and after a hard end it is asked only whether a message moderation could not screen
+ * is self-harm. When the call fails after the SDK's retries, or the output is not a decision,
+ * nothing is sent and a human is asked to look.
  */
 @Component
 class AgentTurn {
@@ -61,10 +61,10 @@ class AgentTurn {
 
   /**
    * A soft-terminal conversation's turn: the model classifies, with no tools, since nothing is
-   * scheduled after an end. Code-owned intents act as on an open conversation; RESCHEDULE and
+   * scheduled after an end. Code-owned intents act as on an open conversation. RESCHEDULE and
    * HANDOFF_REQUEST break the silence once, because ignoring them is a compliance problem, not a
-   * loop, and RESCHEDULE after a booking asks a human to move the call, which stays booked;
-   * anything else gets at most one closing reply. A failed call hands off like one on an open
+   * loop, and RESCHEDULE after a booking asks a human to move the call, which stays booked.
+   * Anything else gets at most one closing reply. A failed call hands off like one on an open
    * conversation, since the message may be a request no one read.
    */
   TurnOutcome classifyOnly(RunningTurn turn) {
@@ -79,8 +79,8 @@ class AgentTurn {
   /**
    * After a hard end, moderation did not answer and no self-harm phrase matched: the model
    * classifies, with no tools, and only its intent is read. SELF_HARM sends the safety template as
-   * the pre-guards do; any other intent, or a failed call, keeps the silence the end owes and hands
-   * nothing off, and the self-harm-check row says which.
+   * the pre-guards do. Any other intent, or a failed call, keeps the silence the end owes and hands
+   * nothing off. The self-harm-check row says which.
    */
   TurnOutcome askAboutSelfHarm(RunningTurn turn) {
     return switch (calls.classify(turn, questions.questionFor(turn), calls.toolRoundsFor(turn))) {

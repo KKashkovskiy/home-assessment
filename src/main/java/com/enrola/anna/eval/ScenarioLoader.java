@@ -26,7 +26,7 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 /**
  * Loads and validates {@code evals/scenarios/*.yaml}, for the harness and for the Evals page's save
  * alike. A text is validated against {@code evals/schema/scenario.schema.json} before it is mapped,
- * so a typo such as {@code reply_match} fails loudly; its id must equal its file name, every regex
+ * so a typo such as {@code reply_match} fails loudly. Its id must equal its file name, every regex
  * must compile and every {@code stop_when} entry must parse, so no trial can crash on one.
  */
 public final class ScenarioLoader {

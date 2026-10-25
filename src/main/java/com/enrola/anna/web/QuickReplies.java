@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 /**
  * The composer's quick-reply chips: one {@code label | text} per line, {@code #} comments and blank
  * lines ignored, a line without a bar its own label and text. {@code quick-replies.txt} on the
- * classpath is the default and the same file in the data directory, written from the settings form,
+ * classpath is the default; the same file in the data directory, written from the settings form, is
  * the override, as with the settings themselves.
  */
 @Component

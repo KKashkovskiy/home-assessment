@@ -108,7 +108,10 @@ public class TraceView {
     }
   }
 
-  /** The seq numbers of a turn's first and last model rounds, both past every event without one. */
+  /**
+   * The seq numbers of a turn's first and last model rounds; for a turn without one, both lie past
+   * every event.
+   */
   private record ModelSpan(int first, int last) {
 
     static ModelSpan of(List<TraceEvent> events) {

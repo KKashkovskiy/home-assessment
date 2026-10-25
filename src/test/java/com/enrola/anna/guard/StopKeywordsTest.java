@@ -6,7 +6,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-/** The opt-out table: what is a STOP and, just as important, what is not. */
+/** The opt-out table: what is a STOP and what is not. */
 class StopKeywordsTest {
 
   @ParameterizedTest

@@ -15,11 +15,11 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * One inbound SMS to one turn, serialised per conversation and idempotent on the provider message
- * id. A turn is three transactions, never one: the claim of its turn number commits before any
- * work; the work, the model call included, runs outside a transaction; and the finish writes the
- * reply, the conversation, the turn row and the STATE_DIFF event of what the turn changed together,
- * so a turn that dies before it leaves no diff of changes never made. Each is REQUIRES_NEW, so none
- * joins a caller's transaction.
+ * id. A turn is three transactions, never one. The claim of its turn number commits before any
+ * work. The work, the model call included, runs outside a transaction. The finish writes the reply,
+ * the conversation, the turn row and the STATE_DIFF event of what the turn changed together, so a
+ * turn that dies before the finish leaves no diff of changes never made. Each is REQUIRES_NEW, so
+ * none joins a caller's transaction.
  */
 @Service
 public class InboundTurns {

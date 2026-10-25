@@ -160,8 +160,8 @@ class AvailabilityToolTest {
 
   /**
    * The parts of day as the prompt's scheduling rules state them (morning 9-12, midday 11-14,
-   * afternoon 12-17, evening 17-20), each from inclusive to exclusive. This table is what keeps the
-   * code and {@code prompts/v1/v1.md} in step: change one, and this test says to change the other.
+   * afternoon 12-17, evening 17-20), each from inclusive to exclusive. This table keeps the code
+   * and {@code prompts/v1/v1.md} in step: change one, and this test says to change the other.
    */
   @ParameterizedTest(name = "{0} {1}")
   @CsvSource({

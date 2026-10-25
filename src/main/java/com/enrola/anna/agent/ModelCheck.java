@@ -15,9 +15,9 @@ import org.springframework.stereotype.Component;
 /**
  * Checks that the model the settings name answers a request shaped like a turn's, with the same
  * model, reasoning and output cap. It runs at boot, where a failure is a warning, or a failed boot
- * when {@code anna.agent.strict-model-check} is true; and again, in the background, after each save
- * that changes what a turn would send, where a failure only shows in the console. {@link #result()}
- * tells the console how the latest check went. Present only with a key, like {@link
+ * when {@code anna.agent.strict-model-check} is true. It runs again in the background after each
+ * save that changes what a turn would send, and there a failure only shows in the console. {@link
+ * #result()} tells the console how the latest check went. Present only with a key, like {@link
  * OpenAiModelClient}; without one {@link AgentService} logs the skip.
  */
 @Component
@@ -87,8 +87,8 @@ public class ModelCheck implements ApplicationRunner, SettingsListener {
   }
 
   /**
-   * Asks {@code ping} and records how it went, unless a later save asked something else since; the
-   * failure's reason, or empty when the model answered.
+   * Asks {@code ping} and records how it went, unless a later save asked something else since.
+   * Returns the failure's reason, or empty when the model answered.
    */
   private Optional<String> check(ModelRequest ping) {
     Optional<String> failure =

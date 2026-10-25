@@ -107,7 +107,10 @@ class AgentServiceTest {
     assertThat(model.calls().getFirst().reasoningSummary()).isNull();
   }
 
-  /** The decision call offers the bundle's two tools; after an end nothing could be right. */
+  /**
+   * The decision call offers the bundle's two tools; the classify call after an end offers none,
+   * since no tool could be right there.
+   */
   @Test
   void onlyTheDecisionCallOffersTools() {
     model.decide(Decisions.engaged().build()).decide(Decisions.engaged().build());

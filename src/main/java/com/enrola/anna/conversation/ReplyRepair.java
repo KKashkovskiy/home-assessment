@@ -15,10 +15,10 @@ import org.springframework.stereotype.Component;
 /**
  * The {@link ReplyGuards} around the model's replies, with one repair. A reply that fails is asked
  * for again once, with the turn's question and a note naming what failed, and with no tools when
- * the decision ended the conversation; only the rewrite's text is used, so the decision already
- * applied stands. A rewrite that fails too, or a repair call that fails, is replaced. Two calls at
- * most, by structure. Every reply checked leaves one GUARD event per {@link ReplyCheck} with that
- * check's notes, never the reply itself.
+ * the decision ended the conversation. Only the rewrite's text is used, so the decision already
+ * applied stands. A rewrite that fails too, or a repair call that fails, is replaced. The structure
+ * allows two calls at most. Every reply checked leaves one GUARD event per {@link ReplyCheck} with
+ * that check's notes, never the reply itself.
  */
 @Component
 class ReplyRepair {

@@ -79,9 +79,9 @@ public class ConversationService {
 
   /**
    * Creates the conversation and stores the template opener as turn 0. An opted-out phone gets a
-   * SUPPRESSED conflict; a lead with an open conversation gets an ACTIVE conflict naming it, and
-   * one whose last conversation ended ABUSIVE an ABUSIVE conflict naming that, so only a deliberate
-   * {@link #forceStart} texts them again. {@code source} names the client that asked.
+   * SUPPRESSED conflict. A lead with an open conversation gets an ACTIVE conflict naming it, and a
+   * lead whose last conversation ended ABUSIVE gets an ABUSIVE conflict naming that one, so only a
+   * deliberate {@link #forceStart} texts them again. {@code source} names the client that asked.
    */
   public TurnResponse start(String leadId, Source source) {
     Lead lead = requireLead(leadId);

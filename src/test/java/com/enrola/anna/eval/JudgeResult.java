@@ -53,7 +53,8 @@ record JudgeResult(
   }
 
   /**
-   * {@code question} about {@code trial}, whose judge threw {@code crash}: no answer, no run end.
+   * {@code question} about {@code trial}, whose judge threw {@code crash}: no answer, and the run
+   * goes on.
    */
   static JudgeResult crashed(Judging.Question question, Trial trial, RuntimeException crash) {
     return unanswered(

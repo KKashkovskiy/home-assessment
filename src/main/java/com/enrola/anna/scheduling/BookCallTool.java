@@ -10,11 +10,11 @@ import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.annotation.JsonNaming;
 
 /**
- * book_call: only a slot from the conversation's latest offer, re-checked by the calendar because
- * an offer goes stale between turns; the invitee from the stored lead, never from the model; one
- * booking per conversation, so a repeat call returns the booking already made. A refusal goes back
- * to the model, which re-queries; a booking the calendar made but the database did not keep is
- * {@link ToolResult.BookingUnknown}.
+ * book_call books only a slot from the conversation's latest offer, re-checked by the calendar
+ * because an offer goes stale between turns. The invitee comes from the stored lead, never from the
+ * model. A conversation gets one booking, so a repeat call returns the booking already made. A
+ * refusal goes back to the model, which re-queries; a booking the calendar made but the database
+ * did not keep is {@link ToolResult.BookingUnknown}.
  */
 @Component
 public class BookCallTool {

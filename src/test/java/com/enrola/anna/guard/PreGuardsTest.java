@@ -43,7 +43,7 @@ class PreGuardsTest {
   static final ModerationVerdict HARASSMENT = scores(0.9, 0, 0);
 
   /**
-   * Each row matches two adjacent checks; the earlier one decides, last of the steps that ran, and
+   * Each row matches two adjacent checks. The earlier one decides and is the last step that ran;
    * none after it runs.
    */
   static Stream<Arguments> precedence() {
@@ -304,9 +304,9 @@ class PreGuardsTest {
   }
 
   /**
-   * After a hard end with moderation down and no phrase, the model is asked when it can be called
-   * and the turn says why when it cannot; never when moderation answered, before a hard end, for a
-   * repeat of the previous message or a STOP, or once the template went out.
+   * After a hard end with moderation down and no phrase, the model is asked when it can be called,
+   * and the turn says why when it cannot. It is never asked when moderation answered, before a hard
+   * end, for a repeat of the previous message or a STOP, or once the template went out.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("modelAskedAboutSelfHarm")

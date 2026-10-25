@@ -601,7 +601,7 @@ class ConversationApiTest {
           .andExpect(jsonPath("$.transcript[?(@.direction == 'OUT')]").value(hasSize(1)));
     }
 
-    /** Compliance beats silence: an opt-out outranks the abusive end and is confirmed. */
+    /** For compliance, an opt-out outranks the abusive end's silence and is confirmed. */
     @Test
     void stopAfterAHardEndUnsubscribesAndConfirms() throws Exception {
       String id = idOf(start("lauren"));

@@ -11,7 +11,8 @@ class PromptLoaderTest {
   final PromptLoader loader = new PromptLoader(new DefaultResourceLoader());
 
   /**
-   * The repo is the owner's: a version directory with a file missing stops the boot, saying which.
+   * The repo is the owner's to fix: a version directory with a file missing stops the boot, saying
+   * which.
    */
   @Test
   void missingFileFailsNamingIt() {

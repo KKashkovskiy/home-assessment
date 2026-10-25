@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * OpenAI's moderations endpoint over the shared client, with its own timeout and retries from
- * {@code anna.moderation}, read once here; exists only when {@code OPENAI_API_KEY} is set. A call
- * that fails in any way, an answer with no result included, is {@link
+ * {@code anna.moderation}, read once here. The bean exists only when {@code OPENAI_API_KEY} is set.
+ * A call that fails in any way, including an answer with no result, is {@link
  * ModerationVerdict#UNAVAILABLE}: moderation being down must never lose or block a turn, and the
  * model's own ABUSIVE and SELF_HARM intents still protect the conversation.
  */

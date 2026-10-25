@@ -22,10 +22,10 @@ import tools.jackson.databind.json.JsonMapper;
  * The offline model of one story turn. It reads the lead's latest line by keyword and answers with
  * a fixed reply the reply guards pass, calling get_availability when the line names a day or a part
  * of one and book_call when it picks from the times already offered. It knows nothing of the
- * story's expectations: the product's own code, the objection count, the off-topic limit, the
- * closing-reply rule and the booking, decides how a story ends. Its replies were written to hold
- * the phrases the stories' {@code transcript_matches} look for (free, referral fee, AI assistant),
- * so those pass offline by construction. It proves the story loop at $0, not the prompt.
+ * story's expectations. The product's own code decides how a story ends: the objection count, the
+ * off-topic limit, the closing-reply rule and the booking. Its replies hold the phrases the
+ * stories' {@code transcript_matches} look for (free, referral fee, AI assistant), so those pass
+ * offline by construction. It proves the story loop at $0, not the prompt.
  */
 final class StoryStandIn implements ModelClient {
 

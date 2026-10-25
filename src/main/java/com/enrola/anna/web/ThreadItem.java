@@ -67,8 +67,8 @@ public sealed interface ThreadItem {
   }
 
   /**
-   * A turn that sent nothing, and why, with the state it left: never an empty gap. {@code reason}
-   * is null for a turn stored before reasons were.
+   * A turn that sent nothing, and why, with the state it left, so the thread never shows an empty
+   * gap. {@code reason} is null for a turn stored before reasons were.
    */
   record SystemLine(int turnNo, NoReply reason, EndReason endReason, HandoffReason handoffReason)
       implements ThreadItem {

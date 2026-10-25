@@ -14,7 +14,7 @@ import tools.jackson.databind.JsonNode;
 /**
  * Runs the model's part of a turn: model, tools, model, until the model answers, a round fails, or
  * it still calls tools when the turn has no tool round left. Builds the request from a {@link
- * Call}: the bundle, the turn's settings, the transcript and the turn's context; the caller's
+ * Call}: the bundle, the turn's settings, the transcript and the turn's context. The caller's
  * {@link ToolLoopCallbacks} records each round, grants the tool rounds and answers the calls, and
  * the caller maps the output to a {@link Decision} and applies it. Without {@code OPENAI_API_KEY}
  * there is no client and {@link #available()} is false.

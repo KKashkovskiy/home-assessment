@@ -17,11 +17,11 @@ import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.annotation.JsonNaming;
 
 /**
- * get_availability: dates and a part of day on the lead's clock in, at most the settings' {@code
- * maxSlots} slots labelled for the lead out. The window is cut at the horizon here and held to the
- * lead time and range by the {@link FakeCalendar}; the model never sees an offset. A slot inside
- * the advisors' hours is offered only if the call also falls within the weekday hours on the lead's
- * clock, so a Perth lead is not called at 6:00.
+ * get_availability takes dates and a part of day on the lead's clock and returns at most the
+ * settings' {@code maxSlots} slots, labelled for the lead. The window is cut at the horizon here
+ * and held to the lead time and range by the {@link FakeCalendar}; the model never sees an offset.
+ * A slot inside the advisors' hours is offered only if the call also falls within the weekday hours
+ * on the lead's clock, so a Perth lead is not called at 6:00.
  */
 @Component
 public class AvailabilityTool {

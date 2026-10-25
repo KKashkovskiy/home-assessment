@@ -23,7 +23,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * which a keyed run's judges are then asked. Only the gates, or a run that judged nothing, fail the
  * build, never a judge: a trial that did not pass is aborted with its reason, since a FAIL outside
  * the core set and the hard checks is reported, not gating. A crashed trial fails its test, and a
- * refused run or a selection no scenario matches the factory.
+ * refused run or a selection no scenario matches fails the factory.
  */
 @SpringBootTest
 @Import(EvalConfig.class)

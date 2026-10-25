@@ -191,7 +191,8 @@ final class ScenarioPage {
   }
 
   /**
-   * Each answer with the turn it judged, or the whole transcript; advisory, so apart from checks.
+   * Each answer with the turn it judged, or the whole transcript. Answers are advisory, so they sit
+   * apart from the checks.
    */
   private static String judges(List<JudgeResult> answers) {
     if (answers.isEmpty()) {

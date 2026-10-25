@@ -23,13 +23,13 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Holds the live {@link Settings}: the yml defaults, or the overrides in {@code settings.json} in
  * the data directory laid over them. {@link #save} validates a candidate whole, the {@link
- * SettingsCheck} beans included, writes it, and swaps it in with one volatile write, so a turn
- * keeps the record it read at its start and the next turn reads the new one; then the {@link
- * SettingsListener} beans hear it, so every save keeps the clock and the calendar in step. A
- * settings file never stops the app: one that does not read or pass is set aside. Only the pipeline
- * entries ({@code ConversationService} for a start, {@code TurnPipeline} for a turn), the
- * Configuration controller and the console's shell advice, which reads it once per request, hold
- * this store; every other reader is handed the record, or the section of it it needs.
+ * SettingsCheck} beans included, writes it, and swaps it in with one volatile write. A turn keeps
+ * the record it read at its start and the next turn reads the new one. The {@link SettingsListener}
+ * beans then hear it, which keeps the clock and the calendar in step with every save. A settings
+ * file never stops the app: one that does not read or pass is set aside. Only the pipeline entries
+ * ({@code ConversationService} for a start, {@code TurnPipeline} for a turn), the Configuration
+ * controller and the console's shell advice, which reads it once per request, hold this store;
+ * every other reader is handed the record, or the section of it that it needs.
  */
 @Service
 public class SettingsStore implements SmartInitializingSingleton {

@@ -50,7 +50,10 @@ final class AnalyticsKpis {
         .toList();
   }
 
-  /** Reply, booking of started and of replied, opt-out and its keyword and model split. */
+  /**
+   * The reply rate, the booking rate of started and of replied, and the opt-out rate with its
+   * keyword and model split.
+   */
   private static List<Kpi> engagement(AnalyticsRows rows) {
     long started = rows.started().size();
     long replied = rows.count(Started::replied);

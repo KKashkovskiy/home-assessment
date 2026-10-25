@@ -163,7 +163,7 @@ class StateRulesTest {
     assertThat(conversation.handoffReason).isEqualTo(HandoffReason.SELF_HARM);
   }
 
-  /** Safety beats silence: an opted-out lead is still handed off, and stays opted out. */
+  /** An opted-out lead is still handed off for safety, and stays opted out. */
   @Test
   void safetyAfterStopKeepsTheEndAndHandsOff() {
     StateRules.end(conversation, EndReason.UNSUBSCRIBED, T1);

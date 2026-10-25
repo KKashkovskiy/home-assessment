@@ -3,8 +3,9 @@ package com.enrola.anna.agent;
 /**
  * What {@link AgentService}'s tool loop calls back into, implemented by the running turn. It hears
  * of each model round as the round ends, before the round's function calls are answered, so what
- * the turn records reads in the order it happened; it grants tool rounds from the turn's allowance;
- * and it answers each function call, a bad one with an error the model can read, never by throwing.
+ * the turn records reads in the order it happened. It also grants tool rounds from the turn's
+ * allowance and answers each function call, a bad one with an error the model can read, never by
+ * throwing.
  */
 public interface ToolLoopCallbacks {
 

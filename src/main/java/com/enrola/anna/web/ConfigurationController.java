@@ -35,7 +35,7 @@ import org.springframework.web.servlet.view.RedirectView;
  * The Configuration page: the prompt editor over {@link PromptStore} and the runtime settings form
  * over {@link SettingsStore}. The editor is a form holding the selected version's five texts, so
  * saving and activating are plain posts answered with a redirect, and the script mounts Monaco over
- * the form; the settings are one form saved whole the same way, and the status strip's clock and
+ * the form. The settings are one form saved whole the same way, and the status strip's clock and
  * calendar controls save one value of them from any page. The stores validate; {@link
  * ConfigurationPages} and {@link SettingsPages} build the two sections and word their notices; this
  * class maps outcomes to statuses. A request the page cannot take comes back as this page with a
@@ -133,8 +133,8 @@ public class ConfigurationController {
   /**
    * The status strip's clock: REAL follows the system clock, FIXED stands at {@code fixedClock},
    * advisor-local. The strip sends the current minute while the clock is real, so switching to
-   * FIXED stops it there. The same save the form makes, so it applies at once and outlives a
-   * restart; back to the page it was pressed on.
+   * FIXED stops it there. It is the same save the form makes, so it applies at once and outlives a
+   * restart, and it redirects back to the page it was pressed on.
    */
   @PostMapping(PATH + "/clock")
   public RedirectView clock(

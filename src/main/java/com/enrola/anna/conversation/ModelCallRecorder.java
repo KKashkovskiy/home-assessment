@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Records a running turn's model calls: a MODEL_CALL event for every round as it ends, priced from
- * the turn's price table, and for each call the turn's model columns, its cost the sum of its
+ * the turn's price table, and for each call the turn's model columns, whose cost is the sum of its
  * rounds', with an ERROR event when it failed.
  */
 @Component

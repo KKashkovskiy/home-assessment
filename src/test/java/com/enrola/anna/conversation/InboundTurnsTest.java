@@ -484,7 +484,10 @@ class InboundTurnsTest {
       assertThat(model.calls()).isEmpty();
     }
 
-    /** Safety beats silence, once: the history's SAFETY entry is the marker. */
+    /**
+     * The safety template breaks an end's silence once; the history's SAFETY entry marks that it
+     * went out.
+     */
     @Test
     void selfHarmAfterStopGetsTheTemplateOnce() {
       turns.handle(id, "STOP", "p1");
@@ -819,7 +822,10 @@ class InboundTurnsTest {
       assertThat(model.calls()).hasSize(3);
     }
 
-    /** Never two goodbyes: the model's own sign-off on the ending turn is the closing reply. */
+    /**
+     * The model's own sign-off on the ending turn is the closing reply, so a second goodbye is
+     * suppressed.
+     */
     @Test
     void modelSignOffIsTheClosingReply() {
       model
@@ -1517,9 +1523,10 @@ class InboundTurnsTest {
     }
 
     /**
-     * A turn that saved its booking and then died is run again: the row is the truth, so the turn
-     * starts BOOKED, the model's confirmation goes out as the closing reply with no tool call and
-     * no fallback, and the booked time passes the time check though it is not in the offer.
+     * A turn that saved its booking and then died is run again, and the saved row is authoritative.
+     * The turn starts BOOKED, the model's confirmation goes out as the closing reply with no tool
+     * call and no fallback, and the booked time passes the time check though it is not in the
+     * offer.
      */
     @Test
     void savedBookingWhoseTurnDiedEndsBookedOnTheRerun() {

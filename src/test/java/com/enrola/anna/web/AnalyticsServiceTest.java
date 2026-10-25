@@ -313,8 +313,8 @@ class AnalyticsServiceTest extends AnalyticsFixture {
 
     /**
      * pass^k of the latest keyed run per version that judged a scenario, clean scenarios over
-     * judged ones, linked to its report: an offline run, a SKIPPED one and one whose every trial
-     * was INVALID are passed over however recent, and a red run with judged scenarios still counts.
+     * judged ones, linked to its report. An offline run, a SKIPPED one and one whose every trial
+     * was INVALID are passed over however recent; a red run with judged scenarios still counts.
      */
     @Test
     void evalPassKReadsTheLatestKeyedJudgedRun() {

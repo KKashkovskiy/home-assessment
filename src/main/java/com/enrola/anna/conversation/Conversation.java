@@ -60,8 +60,8 @@ public class Conversation {
   public String summary;
 
   // Counts only code moves; the model reads them in the turn context. Agent turns are the
-  // messages sent after the opener, post-terminal replies those sent on or after the turn that
-  // ended it.
+  // messages sent after the opener, and post-terminal replies are those sent on or after the turn
+  // that ended it.
   public int objectionsUsed;
   public int offTopicStreak;
   public int agentTurns;

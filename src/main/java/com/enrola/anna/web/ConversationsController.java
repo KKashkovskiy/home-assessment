@@ -25,8 +25,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.ModelAndView;
 
 /**
- * The Conversations page: list, chat, state and the start panel. A second client of the services
- * the platform API calls, never a second pipeline. Every action is a form post answered with a
+ * The Conversations page: list, chat, state and the start panel. It calls the same services as the
+ * platform API and has no pipeline of its own. Every action is a form post answered with a
  * redirect, so the page works without JavaScript; the composer's script sends with {@code
  * X-Requested-With} and gets the turn back as a fragment instead.
  */
@@ -200,7 +200,10 @@ public class ConversationsController {
     return redirectTo(conversations.start(leadId, Source.SIM).conversationId());
   }
 
-  /** A phone that already has a lead starts that lead, and the page says the typed details went. */
+  /**
+   * A phone that already has a lead starts that lead, and the page says the typed details were not
+   * saved.
+   */
   private String startCustom(LeadService.CustomLead custom) {
     LeadService.Entered entered = leads.createCustom(custom);
     String started = conversations.start(entered.lead().id(), Source.SIM).conversationId();

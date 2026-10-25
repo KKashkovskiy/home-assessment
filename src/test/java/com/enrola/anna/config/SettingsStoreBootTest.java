@@ -14,8 +14,9 @@ import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * A boot over a fresh database and a settings file whose persona the active prompt version cannot
- * render. The store checks its overrides only once the versions are seeded: earlier, a fresh
- * database has no active version and the boot fails; never, and the overrides run.
+ * render. The store checks its overrides only once the versions are seeded. Checked earlier, the
+ * boot would fail, as a fresh database has no active version; never checked, the overrides would
+ * run.
  */
 @SpringBootTest(properties = "OPENAI_API_KEY=")
 class SettingsStoreBootTest {

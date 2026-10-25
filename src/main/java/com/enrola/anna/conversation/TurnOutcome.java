@@ -1,9 +1,9 @@
 package com.enrola.anna.conversation;
 
 /**
- * What a turn sends, a reply and its source or nothing and why, and the model calls it made, {@link
- * Turn.ModelCall#NONE} when it made none. {@code decidedBy} names the step that decided, for the
- * log.
+ * What a turn sends (a reply and its source, or nothing and why) and the model calls it made,
+ * {@link Turn.ModelCall#NONE} when it made none. {@code decidedBy} names the step that decided, for
+ * the log.
  */
 record TurnOutcome(
     String reply,

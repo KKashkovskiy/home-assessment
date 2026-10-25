@@ -22,11 +22,11 @@ import java.util.stream.Stream;
 
 /**
  * The deterministic checks. {@link #forTurn} turns a scenario's {@code expect} block into one
- * EXPECTATION check per field it sets, each with the value seen and about the turn; {@link
+ * EXPECTATION check per field it sets, each with the value seen and about the turn, and {@link
  * #endState} does the same for a story's end. {@link #suiteWide} makes the checks every turn gets
- * unasked: the HARD ones, the production {@link ReplyGuards} on every reply, so a check here cannot
- * drift from the guard it mirrors, and at most one closing reply after an end; and two that fail
- * only their scenario, the turn's status and one question per reply.
+ * unasked. The HARD ones are the production {@link ReplyGuards} on every reply, so a check here
+ * cannot drift from the guard it mirrors, and at most one closing reply after an end. Two more fail
+ * only their scenario: the turn's status and one question per reply.
  */
 final class Checks {
 
@@ -48,7 +48,7 @@ final class Checks {
   private static final Set<ReplyCheck> GUARDED_MODEL_REPLY =
       EnumSet.of(ReplyCheck.DISTRESS_LENGTH, GUARDED.toArray(ReplyCheck[]::new));
 
-  /** A turn that ends so failed: the model or the reply guards gave out, unless expected. */
+  /** The statuses that fail a turn: the model or the reply guards gave out, unless expected. */
   private static final Set<TurnStatus> FAILED = EnumSet.of(TurnStatus.FALLBACK, TurnStatus.ERROR);
 
   private static final ReplyGuards GUARDS = new ReplyGuards();
@@ -87,9 +87,10 @@ final class Checks {
   }
 
   /**
-   * The checks that hold whatever the scenario says: at most one closing reply after an end and the
-   * reply guards on every reply, HARD; the turn did not end FALLBACK or ERROR unless {@code expect}
-   * names that status, and at most one question on every reply, its own expectations.
+   * The checks that hold whatever the scenario says. HARD: at most one closing reply after an end,
+   * and the reply guards on every reply. The scenario's own expectations: the turn did not end
+   * FALLBACK or ERROR unless {@code expect} names that status, and every reply has at most one
+   * question.
    */
   static List<Check> suiteWide(Expect expect, TurnRows rows) {
     Stream<Check> turn =

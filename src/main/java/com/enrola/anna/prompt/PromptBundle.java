@@ -27,7 +27,9 @@ public record PromptBundle(
 
   private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{(\\w+)}}");
 
-  /** What {@link #render} fills each placeholder with; the names a prompt must use, and only. */
+  /**
+   * What {@link #render} fills each placeholder with: the names a prompt must use, and no others.
+   */
   private static final Map<String, Function<Fill, String>> PLACEHOLDERS =
       Map.of(
           "persona", fill -> fill.persona().persona(),

@@ -10,12 +10,13 @@ import org.springframework.stereotype.Component;
 
 /**
  * Answers the model's function calls for a running turn through {@link SchedulingTools}, for its
- * lead in the lead's zone, and keeps what they leave on the conversation: an availability result
- * replaces the last offer, a booking meets the goal, a booking the calendar made but no row records
- * hands off with ERROR, and a calendar or tool failure adds to a streak that an answer resets and
- * whose second failure hands off with ERROR. A call refused as the model's own mistake goes back to
- * it and leaves the streak as it was; the tool rounds bound those. Every call leaves a TOOL_CALL
- * event with what the model sent and read and, for availability, how the slots were filtered.
+ * lead in the lead's zone, and keeps what they leave on the conversation. An availability result
+ * replaces the last offer and a booking meets the goal. A booking the calendar made but no row
+ * records hands off with ERROR. A calendar or tool failure adds to a streak that an answer resets,
+ * and the streak's second failure hands off with ERROR. A call refused as the model's own mistake
+ * goes back to it and leaves the streak as it was; the tool rounds bound those. Every call leaves a
+ * TOOL_CALL event with what the model sent and read and, for availability, how the slots were
+ * filtered.
  */
 @Component
 class TurnToolCalls {

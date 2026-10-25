@@ -87,7 +87,10 @@ final class TurnRowsReader {
         messages.transcript(conversation.id));
   }
 
-  /** The suite-wide checks ask nothing of questions, so goal and closing only fill the record. */
+  /**
+   * The suite-wide checks leave out the guards' question rule, so goal and closing only fill the
+   * record.
+   */
   private ReplyContext replyContext(Conversation conversation, Decision decision) {
     Settings current = settings.current();
     TurnResponse view = conversations.view(conversation.id);

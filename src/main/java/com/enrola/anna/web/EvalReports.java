@@ -255,8 +255,8 @@ public class EvalReports {
   /**
    * Each scenario's result in the newest of {@code rows} that ran it: FAIL when a trial failed,
    * else PASS when one passed, else the first trial's status. A trial that never ran says nothing
-   * of the scenario, so a run that skipped it leaves its older result; nor does a run the page does
-   * not {@linkplain RunRow#opens open}.
+   * of the scenario, so a run that skipped it leaves its older result. Neither does a run the page
+   * does not {@linkplain RunRow#opens open}.
    */
   public Map<String, String> lastResults(List<RunRow> rows) {
     Map<String, String> results = new HashMap<>();
@@ -309,7 +309,7 @@ public class EvalReports {
   }
 
   /**
-   * Every line masked, a line at a time so no run of digits spans two, but the run's own id, the
+   * Every line masked, one at a time so no run of digits spans two, except the run's own id, the
    * one phone-shaped thing the harness writes.
    */
   private static String masked(String runId, String markdown) {

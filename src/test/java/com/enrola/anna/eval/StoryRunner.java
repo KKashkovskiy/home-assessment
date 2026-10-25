@@ -129,7 +129,10 @@ final class StoryRunner {
       }
     }
 
-    /** Lines until a stop condition holds, which a cap always does; a trial if cut short. */
+    /**
+     * Sends lines until a stop condition holds, which a cap always does, and returns a trial if the
+     * story is cut short.
+     */
     private Optional<Trial> talk() {
       Optional<StopWhen.Condition> hit = Optional.empty();
       while (hit.isEmpty()) {
@@ -158,8 +161,8 @@ final class StoryRunner {
     }
 
     /**
-     * One line from the actor, sent as the lead's; instead a trial when the budget has no room for
-     * its turn or the line breaks the persona.
+     * Sends one line from the actor as the lead's, or returns a trial instead when the budget has
+     * no room for its turn or the line breaks the persona.
      */
     private Optional<Trial> exchange() {
       if (!budget.allowsAnotherCall(cost)) {

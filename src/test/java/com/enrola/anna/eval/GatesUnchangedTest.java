@@ -11,8 +11,8 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 /**
- * Advisory means advisory: a judge answer, every one failing or every one passing, cannot change
- * hard, global, validity or the exit code.
+ * Judges are advisory: a judge answer, every one failing or every one passing, cannot change hard,
+ * global, validity or the exit code.
  */
 class GatesUnchangedTest {
 

@@ -31,15 +31,15 @@ public interface ConversationRepository extends CrudRepository<Conversation, Str
   }
 
   /**
-   * What the console list asks for; every field optional, a null one matching all, the rest
-   * AND-combined. {@code q} matches the lead's name, the conversation id or the summary, ignoring
-   * case. The rest narrow to an analytics figure's cohort: {@code replied} is "has an inbound",
-   * {@code optOutReason} reads the lead's suppression row, {@code objectionType} matches any turn's
-   * decision, {@code stages} lists the stages a conversation may be at (every stage unless a figure
-   * asks for those past one), {@code since} bounds the start, {@code guardCaught} is "a guard
-   * caught the model on some turn" (routing rows aside, see {@link RoutingGuards}), {@code retried}
-   * "a reply was repaired or fell back", {@code errored} "a turn failed", and {@code reset} picks
-   * RESET conversations or leaves them out.
+   * What the console list asks for. Every field is optional: a null one matches all, and the others
+   * are AND-combined. {@code q} matches the lead's name, the conversation id or the summary,
+   * ignoring case. The rest narrow to an analytics figure's cohort. {@code replied} is "has an
+   * inbound", {@code optOutReason} reads the lead's suppression row and {@code objectionType}
+   * matches any turn's decision. {@code stages} lists the stages a conversation may be at (every
+   * stage unless a figure asks for those past one), and {@code since} bounds the start. {@code
+   * guardCaught} is "a guard caught the model on some turn" (routing rows aside, see {@link
+   * RoutingGuards}), {@code retried} is "a reply was repaired or fell back" and {@code errored} is
+   * "a turn failed". {@code reset} picks RESET conversations or leaves them out.
    */
   record Search(
       ConversationStatus status,
