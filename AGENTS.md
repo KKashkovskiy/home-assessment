@@ -36,7 +36,7 @@ helper belongs to the feature that first needed it. Dependencies point one way: 
 and `lead` from any package above them, `prompt` itself to `config` and `lead`, `scheduling` to `config` and `lead`.
 `lead` and `config` import no feature package, and nothing imports `web`. `agent`, `guard` and `scheduling` never import
 `conversation`, so a guard or a tool takes plain values, never the conversation entity. The time comes from `AppClock`
-in the root package, which any package may use; nothing else reads the system clock, but for the eval launcher's run
+in the root package, which any package may use. Nothing else reads the system clock, except the eval launcher's run
 ids, which name a launch in wall time as `run.sh`'s `date -u` does.
 
 ## The turn pipeline
